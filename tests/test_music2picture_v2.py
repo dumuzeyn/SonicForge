@@ -60,8 +60,8 @@ class Music2PictureV2Tests(unittest.TestCase):
         source = (Path(music2picture_v2.__file__).parent / "audio_analysis.py").read_text(encoding="utf-8")
         self.assertNotIn("scipy", source.lower())
 
-    def test_ai_and_music2picture_are_separate_engines(self):
-        self.assertEqual(music2picture.COVER_ENGINES, ("ai", "music2picture_v2"))
+    def test_music2picture_is_the_only_cover_renderer(self):
+        self.assertTrue(callable(music2picture.make_cover))
         self.assertFalse(hasattr(music2picture_v2, "MODES"))
         self.assertFalse(hasattr(music2picture_v2, "select_mode"))
 
@@ -100,6 +100,18 @@ class Music2PictureV2Tests(unittest.TestCase):
         self.assertTrue(all(len(description) > 80 for description in descriptions))
         self.assertGreaterEqual(len(set(descriptions)), 5)
         self.assertGreater(max(visual_plan_distance(plans[0], plan) for plan in plans[1:]), 0.08)
+
+    def test_description_takes_its_image_from_lyrics_when_available(self):
+        sample_rate = 8000
+        time = np.arange(sample_rate) / sample_rate
+        analysis = analyze_audio_array((np.sin(2 * np.pi * 220 * time) * 0.2).astype(np.float32), sample_rate)
+        dna = build_visual_dna(analysis)
+        text = create_song_description(
+            dna, "ru", lyrics="[00:01.20]Ночной поезд уходит домой\n[00:04.00]Ночной поезд уходит домой"
+        )
+        self.assertIn("Ночной поезд уходит домой", text)
+        self.assertNotIn("[00:01.20]", text)
+        self.assertNotEqual(text, create_song_description(dna, "ru"))
 
     def test_universal_renderer_is_deterministic_and_audio_sensitive(self):
         sample_rate = 8000

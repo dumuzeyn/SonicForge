@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import sys
+import time
 from ctypes import wintypes
 
 
@@ -25,6 +26,47 @@ def _window_handle(root):
     user32.GetAncestor.argtypes = (wintypes.HWND, wintypes.UINT)
     user32.GetAncestor.restype = wintypes.HWND
     return user32.GetAncestor(root.winfo_id(), 2)
+
+
+def set_native_window_icon(window, icon_path):
+    """Set both shell icon sizes on the current Windows wrapper, including remaps."""
+    if sys.platform != "win32":
+        return
+    user32 = ctypes.windll.user32
+    user32.SendMessageW.argtypes = (wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+    user32.SendMessageW.restype = ctypes.c_ssize_t
+    user32.LoadImageW.argtypes = (wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT,
+                                 ctypes.c_int, ctypes.c_int, wintypes.UINT)
+    user32.LoadImageW.restype = wintypes.HANDLE
+    user32.DestroyIcon.argtypes = (wintypes.HICON,)
+    if not hasattr(window, '_sonic_native_icons'):
+        # Real ICO frames keep small title/taskbar icons crisp. Keep HICONs alive
+        # for as long as the window uses them; never destroy a Tk-owned handle.
+        handles = []
+        for size_kind, metric in ((0, 49), (1, 11)):  # SMALLICON / ICON
+            size = user32.GetSystemMetrics(metric)
+            icon = user32.LoadImageW(None, str(icon_path), 1, size, size, 0x0010)
+            if icon:
+                handles.append((size_kind, icon))
+        window._sonic_native_icons = handles
+
+        def apply(event=None):
+            if event is not None and event.widget is not window:
+                return
+            hwnd = _window_handle(window)
+            for size_kind, icon in window._sonic_native_icons:
+                user32.SendMessageW(hwnd, 0x0080, size_kind, icon)  # WM_SETICON
+
+        def release(event):
+            if event.widget is window:
+                for _, icon in window._sonic_native_icons:
+                    user32.DestroyIcon(icon)
+                window._sonic_native_icons = []
+
+        window._sonic_apply_native_icons = apply
+        window.bind('<Map>', apply, add='+')
+        window.bind('<Destroy>', release, add='+')
+    window._sonic_apply_native_icons()
 
 
 def _primary_work_area(root):
@@ -69,6 +111,10 @@ def _outer_bounds(root):
 
 
 def show_centered(root, client_width, client_height, parent=None):
+    previous_fade = getattr(root, '_sonic_fade_after', None)
+    if previous_fade is not None:
+        root.after_cancel(previous_fade)
+        root._sonic_fade_after = None
     root.attributes("-alpha", 0.0)
     root.geometry(_geometry(client_width, client_height, 0, 0))
     root.deiconify()
@@ -98,8 +144,7 @@ def show_centered(root, client_width, client_height, parent=None):
         (work_area[0] + work_area[2]) / 2,
         (work_area[1] + work_area[3]) / 2,
     )
-    root.attributes("-alpha", 1.0)
-    return {
+    result = {
         "client_size": (root.winfo_width(), root.winfo_height()),
         "outer_bounds": outer,
         "work_area": work_area,
@@ -110,3 +155,31 @@ def show_centered(root, client_width, client_height, parent=None):
             window_center[1] - work_center[1],
         ),
     }
+    # A short non-blocking fade makes dialogs feel connected to the action
+    # that opened them without delaying keyboard or mouse input.
+    started = time.perf_counter()
+    def fade():
+        try:
+            elapsed = min(1.0, (time.perf_counter() - started) / .14)
+            root.attributes("-alpha", 1 - (1 - elapsed) ** 3)
+            if elapsed < 1:
+                root._sonic_fade_after = root.after(16, fade)
+            else:
+                root._sonic_fade_after = None
+        except Exception:
+            pass
+
+    def cancel_fade(event):
+        if event.widget is not root:
+            return
+        after_id = getattr(root, "_sonic_fade_after", None)
+        if after_id is not None:
+            try:
+                root.after_cancel(after_id)
+            except Exception:
+                pass
+            root._sonic_fade_after = None
+
+    root.bind("<Destroy>", cancel_fade, add="+")
+    fade()
+    return result

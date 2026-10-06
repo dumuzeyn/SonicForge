@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 
 from .models import AudioAnalysis, VisualDNA, VisualPlan
 from .utils import clamp, scale
@@ -149,29 +150,48 @@ def build_visual_dna(
     )
 
 
-def create_song_description(dna: VisualDNA, language: str = "en") -> str:
+def create_song_description(dna: VisualDNA, language: str = "en", lyrics: str = "") -> str:
+    lyric_cue = _lyric_cue(lyrics)
     if language == "ru":
         mood = _choice(dna.valence, ("мрачная", "сдержанная", "светлая"), (0.38, 0.64))
         force = _choice(dna.arousal, ("спокойная", "подвижная", "энергичная"), (0.36, 0.68))
         texture = _choice(dna.roughness, ("мягким", "выразительным", "шероховатым"), (0.35, 0.67))
         rhythm = _choice(dna.rhythmic_density, ("редким", "ровным", "плотным"), (0.34, 0.67))
         structure = _structure_phrase_ru(dna)
-        return (
+        sound_description = (
             f"{mood.capitalize()} {force} композиция с {texture} тембром, {rhythm} ритмическим движением "
             f"и { _choice(dna.tension, ('низким', 'умеренным', 'высоким'), (0.35, 0.68)) } напряжением. "
             f"{structure} Бас формирует { _choice(dna.bass_mass, ('лёгкую', 'заметную', 'массивную'), (0.34, 0.68)) } "
             "визуальную массу, а атаки и спектральные изменения определяют резкость движения."
         )
+        return (f"Образ из текста песни — «{lyric_cue}». " if lyric_cue else "") + sound_description
     mood = _choice(dna.valence, ("dark", "restrained", "luminous"), (0.38, 0.64))
     force = _choice(dna.arousal, ("calm", "mobile", "energetic"), (0.36, 0.68))
     texture = _choice(dna.roughness, ("soft", "defined", "rough"), (0.35, 0.67))
     rhythm = _choice(dna.rhythmic_density, ("sparse", "steady", "dense"), (0.34, 0.67))
-    return (
+    sound_description = (
         f"A {mood}, {force} composition with a {texture} timbre, {rhythm} rhythmic motion, and "
         f"{_choice(dna.tension, ('low', 'moderate', 'high'), (0.35, 0.68))} tension. "
         f"{_structure_phrase_en(dna)} Bass supplies {_choice(dna.bass_mass, ('light', 'present', 'massive'), (0.34, 0.68))} "
         "visual weight while attacks and spectral changes shape the sharpness of motion."
     )
+    return (f"Lyric image: “{lyric_cue}”. " if lyric_cue else "") + sound_description
+
+
+def _lyric_cue(lyrics: str) -> str:
+    lines = []
+    for raw in (lyrics or "").splitlines():
+        line = re.sub(r"^(?:\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\])+", "", raw).strip()
+        line = re.sub(r"\s+", " ", line).strip(" -–—.,:;!?\"'«»")
+        if 3 <= len(line.split()) <= 18:
+            lines.append(line)
+    if not lines:
+        return ""
+    counts = Counter(line.casefold() for line in lines)
+    selected = max(enumerate(lines), key=lambda item: (
+        counts[item[1].casefold()], min(len(item[1].split()), 8), -item[0]
+    ))[1]
+    return selected if len(selected) <= 100 else selected[:100].rsplit(" ", 1)[0]
 
 
 def create_visual_brief(dna: VisualDNA, plan: VisualPlan) -> str:

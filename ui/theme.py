@@ -1,49 +1,60 @@
 from tkinter import ttk
 
 
-APP_BACKGROUND = "#F9F9FB"
+APP_BACKGROUND = "#F6F5FA"
 
 COLORS = {
     "bg": APP_BACKGROUND,
-    "surface": APP_BACKGROUND,
-    "surface_alt": "#F0F1F3",
-    "elevated": "#E8EAED",
-    "field": "#FBFBFC",
+    "surface": "#FFFFFF",
+    "surface_alt": "#F1EFF8",
+    "elevated": "#EBE6F8",
+    "field": "#FCFBFF",
     "text": "#17191D",
-    "secondary": "#60656D",
+    "secondary": "#525A6C",
     "disabled": "#989DA5",
-    "border": "#D5D8DD",
-    "border_active": "#A5AAB2",
-    "accent": "#24272D",
-    "accent_hover": "#34383F",
-    "accent_pressed": "#15171A",
+    "border": "#DED9EA",
+    "border_active": "#ACA0C9",
+    "accent": "#6250BE",
+    "accent_hover": "#7563CC",
+    "accent_pressed": "#493B94",
+    "timeline": "#F5F4FB",
+    "button": "#F0ECFC",
+    "button_hover": "#E5DEFA",
+    "button_pressed": "#DCD3F5",
+    "button_text": "#443578",
+    "button_disabled": "#F3F1F8",
+    "danger_surface": "#F8ECEF",
+    "danger_surface_hover": "#F1DCE2",
+    "danger_surface_pressed": "#E9CBD4",
     "danger": "#A94F56",
     "danger_hover": "#8F4047",
-    "log": "#F7F8F9",
+    "log": "#FCFBFF",
     "white": "#FFFFFF",
 }
+TRACK_COLORS = ("#DBD4FF", "#C9E8EB", "#F4DEC4", "#D7E7CE")
 
 SPACING = {"xs": 4, "sm": 8, "md": 12, "lg": 18, "xl": 24}
 SIZES = {
-    "control_height": 36,
+    "control_height": 32,
     "button_width": 11,
     "language_width": 12,
     "primary_width": 18,
     "check_size": 16,
     "header_height": 70,
-    "tab_height": 42,
+    "tab_height": 36,
     "tooltip_width": 380,
     "window_width_reserve": 6,
     "window_height_reserve": 4,
-    "minimum_window_aspect": 4 / 3,
+    "startup_width": 1000,
 }
 FONTS = {
     "body": ("Segoe UI", 10),
-    "label": ("Segoe UI", 9),
+    "label": ("Segoe UI", 10),
     "section": ("Segoe UI Semibold", 11),
     "title": ("Segoe UI Semibold", 15),
-    "small": ("Segoe UI", 9),
+    "small": ("Segoe UI", 10),
     "mono": ("Cascadia Mono", 9),
+    "button": ("Segoe UI Semibold", 10),
 }
 
 
@@ -77,7 +88,7 @@ def configure_styles(root):
         foreground=COLORS["secondary"],
         font=FONTS["small"],
     )
-    style.configure("Title.TLabel", font=FONTS["title"])
+    style.configure("Title.TLabel", font=FONTS["title"], background=COLORS["surface"])
     style.configure("Section.TLabel", font=FONTS["section"])
     style.configure(
         "Surface.TLabelframe",
@@ -95,33 +106,39 @@ def configure_styles(root):
 
     style.configure(
         "TButton",
-        background=COLORS["elevated"],
-        foreground=COLORS["text"],
+        background=COLORS["button"],
+        foreground=COLORS["button_text"],
         bordercolor=COLORS["border"],
         borderwidth=1,
         focusthickness=1,
         focuscolor=COLORS["accent"],
         padding=(12, 7),
         relief="flat",
+        font=FONTS["button"],
     )
     style.map(
         "TButton",
-        background=[("pressed", "#D9DCE1"), ("active", "#E0E2E6")],
+        background=[("pressed", COLORS["button_pressed"]), ("active", COLORS["button_hover"])],
         bordercolor=[("focus", COLORS["accent"]), ("active", COLORS["border_active"])],
         foreground=[("disabled", COLORS["disabled"])],
     )
+    style.configure("Editor.TButton", background=COLORS["button"], foreground=COLORS["button_text"],
+                    bordercolor=COLORS["border"], padding=(12, 7), font=FONTS["button"])
+    style.map("Editor.TButton", background=[("pressed", COLORS["button_pressed"]), ("active", COLORS["button_hover"])],
+              foreground=[("disabled", COLORS["disabled"])])
     style.configure(
         "TMenubutton",
-        background=COLORS["elevated"],
-        foreground=COLORS["text"],
+        background=COLORS["button"],
+        foreground=COLORS["button_text"],
         bordercolor=COLORS["border"],
         borderwidth=1,
         padding=(12, 7),
         arrowcolor=COLORS["secondary"],
+        font=FONTS["button"],
     )
     style.map(
         "TMenubutton",
-        background=[("pressed", "#D9DCE1"), ("active", "#E0E2E6")],
+        background=[("pressed", COLORS["button_pressed"]), ("active", COLORS["button_hover"])],
         bordercolor=[("focus", COLORS["accent"]), ("active", COLORS["border_active"])],
     )
     style.configure(
@@ -138,10 +155,10 @@ def configure_styles(root):
         bordercolor=[("pressed", COLORS["accent_pressed"]), ("active", COLORS["accent_hover"])],
         foreground=[("disabled", "#D2D4D8")],
     )
-    style.configure("Danger.TButton", background=COLORS["elevated"], foreground=COLORS["danger"])
+    style.configure("Danger.TButton", background=COLORS["danger_surface"], foreground=COLORS["danger"])
     style.map(
         "Danger.TButton",
-        background=[("pressed", "#E4D0D2"), ("active", "#F0DFE1")],
+        background=[("pressed", COLORS["danger_surface_pressed"]), ("active", COLORS["danger_surface_hover"])],
         bordercolor=[("focus", COLORS["danger"]), ("active", COLORS["danger_hover"])],
     )
 
@@ -184,27 +201,42 @@ def configure_styles(root):
         arrowcolor=COLORS["secondary"],
     )
     style.configure("TSeparator", background=COLORS["border"])
-    style.configure("TabBar.TFrame", background=COLORS["border"])
+    style.configure("TabBar.TFrame", background=COLORS["bg"])
+    style.configure("TNotebook", background=COLORS["bg"], borderwidth=0, tabmargins=(0, 0, 0, 8))
+    style.configure("TNotebook.Tab", background=COLORS["button"], foreground=COLORS["button_text"],
+                    padding=(16, 9), font=FONTS["button"], borderwidth=0)
+    # Clam's focus element adds the dotted rectangle and its selected expansion
+    # makes the inactive tab appear raised. Selection alone determines the fill.
+    style.layout("TNotebook.Tab", [("Notebook.tab", {"sticky": "nswe", "children": [
+        ("Notebook.padding", {"side": "top", "sticky": "nswe", "children": [
+            ("Notebook.label", {"side": "top", "sticky": ""})]})]})])
+    style.map("TNotebook.Tab", background=[("selected", COLORS["accent"]), ("active", COLORS["button_hover"])],
+              foreground=[("selected", COLORS["white"]), ("active", COLORS["button_text"])],
+              padding=[("selected", (16, 9)), ("!selected", (16, 9))],
+              expand=[("selected", (0, 0, 0, 0))],
+              lightcolor=[("selected", COLORS["accent"]), ("!selected", COLORS["button"])],
+              darkcolor=[("selected", COLORS["accent"]), ("!selected", COLORS["button"])],
+              bordercolor=[("selected", COLORS["accent"]), ("!selected", COLORS["button"])])
     style.configure(
         "Tab.TButton",
-        background=COLORS["surface_alt"],
-        foreground=COLORS["secondary"],
-        bordercolor=COLORS["border"],
-        borderwidth=1,
+        background=COLORS["accent"],
+        foreground=COLORS["white"],
+        bordercolor=COLORS["accent"],
+        borderwidth=0,
         padding=(12, 8),
         font=FONTS["body"],
     )
     style.map(
         "Tab.TButton",
-        background=[("pressed", COLORS["elevated"]), ("active", COLORS["elevated"])],
-        foreground=[("active", COLORS["text"])],
+        background=[("pressed", COLORS["accent_pressed"]), ("active", COLORS["accent_hover"])],
+        foreground=[("active", COLORS["white"])],
     )
     style.configure(
         "Selected.Tab.TButton",
         background=COLORS["surface"],
-        foreground=COLORS["text"],
-        bordercolor=COLORS["accent"],
-        borderwidth=1,
+        foreground=COLORS["button_text"],
+        bordercolor=COLORS["surface"],
+        borderwidth=0,
         padding=(12, 8),
         font=("Segoe UI Semibold", 10),
     )

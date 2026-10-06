@@ -1,0 +1,32 @@
+Sonic Forge local language identification
+
+VoxLingua107 ECAPA language classifier:
+Upstream: https://huggingface.co/speechbrain/lang-id-voxlingua107-ecapa
+ONNX export: https://huggingface.co/christopherthompson81/voxlingua107-lid-onnx
+Pinned revision: e02e1da805ae49635fe1aa7913c3f1e7f5f5fde6
+License: Apache License 2.0, https://www.apache.org/licenses/LICENSE-2.0
+Model SHA256: e2c3c3da39b99e3f9196d15fceef6a65f702320038bbc08813a4f21280255ce8
+The original, unmodified ONNX model and label map are distributed with the app.
+Audio is processed locally; it is not uploaded to the model publisher.
+
+Internal Georgian acoustic recognition, downloaded lazily to the local cache:
+https://huggingface.co/LukeJacob2023/whisper-large-v3-turbo-ka-ct2-gguf
+Revision: a99c5dfd889a2ffca19908d99e8b4ffec7de433a
+License: MIT, as declared by the model publisher.
+This model is an intermediate pass only. Foreign sound spelling is displayed
+with English or Russian letters, not the original script and not translation.
+The app does not redistribute these weights in its installer.
+
+AnyAscii transliteration, https://github.com/anyascii/anyascii
+Copyright (c) 2020-2025, Hunter WB <hunterwb.com>
+License: ISC
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.

@@ -1,0 +1,71 @@
+SonicForge Noncommercial and Educational License 1.0
+Copyright (c) 2026 Dumuzeyn (Зейналов У.Р.о.)
+
+ENGLISH TERMS (controlling text)
+
+1. Scope. This license covers the copyright holder's original SonicForge
+   source code, application artwork and documentation. It does not replace
+   licenses of third-party software, fonts, models or other third-party works.
+   Those components retain their own licenses, notices and rights, including
+   any rights to commercial use granted by their authors. See
+   THIRD_PARTY_NOTICES.md and the license files bundled with the application.
+
+2. Permission. Subject to these terms, you may use, study, copy, modify and
+   distribute the covered works, in source or binary form, solely for
+   noncommercial purposes, including personal use, teaching, learning and
+   noncommercial research. Educational use is allowed only when it also meets
+   the noncommercial condition.
+
+3. Noncommercial condition. A use is noncommercial when it is not primarily
+   intended for or directed toward commercial advantage or monetary
+   compensation. Selling the covered works, offering them as part of a paid
+   product or service, using them to provide paid processing services, or
+   using them in a business's revenue-generating operations requires separate
+   prior written permission from the copyright holder. Free distribution
+   must not be used to evade this condition.
+
+4. Distribution and changes. Keep the copyright notice and this complete
+   license with all copies and distributions. Clearly identify modified
+   versions and their changes. Distribute covered modifications under these
+   same terms. Do not imply the original author endorses your modifications.
+   This license grants no trademark rights.
+
+5. Other works and outputs. This license does not grant rights to music,
+   lyrics, images or other material supplied by users. It does not by itself
+   impose this license on independently created audio or image outputs.
+   Users remain responsible for obtaining rights to their input materials.
+   Mandatory statutory exceptions are not restricted by this license.
+
+6. Termination. Permission terminates if you violate these terms. Rights
+   granted directly by third-party licenses are not affected by termination.
+
+7. No warranty. To the maximum extent permitted by applicable law, the
+   covered works are provided AS IS, without warranties of any kind,
+   including merchantability, fitness for a particular purpose and
+   noninfringement. The copyright holder is not liable for damages arising
+   from use of the covered works except where applicable law prohibits such
+   an exclusion.
+
+This is a source-available license with a noncommercial restriction; it is
+not an OSI-approved open-source license. For commercial permission, contact
+the copyright holder through https://github.com/dumuzeyn/SonicForge.
+
+РУССКОЕ ПОЯСНЕНИЕ (английский текст выше имеет приоритет)
+
+Собственный код, графику и документацию SonicForge разрешено использовать,
+изучать, копировать, изменять и бесплатно распространять для некоммерческих
+целей, включая личное использование, обучение и некоммерческие исследования.
+Обучение не освобождает от некоммерческого ограничения. Для продажи,
+включения в платные продукты и услуги, платной обработки файлов и
+использования в деятельности бизнеса для получения дохода необходимо
+предварительное письменное разрешение автора.
+
+При распространении сохраняйте уведомление об авторских правах и полную
+лицензию. Изменённые версии обозначайте как изменённые и распространяйте
+собственные изменения на этих же условиях. Лицензии сторонних библиотек,
+шрифтов и моделей остаются действующими; их права, включая коммерческое
+использование, не отменяются. Права на пользовательскую музыку, тексты и
+картинки эта лицензия не предоставляет. Собственные результаты обработки
+автоматически не становятся объектом этой лицензии.
+
+Программа предоставляется «как есть» в пределах, допустимых законом.

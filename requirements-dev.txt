@@ -1,0 +1,4 @@
+-r requirements.txt
+pyinstaller==6.20.0
+# Independent tag reader used only to check interoperability in tests.
+mutagen>=1.47,<2

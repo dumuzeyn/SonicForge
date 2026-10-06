@@ -50,10 +50,9 @@ CODE_OVERWRITE_ALL_METADATA = False
 CODE_EXTRA_METADATA = {}
 CODE_COVER_SEED = None
 CODE_COVER_SIZE = 1000
-CODE_COVER_DETAIL = "balanced"
 CODE_COVER_TEXT_MODE = "title_artist"
 CODE_COVER_MOOD = "auto"
-CODE_COVER_ENGINE = "ai"
+CODE_COVER_STYLE = "current"
 CODE_EMBED_COVER = True
 CODE_CHANGE_COVER = True
 CODE_LYRICS_FORMAT = "txt"
@@ -160,9 +159,7 @@ def process_music(
     extra_metadata=None,
     cover_seed=None,
     cover_size=1000,
-    cover_detail="balanced",
     cover_text_mode="title_artist",
-    cover_title_mode="cleaned",
     cover_mood="auto",
     embed_cover=True,
     change_cover=True,
@@ -174,12 +171,18 @@ def process_music(
     lyrics_language="auto",
     overwrite_lyrics=False,
     lyrics_service=None,
-    cover_provider=None,
-    cover_engine="ai",
+    cover_style="current",
     cancel_event=None,
+    use_lyrics_for_cover=True,
+    lyrics_progress=None,
+    custom_cover_path=None,
 ):
-    source_path = Path(source).expanduser()
-    output_path = Path(output).expanduser()
+    from security import validate_output_directory, validate_source
+
+    source_path, _validated_files = validate_source(source)
+    output_path = validate_output_directory(source_path, output)
+    if not 128 <= int(cover_size) <= 4096:
+        raise ValueError("cover_size must be between 128 and 4096 pixels")
     output_parent = output_path.resolve().parent
     output_parent.mkdir(parents=True, exist_ok=True)
 
@@ -190,7 +193,7 @@ def process_music(
 
     check_cancelled(cancel_event)
     lyrics_lookup = {}
-    if "cover" in steps:
+    if "cover" in steps and use_lyrics_for_cover and not custom_cover_path:
         from lyrics_engine import LyricsService
 
         service = LyricsService(metadata_reader=music_metadata.read_all_metadata)
@@ -211,23 +214,28 @@ def process_music(
         check_cancelled(cancel_event)
         if "cover" in steps and change_cover:
             print("\nСоздание обложек для выбранных песен")
-            music2picture.require_ffmpeg()
-            music2picture.make_covers(
-                source_path,
-                generated_covers_path,
-                size=cover_size,
-                embed=False,
-                seed=cover_seed,
-                lyrics_text=cover_lyrics_text,
-                lyrics_lookup=lyrics_lookup,
-                detail=cover_detail,
-                text_mode=cover_text_mode,
-                title_mode=cover_title_mode,
-                mood_override=cover_mood,
-                engine=cover_engine,
-                provider=cover_provider,
-                cancel_event=cancel_event,
-            )
+            if not custom_cover_path or embed_cover:
+                music2picture.require_ffmpeg()
+            if custom_cover_path:
+                music2picture.make_custom_covers(
+                    source_path, custom_cover_path, generated_covers_path,
+                    size=cover_size, cancel_event=cancel_event,
+                )
+            else:
+                music2picture.make_covers(
+                    source_path,
+                    generated_covers_path,
+                    size=cover_size,
+                    embed=False,
+                    seed=cover_seed,
+                    lyrics_text=cover_lyrics_text if use_lyrics_for_cover else "",
+                    use_lyrics_for_cover=use_lyrics_for_cover,
+                    lyrics_lookup=lyrics_lookup,
+                    text_mode=cover_text_mode,
+                    mood_override=cover_mood,
+                    style=cover_style,
+                    cancel_event=cancel_event,
+                )
 
         check_cancelled(cancel_event)
         if "audio" in steps:
@@ -297,6 +305,20 @@ def process_music(
             )
 
         check_cancelled(cancel_event)
+        if "cover" in steps and change_cover:
+            print("\nДобавление обложек в готовые файлы")
+            music2picture.apply_generated_covers(
+                staging_path,
+                generated_covers_path,
+                covers_path,
+                size=cover_size,
+                embed=embed_cover,
+                cancel_event=cancel_event,
+            )
+        elif "cover" in steps:
+            print("\nОбложки оставлены без изменений")
+
+        check_cancelled(cancel_event)
         if "lyrics" in steps:
             print("\nРаспознавание текста песен")
             from lyrics_engine import recognize_batch
@@ -310,21 +332,8 @@ def process_music(
                 overwrite=overwrite_lyrics,
                 language=lyrics_language,
                 cancel_event=cancel_event,
+                progress=lyrics_progress,
             )
-
-        check_cancelled(cancel_event)
-        if "cover" in steps and change_cover:
-            print("\nДобавление обложек в готовые файлы")
-            music2picture.apply_generated_covers(
-                staging_path,
-                generated_covers_path,
-                covers_path,
-                size=cover_size,
-                embed=embed_cover,
-                cancel_event=cancel_event,
-            )
-        elif "cover" in steps:
-            print("\nОбложки оставлены без изменений")
 
         check_cancelled(cancel_event)
         print("\nСохранение готовых файлов")
@@ -384,16 +393,17 @@ def main():
     parser.add_argument("--overwrite-all-metadata", action="store_true", help="Clear existing metadata before writing selected fields.")
     parser.add_argument("--cover-seed", type=int, help="Use an integer for repeatable generated covers.")
     parser.add_argument("--cover-size", type=int, default=1000, help="Generated cover size in pixels.")
-    parser.add_argument("--cover-detail", choices=("simple", "balanced", "rich"), default="balanced")
     parser.add_argument("--cover-text", choices=("title_artist", "title", "none"), default="title_artist")
     parser.add_argument("--cover-mood", choices=("auto", "calm", "melancholic", "energetic", "intense", "romantic"), default="auto")
-    parser.add_argument("--cover-engine", choices=("ai", "music2picture_v2"), default="ai")
+    parser.add_argument("--cover-style", choices=(
+        "current", "current_legacy_colors", "blend", "legacy_current_colors", "legacy",
+    ), default="current")
     parser.add_argument("--embed-cover", dest="embed_cover", action="store_true", default=True, help="Embed generated cover into MP3. Enabled by default.")
     parser.add_argument("--no-embed-cover", dest="embed_cover", action="store_false", help="Do not embed generated cover.")
     parser.add_argument("--change-cover", dest="change_cover", action="store_true", default=True, help="Generate and embed a new cover. Enabled by default.")
     parser.add_argument("--no-change-cover", dest="change_cover", action="store_false", help="Do not generate or embed a new cover.")
     parser.add_argument("--lyrics-format", choices=("txt", "lrc"), default="txt")
-    parser.add_argument("--lyrics-language", default="auto", help="Automatic detection or an ISO language code such as ru/en.")
+    parser.add_argument("--lyrics-language", default="auto", help="auto, ru, en, other_en, other_ru, or an ISO language code. Other modes approximate sounds in English/Russian letters for other detected languages.")
     parser.add_argument("--overwrite-lyrics", action="store_true")
     parser.add_argument("--steps", choices=["all", "audio", "metadata", "lyrics", "cover"], default="all", help="Choose one processing stage or run all stages.")
     parser.add_argument("--metadata-mode", choices=["update", "replace", "clear"], default="update", help="Preserve, replace, or clear metadata.")
@@ -450,10 +460,9 @@ def main():
         },
         cover_seed=args.cover_seed,
         cover_size=args.cover_size,
-        cover_detail=args.cover_detail,
         cover_text_mode=args.cover_text,
         cover_mood=args.cover_mood,
-        cover_engine=args.cover_engine,
+        cover_style=args.cover_style,
         embed_cover=args.embed_cover,
         change_cover=args.change_cover,
         process_steps=None if args.steps == "all" else {args.steps},
@@ -502,9 +511,9 @@ def run_from_code_settings():
         extra_metadata=CODE_EXTRA_METADATA,
         cover_seed=CODE_COVER_SEED,
         cover_size=CODE_COVER_SIZE,
-        cover_detail=CODE_COVER_DETAIL,
         cover_text_mode=CODE_COVER_TEXT_MODE,
         cover_mood=CODE_COVER_MOOD,
+        cover_style=CODE_COVER_STYLE,
         embed_cover=CODE_EMBED_COVER,
         change_cover=CODE_CHANGE_COVER,
         lyrics_format=CODE_LYRICS_FORMAT,

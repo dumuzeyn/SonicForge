@@ -1,6 +1,8 @@
 faster-whisper==1.2.1
-mutagen>=1.47,<2
+av>=15,<19
 numpy>=2.0,<3
 Pillow>=11,<13
 psutil>=7,<8
-open_clip_torch>=3.2,<4
+onnxruntime>=1.21,<2
+anyascii==0.3.3
+tkinterdnd2==0.6.3

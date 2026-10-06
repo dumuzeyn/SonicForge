@@ -53,7 +53,7 @@ class Music2PicturePipeline:
                 "lyrics_hash": hashlib.sha256(lyrics.encode("utf-8", errors="replace")).hexdigest(),
                 "mood": mood_override,
                 "variation": int(variation),
-                "version": 2,
+                "version": 3,
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -73,7 +73,9 @@ class Music2PicturePipeline:
         visual_dna = build_visual_dna(analysis, metadata_text, lyrics, mood_override)
         language = detect_language(f"{metadata_text} {lyrics[:2000]}")
         self._progress(progress, "creating_song_description")
-        song_description = create_song_description(visual_dna, "ru" if language in {"ru", "mixed"} else "en")
+        song_description = create_song_description(
+            visual_dna, "ru" if language in {"ru", "mixed"} else "en", lyrics=lyrics
+        )
         self._progress(progress, "creating_visual_plan")
         visual_plan = build_visual_plan(visual_dna, variation=variation)
         self._progress(progress, "creating_visual_brief")

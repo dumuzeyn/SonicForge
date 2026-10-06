@@ -19,6 +19,8 @@ class LyricsResult:
     quality: str = "unknown"
     instrumental: bool = False
     source: str = "unknown"
+    transcription_alphabet: str | None = None
+    review_reason: str = ""
 
     @property
     def has_timestamps(self):

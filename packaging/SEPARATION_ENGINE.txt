@@ -1,0 +1,14 @@
+Sonic Forge isolated local audio separation
+
+Demucs 4.0.1 / HTDemucs, https://github.com/facebookresearch/demucs
+Copyright Meta Platforms, Inc. and affiliates. MIT License.
+Checkpoint: https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/955717e8-8726e21a.th
+SHA-256: 8726e21a993978c7ba086d3872e7608d7d5bfca646ca4aca459ffda844faa8b4
+
+CPU runtime: PyTorch 2.11.0+cpu and torchaudio 2.11.0+cpu.
+Upstream: https://pytorch.org/
+Their original license files are included in separator/_internal/licenses.
+
+The checkpoint and worker are bundled; separation does not upload audio or
+require model downloads at runtime. The main application does not import this
+runtime during startup. Separation is approximate and may leave audible bleed.

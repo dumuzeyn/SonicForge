@@ -28,6 +28,9 @@ class TitleResolution:
     selected: str
     mode: str
     display_lines: tuple[str, ...]
+    display_title: str
+    line_emphasis: tuple[float, ...]
+    case_strategy: str
     emphasis_words: tuple[str, ...]
     confidence: float
     fallback_used: bool
@@ -41,9 +44,17 @@ def clean_title(value):
     text = re.sub(rf"\.(?:{'|'.join(AUDIO_EXTENSIONS)})$", "", original, flags=re.I)
     text = text.replace("_", " ")
     text = re.sub(r"^\s*(?:\[?\d{1,3}\]?\s*[-–—._)]\s*)+", "", text)
+    text = re.sub(r"\s*[\[(]?\s*\d{2,4}\s*(?:k(?:b|bit)?ps|kb/s)\s*[\])]?(?:\s|$)", " ", text, flags=re.I)
     text = re.sub(r"\s*[-–—]\s*(?:normalized|mastered|cover\s*\d*|final\s*mix)\s*$", "", text, flags=re.I)
     for tag in NOISE_TAGS:
         text = re.sub(rf"\s*[\[(]\s*{re.escape(tag)}\s*[\])]", "", text, flags=re.I)
+    text = re.sub(
+        r"\s*(?:[-–—|]\s*)?(?:official\s+(?:audio|video)|lyric\s+video|youtube\s+audio)\s*$",
+        "", text, flags=re.I,
+    )
+    text = re.sub(r"\s*(?:[-–—|]\s*)?(?:uploaded\s+by\s+)?@[\w.-]+\s*$", "", text, flags=re.I)
+    text = re.sub(r"\s*(?:[-–—|]\s*)?(?:https?://|www\.)\S+\s*$", "", text, flags=re.I)
+    text = re.sub(r"\s*(?:[-–—|]\s*)?[\w.-]+\.(?:com|net|org|ru|io)\s*$", "", text, flags=re.I)
     text = re.sub(r"(?:\s+[-–—|]\s+|[-–—|]{2,})", " — ", text)
     text = re.sub(r"\s+", " ", text).strip(" ._-–—|")
     return text or original or "Untitled"
@@ -65,7 +76,7 @@ def short_display_title(value, max_words=4, max_length=28, profile=None):
     return _build_treatment(value, profile, max_words=max_words, max_length=max_length).short
 
 
-def resolve_title(value, mode="cleaned", profile=None, short_enabled=True):
+def resolve_title(value, mode="stylized", profile=None, short_enabled=True):
     mode = mode if mode in TITLE_MODES else "cleaned"
     treatment = _build_treatment(value, profile)
     selected_mode = mode
@@ -79,10 +90,18 @@ def resolve_title(value, mode="cleaned", profile=None, short_enabled=True):
         "stylized": treatment.stylized,
         "short": treatment.short,
     }[selected_mode]
-    if selected_mode in {"stylized", "short"}:
-        display_lines = _balanced_lines(selected, max_lines=3 if selected_mode == "stylized" else 2)
+    if selected_mode == "stylized" and not fallback_used:
+        display_lines, line_emphasis, case_strategy = _display_treatment(
+            selected, treatment.emphasis_words, profile
+        )
+    elif selected_mode == "short":
+        display_lines = _balanced_lines(selected, max_lines=2)
+        line_emphasis = tuple(1.0 if index == len(display_lines) - 1 else .78 for index in range(len(display_lines)))
+        case_strategy = "compact hierarchy"
     else:
         display_lines = (selected,)
+        line_emphasis = (1.0,)
+        case_strategy = "canonical"
     return TitleResolution(
         original=treatment.original,
         cleaned=treatment.cleaned,
@@ -91,6 +110,9 @@ def resolve_title(value, mode="cleaned", profile=None, short_enabled=True):
         selected=selected,
         mode=selected_mode,
         display_lines=display_lines,
+        display_title="\n".join(display_lines),
+        line_emphasis=line_emphasis,
+        case_strategy=case_strategy,
         emphasis_words=treatment.emphasis_words,
         confidence=treatment.confidence,
         fallback_used=fallback_used,
@@ -129,6 +151,9 @@ def _build_treatment(value, profile=None, max_words=4, max_length=28):
         selected=cleaned,
         mode="cleaned",
         display_lines=(cleaned,),
+        display_title=cleaned,
+        line_emphasis=(1.0,),
+        case_strategy="canonical",
         emphasis_words=emphasis,
         confidence=round(confidence, 3),
         fallback_used=fallback_used,
@@ -187,6 +212,45 @@ def _balanced_lines(title, max_lines=2):
     target = len(title) / min(max_lines, 2)
     split = min(range(1, len(words)), key=lambda index: abs(len(" ".join(words[:index])) - target))
     return tuple(line for line in (" ".join(words[:split]), " ".join(words[split:])) if line)
+
+
+def _display_treatment(title, emphasis_words, profile=None):
+    words = title.split()
+    emphasis = {_word_key(word) for word in emphasis_words}
+    narrative = getattr(profile, "narrative_mode", "")
+    energy = float(getattr(profile, "energy", 0.5) or 0.5)
+
+    if 2 <= len(words) <= 3 and len(title) <= 34:
+        emphasized_index = next(
+            (index for index, word in enumerate(words) if _word_key(word) in emphasis),
+            len(words) - 1,
+        )
+        if len(words) == 2:
+            lines = (words[0], words[1])
+        elif emphasized_index == 0:
+            lines = (words[0], " ".join(words[1:]))
+        else:
+            lines = (" ".join(words[:emphasized_index]), " ".join(words[emphasized_index:]))
+    else:
+        lines = _balanced_lines(title, max_lines=3)
+
+    dominant = max(
+        range(len(lines)),
+        key=lambda index: sum(
+            1 for word in lines[index].split() if _word_key(word) in emphasis
+        ) * 4 + len(lines[index]),
+    )
+    rendered = list(lines)
+    if narrative in {"aggressive", "rhythmic_mechanical", "epic"} or energy > .76:
+        rendered[dominant] = rendered[dominant].upper()
+        strategy = "impact emphasis"
+    elif narrative in {"intimate", "tragic"} and len(lines) > 1:
+        rendered[dominant] = rendered[dominant].upper()
+        strategy = "emotional contrast"
+    else:
+        strategy = "mixed-case hierarchy"
+    weights = tuple(1.0 if index == dominant else .72 for index in range(len(rendered)))
+    return tuple(rendered), weights, strategy
 
 
 def _normalize_word_case(title):

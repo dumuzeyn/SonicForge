@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import threading
 from pathlib import Path
@@ -17,6 +18,10 @@ def default_store_path() -> Path:
     return root / "track_descriptions.json"
 
 
+def _lyrics_hash(lyrics: str) -> str:
+    return hashlib.sha256((lyrics or "").encode("utf-8", errors="replace")).hexdigest()
+
+
 class DescriptionStore:
     """Persistent per-track description index keyed by path, size and mtime."""
 
@@ -24,7 +29,7 @@ class DescriptionStore:
         self.path = Path(path) if path else default_store_path()
         self._lock = threading.RLock()
 
-    def get(self, audio_path: str | Path) -> dict[str, Any] | None:
+    def get(self, audio_path: str | Path, lyrics: str | None = None) -> dict[str, Any] | None:
         path = Path(audio_path).resolve()
         try:
             stat = path.stat()
@@ -37,15 +42,18 @@ class DescriptionStore:
             return None
         if record.get("size") != stat.st_size or record.get("mtime_ns") != stat.st_mtime_ns:
             return None
+        if lyrics is not None and record.get("lyrics_hash") != _lyrics_hash(lyrics):
+            return None
         return dict(record)
 
-    def put(self, audio_path: str | Path, bundle: AnalysisBundle) -> dict[str, Any]:
+    def put(self, audio_path: str | Path, bundle: AnalysisBundle, lyrics: str = "") -> dict[str, Any]:
         path = Path(audio_path).resolve()
         stat = path.stat()
         record = {
             "path": str(path),
             "size": stat.st_size,
             "mtime_ns": stat.st_mtime_ns,
+            "lyrics_hash": _lyrics_hash(lyrics),
             "fingerprint": bundle.analysis.fingerprint,
             "song_description": bundle.song_description,
             "visual_brief": bundle.visual_brief,
@@ -102,4 +110,3 @@ class DescriptionStore:
     @staticmethod
     def _same_path(left: str, right: Path) -> bool:
         return os.path.normcase(os.path.abspath(left)) == os.path.normcase(str(right.resolve()))
-

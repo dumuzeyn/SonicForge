@@ -2,12 +2,28 @@ import tkinter as tk
 from tkinter import ttk
 
 from .theme import COLORS, SPACING, SIZES
-from .widgets import SquareCheckbutton, ToolTip
+from .widgets import RoundedButton, SquareCheckbutton, ToolTip
+from .windowing import show_centered
 
 
-class AdvancedAudioDialog(tk.Toplevel):
+class CenteredDialog(tk.Toplevel):
+    def show(self):
+        self.centering = show_centered(self, *self._dialog_size, parent=self.app)
+        self.app.set_window_icon(self)
+        self.grab_set()
+        self.lift()
+
+    def close(self):
+        self._dialog_size = (self.winfo_width(), self.winfo_height())
+        self.grab_release()
+        self.withdraw()
+
+
+class AdvancedAudioDialog(CenteredDialog):
     def __init__(self, app):
         super().__init__(app)
+        self.withdraw()
+        self._dialog_size = (760, 690)
         self.app = app
         self.localized = []
         self.title(app.t("advanced_title"))
@@ -15,17 +31,21 @@ class AdvancedAudioDialog(tk.Toplevel):
         self.geometry("760x690")
         self.minsize(720, 650)
         self.transient(app)
-        self.grab_set()
         self._build()
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind("<Escape>", lambda _event: self.close())
+        self.bind("<F1>", lambda _event: self.app.view.show_help("audio"))
+        self.show()
 
     def _text(self, widget, key):
         widget.configure(text=self.app.t(key))
         self.localized.append((widget, key))
+        if self.app.t("tip_" + key) != "tip_" + key:
+            self._tip(widget, "tip_" + key)
         return widget
 
     def _tip(self, widget, key):
+        widget.help_key = key
         ToolTip(widget, lambda: self.app.t(key))
 
     def _build(self):
@@ -70,7 +90,7 @@ class AdvancedAudioDialog(tk.Toplevel):
             foreground=COLORS["danger"], wraplength=680,
         )
         warning.grid(row=1, column=0, sticky="ew", pady=(SPACING["sm"], 0))
-        close = ttk.Button(
+        close = RoundedButton(
             body,
             text=self.app.t("close"),
             width=SIZES["button_width"],
@@ -137,8 +157,12 @@ class AdvancedAudioDialog(tk.Toplevel):
         high_cut.grid(row=0, column=1, sticky="w", padx=(SPACING["sm"], 0))
         self._tip(low_cut, "tip_highpass_enabled")
         self._tip(high_cut, "tip_lowpass_enabled")
-        ttk.Spinbox(filters, textvariable=self.app.highpass_hz_var, from_=10, to=500, increment=5).grid(row=1, column=0, sticky="ew")
-        ttk.Spinbox(filters, textvariable=self.app.lowpass_hz_var, from_=4000, to=24000, increment=100).grid(row=1, column=1, sticky="ew", padx=(SPACING["sm"], 0))
+        highpass = ttk.Spinbox(filters, textvariable=self.app.highpass_hz_var, from_=10, to=500, increment=5)
+        highpass.grid(row=1, column=0, sticky="ew")
+        lowpass = ttk.Spinbox(filters, textvariable=self.app.lowpass_hz_var, from_=4000, to=24000, increment=100)
+        lowpass.grid(row=1, column=1, sticky="ew", padx=(SPACING["sm"], 0))
+        self._tip(highpass, "tip_highpass_hz")
+        self._tip(lowpass, "tip_lowpass_hz")
         dynamics = self._section(parent, "noise_and_dynamics", 3)
         denoise_label = ttk.Label(dynamics, text=self.app.t("denoise_mode"), style="SurfaceSecondary.TLabel")
         self.localized.append((denoise_label, "denoise_mode"))
@@ -205,14 +229,14 @@ class AdvancedAudioDialog(tk.Toplevel):
 
     def close(self):
         self.app.refresh_audio_warning()
-        self.destroy()
+        super().close()
 
 
 def app_var(app, name):
     return getattr(app, name)
 
 
-class AdditionalMetadataDialog(tk.Toplevel):
+class AdditionalMetadataDialog(CenteredDialog):
     FIELDS = (
         ("disc", "disc_var"),
         ("publisher", "publisher_var"),
@@ -222,6 +246,8 @@ class AdditionalMetadataDialog(tk.Toplevel):
 
     def __init__(self, app):
         super().__init__(app)
+        self.withdraw()
+        self._dialog_size = (680, 330)
         self.app = app
         self.localized = []
         self.title(app.t("additional_metadata_title"))
@@ -229,9 +255,11 @@ class AdditionalMetadataDialog(tk.Toplevel):
         self.geometry("680x330")
         self.resizable(False, False)
         self.transient(app)
-        self.grab_set()
         self._build()
-        self.bind("<Escape>", lambda _event: self.destroy())
+        self.bind("<Escape>", lambda _event: self.close())
+        self.protocol("WM_DELETE_WINDOW", self.close)
+        self.bind("<F1>", lambda _event: self.app.view.show_help("metadata"))
+        self.show()
 
     def _build(self):
         body = ttk.Labelframe(
@@ -259,18 +287,21 @@ class AdditionalMetadataDialog(tk.Toplevel):
                 sticky="w",
                 padx=(0 if column == 0 else SPACING["sm"], SPACING["sm"] if column == 0 else 0),
             )
-            ttk.Entry(body, textvariable=getattr(self.app, var_name)).grid(
+            entry = ttk.Entry(body, textvariable=getattr(self.app, var_name))
+            ToolTip(label, lambda k=key: self.app.t("tip_" + k))
+            ToolTip(entry, lambda k=key: self.app.t("tip_" + k))
+            entry.grid(
                 row=row + 1,
                 column=column,
                 sticky="ew",
                 padx=(0 if column == 0 else SPACING["sm"], SPACING["sm"] if column == 0 else 0),
                 pady=(SPACING["xs"], SPACING["md"]),
             )
-        close = ttk.Button(
+        close = RoundedButton(
             body,
             text=self.app.t("close"),
             width=SIZES["button_width"],
-            command=self.destroy,
+            command=self.close,
         )
         self.localized.append((close, "close"))
         close.grid(row=4, column=0, columnspan=2, sticky="e", pady=(SPACING["sm"], 0))
@@ -279,3 +310,6 @@ class AdditionalMetadataDialog(tk.Toplevel):
         self.title(self.app.t("additional_metadata_title"))
         for widget, key in self.localized:
             widget.configure(text=self.app.t(key))
+
+    def close(self):
+        super().close()

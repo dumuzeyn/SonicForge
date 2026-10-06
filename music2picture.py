@@ -7,20 +7,22 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+from PIL import Image, ImageOps
+
 from music2picture_v2 import (
     DEFAULT_PIPELINE,
     DescriptionStore,
     audio_files,
     generate_descriptions,
-    render_cover,
 )
 from music2picture_v2.renderer import GENERATOR_VERSION, artistic_parameters, deterministic_seed
+from music2picture_v2.variants import (
+    LEGACY_COLOR_MODES, LEGACY_COMMIT, STYLES, STYLE_CURRENT, STYLE_LEGACY,
+    render_legacy, render_variant,
+)
 
 
 STARTUP_KWARGS = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
-ENGINE_AI = "ai"
-ENGINE_MUSIC2PICTURE_V2 = "music2picture_v2"
-COVER_ENGINES = (ENGINE_AI, ENGINE_MUSIC2PICTURE_V2)
 
 
 def require_ffmpeg():
@@ -43,34 +45,54 @@ def make_cover(
     size=1000,
     seed=None,
     lyrics_text="",
-    detail="balanced",
     text_mode="none",
-    title_mode="cleaned",
     mood_override="auto",
-    engine=ENGINE_AI,
-    provider=None,
-    composer=None,
+    style=STYLE_CURRENT,
+    legacy_color_mode="plasma",
     cancel_event=None,
     regenerate_description=False,
-    candidate_limit=None,
     preview=False,
+    use_lyrics_for_cover=True,
     **_compatibility,
 ):
-    """Analyze one track, persist its text artifacts, then render with one engine."""
+    """Analyze one track, persist its text artifacts, then render its cover."""
     require_ffmpeg()
     path = Path(audio_path).resolve()
     output_path = Path(output_path)
-    if engine not in COVER_ENGINES:
-        raise ValueError(f"Unknown cover engine: {engine}")
+    if style not in STYLES:
+        raise ValueError(f"Unknown cover style: {style}")
+    if legacy_color_mode not in LEGACY_COLOR_MODES:
+        raise ValueError(f"Unknown historical color mode: {legacy_color_mode}")
     check_cancelled(cancel_event)
+
+    if style == STYLE_LEGACY:
+        import music_metadata
+
+        tags = music_metadata.read_all_metadata(path)
+        image = render_legacy(path, size=size, seed=seed, color_mode=legacy_color_mode)
+        image = _add_cover_text(
+            image, tags.get("title") or clean_stem(path), tags.get("artist", ""),
+            text_mode=text_mode, language="unknown",
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        image.save(output_path, "PNG", optimize=True)
+        if not preview:
+            _save_legacy_profile(output_path, path, seed, text_mode, legacy_color_mode)
+        print(f"Обложка сохранена: {output_path} (Music2Picture: {style})")
+        return output_path
 
     import music_metadata
     from lyrics_engine import LyricsService
 
     tags = music_metadata.read_all_metadata(path)
-    resolved_lyrics = LyricsService(metadata_reader=music_metadata.read_all_metadata).resolve_for_cover(
-        path, supplied_text=lyrics_text
-    )
+    resolved_lyrics = ""
+    if use_lyrics_for_cover:
+        resolved_lyrics = LyricsService(metadata_reader=music_metadata.read_all_metadata).resolve_for_cover(
+            path, supplied_text=lyrics_text
+        )
+    # Lyrics enter analysis only through the explicitly resolved text. Otherwise
+    # embedded lyrics could bypass the switch or override edits in the editor.
+    analysis_tags = {key: value for key, value in tags.items() if "lyrics" not in str(key).lower()}
     variation = int(seed or 0)
     stages = {
         "loading_audio": "Чтение аудио...",
@@ -89,105 +111,49 @@ def make_cover(
 
     bundle = DEFAULT_PIPELINE.analyse(
         path,
-        metadata=tags,
+        metadata=analysis_tags,
         lyrics=resolved_lyrics,
         mood_override=mood_override,
         variation=variation,
         progress=progress,
         force=regenerate_description,
     )
-    DescriptionStore().put(path, bundle)
+    if not preview:
+        DescriptionStore().put(path, bundle, lyrics=resolved_lyrics)
     check_cancelled(cancel_event)
 
     title = tags.get("title") or clean_stem(path)
     artist = tags.get("artist", "")
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    if engine == ENGINE_MUSIC2PICTURE_V2:
-        print("Движок обложки: Music2Picture v2")
-        image = render_cover(
-            bundle.visual_dna,
-            bundle.visual_plan,
-            size=size,
-            seed=seed,
-            preview=preview,
-        )
-        if text_mode != "none":
-            from cover_engine.typography import TypographyEngine
-            from cover_engine.titles import clean_artist, resolve_title
-
-            title_resolution = resolve_title(title, title_mode)
-            image = TypographyEngine().compose(
-                image,
-                title_resolution.selected,
-                clean_artist(artist),
-                profile=SimpleNamespace(
-                    typography_style="artistic title",
-                    text_position="center",
-                ),
-                title_treatment=title_resolution,
-                enabled=True,
-                show_artist=text_mode == "title_artist",
-                language=bundle.language,
-            )
-        image.save(output_path, "PNG", optimize=True)
-        _save_music2picture_profile(output_path, path, bundle, seed, text_mode, preview)
-        print(f"Обложка сохранена: {output_path} (Music2Picture v2)")
-        return output_path
-
-    print("Движок обложки: локальная AI-генерация")
-    from cover_engine import AutoImageProvider, CoverComposer, SemanticQualityEvaluator, SongContext
-
-    dna = bundle.visual_dna
-    song = SongContext(
-        title=title,
-        artist=artist,
-        album=tags.get("album", ""),
-        genre=tags.get("genre", ""),
-        lyrics=resolved_lyrics,
-        duration=bundle.analysis.duration,
-        bpm=dna.tempo,
-        speed=dna.arousal,
-        beat_density=dna.rhythmic_density,
-        rhythmicity=dna.rhythmic_regularity,
-        tempo_variation=dna.dynamic_complexity,
-        change_rate=dna.section_contrast,
-        relaxation=dna.relaxation,
-        hardness=dna.aggressiveness,
-        brightness=dna.brightness,
-        bass_weight=dna.bass_mass,
-        dynamic_range=dna.original_dynamic_range,
-        mood_override=mood_override,
-        visual_dna=dna,
-        visual_plan=bundle.visual_plan,
-        song_description=bundle.song_description,
-        visual_brief=bundle.visual_brief,
+    image = render_variant(
+        path, bundle.visual_dna, bundle.visual_plan, style=style, size=size,
+        seed=seed, preview=preview, legacy_color_mode=legacy_color_mode,
     )
-    owns_provider = provider is None and composer is None
-    if composer is None:
-        provider = provider or AutoImageProvider()
-        composer = CoverComposer(
-            provider=provider,
-            semantic=SemanticQualityEvaluator(),
-        )
-    try:
-        result, _profile, _concept, artwork = composer.create(
-            song,
-            output_path,
-            size=size,
-            seed=seed,
-            text_mode=text_mode,
-            title_mode=title_mode,
-            detail=detail,
-            audio_path=path,
-            cancel_event=cancel_event,
-            analysis_bundle=bundle,
-            candidate_limit=candidate_limit,
-        )
-    finally:
-        if owns_provider and provider is not None:
-            provider.close()
-    print(f"Обложка сохранена: {result} ({artwork.provider})")
-    return result
+    image = _add_cover_text(image, title, artist, text_mode=text_mode, language=bundle.language)
+    image.save(output_path, "PNG", optimize=True)
+    if not preview:
+        _save_music2picture_profile(output_path, path, bundle, seed, text_mode, preview, style, legacy_color_mode)
+    print(f"Обложка сохранена: {output_path} (Music2Picture: {style})")
+    return output_path
+
+
+def _add_cover_text(image, title, artist, *, text_mode, language):
+    if text_mode == "none":
+        return image
+    from cover_engine.typography import TypographyEngine
+    from cover_engine.titles import clean_artist, resolve_title
+
+    title_resolution = resolve_title(title, "stylized")
+    return TypographyEngine().compose(
+        image, title_resolution.selected, clean_artist(artist),
+        profile=SimpleNamespace(
+            typography_style="artistic title", typography_locked=True,
+            text_position="center",
+        ),
+        title_treatment=title_resolution, enabled=True,
+        show_artist=text_mode == "title_artist", language=language,
+        placement_override="center",
+    )
 
 
 def make_covers(
@@ -198,14 +164,13 @@ def make_covers(
     seed=None,
     lyrics_text="",
     lyrics_lookup=None,
-    detail="balanced",
     text_mode="none",
-    title_mode="cleaned",
     mood_override="auto",
-    engine=ENGINE_AI,
-    provider=None,
+    style=STYLE_CURRENT,
+    legacy_color_mode="plasma",
     cancel_event=None,
     continue_on_error=True,
+    use_lyrics_for_cover=True,
 ):
     source_path = Path(source).resolve()
     output_root = Path(output).resolve()
@@ -213,23 +178,15 @@ def make_covers(
     if not files:
         raise RuntimeError(f"No supported audio files found in {source_path}")
     source_base = source_path.parent if source_path.is_file() else source_path
-    owns_provider = engine == ENGINE_AI and provider is None
-    composer = None
-    if engine == ENGINE_AI:
-        from cover_engine import AutoImageProvider, CoverComposer
-
-        provider = provider or AutoImageProvider()
-        composer = CoverComposer(provider=provider)
     results = []
     errors = []
-    try:
-        for index, path in enumerate(files, start=1):
+    for index, path in enumerate(files, start=1):
             check_cancelled(cancel_event)
             relative = path.relative_to(source_base).with_suffix("")
             target = output_root / relative.parent / f"{relative.name}_cover_{size}.png"
             relative_key = str(relative).replace("\\", "/")
-            file_lyrics = lyrics_text
-            if lyrics_lookup:
+            file_lyrics = lyrics_text if use_lyrics_for_cover else ""
+            if use_lyrics_for_cover and lyrics_lookup:
                 file_lyrics = lyrics_lookup.get(relative_key, lyrics_lookup.get(path.stem, file_lyrics))
             print(f"[{index}/{len(files)}] {path.name}")
             try:
@@ -239,13 +196,11 @@ def make_covers(
                     size=size,
                     seed=None if seed is None else int(seed) + index - 1,
                     lyrics_text=file_lyrics,
-                    detail=detail,
+                    use_lyrics_for_cover=use_lyrics_for_cover,
                     text_mode=text_mode,
-                    title_mode=title_mode,
                     mood_override=mood_override,
-                    engine=engine,
-                    provider=provider,
-                    composer=composer,
+                    style=style,
+                    legacy_color_mode=legacy_color_mode,
                     cancel_event=cancel_event,
                 )
                 if embed:
@@ -258,10 +213,37 @@ def make_covers(
                 print(f"Ошибка для {path.name}: {exc}")
                 if not continue_on_error or len(files) == 1:
                     raise
-    finally:
-        if owns_provider and provider is not None:
-            provider.close()
     print(f"Готово обложек: {len(results)}; ошибок: {len(errors)}")
+    return results
+
+
+def make_custom_covers(source, image_path, output, size=1000, cancel_event=None):
+    """Create safe, square cover copies for every selected audio file."""
+    from security import validate_image_file
+
+    source_path = Path(source).resolve()
+    image_path = validate_image_file(image_path)
+    output_root = Path(output).resolve()
+    files = audio_files(source_path)
+    if not files:
+        raise RuntimeError(f"No supported audio files found in {source_path}")
+    size = max(128, min(4096, int(size)))
+    with Image.open(image_path) as opened:
+        opened.load()
+        normalized = ImageOps.fit(
+            ImageOps.exif_transpose(opened).convert("RGB"),
+            (size, size),
+            method=Image.Resampling.LANCZOS,
+        )
+    source_base = source_path.parent if source_path.is_file() else source_path
+    results = []
+    for path in files:
+        check_cancelled(cancel_event)
+        relative = path.relative_to(source_base).with_suffix("")
+        target = output_root / relative.parent / f"{relative.name}_cover_{size}.png"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        normalized.save(target, "PNG", optimize=True)
+        results.append(target)
     return results
 
 
@@ -355,7 +337,8 @@ def apply_generated_covers(audio_root, generated_root, published_root, size=1000
     return applied
 
 
-def _save_music2picture_profile(output_path, audio_path, bundle, seed, text_mode, preview=False):
+def _save_music2picture_profile(output_path, audio_path, bundle, seed, text_mode, preview=False,
+                                style=STYLE_CURRENT, legacy_color_mode="plasma"):
     import json
 
     directory = output_path.parent / ".sonicforge"
@@ -366,6 +349,9 @@ def _save_music2picture_profile(output_path, audio_path, bundle, seed, text_mode
         "seed": seed,
         "text_mode": text_mode,
         "generator_version": GENERATOR_VERSION,
+        "style": style,
+        "legacy_commit": LEGACY_COMMIT if style != STYLE_CURRENT else None,
+        "legacy_color_mode": legacy_color_mode if style != STYLE_CURRENT else None,
         "preview": bool(preview),
         "artistic_parameters": artistic_parameters(
             bundle.visual_dna,
@@ -380,13 +366,48 @@ def _save_music2picture_profile(output_path, audio_path, bundle, seed, text_mode
     temporary.replace(target)
 
 
+def _save_legacy_profile(output_path, audio_path, seed, text_mode, color_mode):
+    import json
+
+    directory = output_path.parent / ".sonicforge"
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / f"{output_path.stem}.profile.json"
+    data = {
+        "engine": "Music2Picture",
+        "style": STYLE_LEGACY,
+        "legacy_commit": LEGACY_COMMIT,
+        "legacy_color_mode": color_mode,
+        "audio_path": str(audio_path),
+        "seed": seed,
+        "text_mode": text_mode,
+    }
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(target)
+
+
+def _tag_cover_profile(output_path, style, color_mode, text_mode):
+    import json
+
+    target = output_path.parent / ".sonicforge" / f"{output_path.stem}.profile.json"
+    if not target.is_file():
+        return
+    data = json.loads(target.read_text(encoding="utf-8"))
+    data.update(style=style, legacy_commit=LEGACY_COMMIT,
+                legacy_color_mode=color_mode, postprocessed_text_mode=text_mode)
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(target)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Sonic Forge cover and song-description tools")
     subparsers = parser.add_subparsers(dest="command", required=True)
     covers = subparsers.add_parser("covers")
     covers.add_argument("--source", required=True)
     covers.add_argument("--output", required=True)
-    covers.add_argument("--engine", choices=COVER_ENGINES, default=ENGINE_AI)
+    covers.add_argument("--style", choices=STYLES, default=STYLE_CURRENT)
+    covers.add_argument("--legacy-color-mode", choices=LEGACY_COLOR_MODES, default="plasma")
     covers.add_argument("--size", type=int, default=1000)
     covers.add_argument("--seed", type=int)
     covers.add_argument("--text-mode", choices=("none", "title", "title_artist"), default="none")
@@ -396,7 +417,9 @@ def main():
     descriptions.add_argument("--regenerate", action="store_true")
     args = parser.parse_args()
     if args.command == "covers":
-        make_covers(args.source, args.output, engine=args.engine, size=args.size, seed=args.seed, text_mode=args.text_mode)
+        make_covers(args.source, args.output, style=args.style,
+                    legacy_color_mode=args.legacy_color_mode, size=args.size,
+                    seed=args.seed, text_mode=args.text_mode)
     else:
         generate_text_descriptions(args.source, output=args.output, regenerate=args.regenerate)
 

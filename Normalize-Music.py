@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from mutagen import File as MutagenFile, MutagenError
+from audio_tags import probe_audio
 
 
 AUDIO_EXTENSIONS = {".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".wma"}
@@ -43,14 +43,8 @@ def check_cancelled(cancel_event):
 
 
 def audio_files(source_root):
-    source_root = Path(source_root)
-    if source_root.is_file() and source_root.suffix.lower() in AUDIO_EXTENSIONS:
-        return [source_root]
-    return sorted(
-        path
-        for path in source_root.rglob("*")
-        if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS
-    )
+    from audio_paths import find_audio_files
+    return find_audio_files(source_root, AUDIO_EXTENSIONS)
 
 
 def format_float(value):
@@ -101,21 +95,19 @@ def output_path_for(source_root, output_root, audio_path):
 
 def probe_duration(audio_path):
     try:
-        audio = MutagenFile(audio_path)
-        return max(0.0, float(audio.info.length)) if audio is not None else 0.0
-    except (AttributeError, MutagenError, OSError, TypeError, ValueError):
+        return probe_audio(audio_path)['duration']
+    except (AttributeError, OSError, TypeError, ValueError):
         return 0.0
 
 
 def source_audio_properties(audio_path):
     try:
-        audio = MutagenFile(audio_path)
-        info = audio.info if audio is not None else None
+        info = probe_audio(audio_path)
         return {
-            "sample_rate": int(getattr(info, "sample_rate", 44100) or 44100),
-            "channels": int(getattr(info, "channels", 2) or 2),
+            "sample_rate": int(info['sample_rate']),
+            "channels": int(info['channels']),
         }
-    except (AttributeError, MutagenError, OSError, TypeError, ValueError):
+    except (AttributeError, OSError, TypeError, ValueError):
         return {"sample_rate": 44100, "channels": 2}
 
 
