@@ -11,6 +11,7 @@ import wave
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from audio_editor import read_waveform
 from music_polisher_gui import SonicForgeApp
 from music2picture import make_cover

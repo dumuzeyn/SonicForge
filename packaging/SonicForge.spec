@@ -1,5 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from pathlib import Path
+import sys
+
+ROOT = Path(SPECPATH).resolve().parent
+SOURCE = ROOT / 'src'
+sys.path.insert(0, str(SOURCE))
+
+
+def project_file(relative):
+    return str(ROOT / relative)
+
+
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 from huggingface_hub import hf_hub_download
 from lyrics_engine.language_identifier import REPO, REVISION
@@ -28,22 +40,22 @@ for package in distributions():
 
 
 a = Analysis(
-    ['music_polisher_gui.py'],
-    pathex=[],
+    [project_file('src/music_polisher_gui.py')],
+    pathex=[str(SOURCE)],
     binaries=[('C:\\ffmpeg\\bin\\ffmpeg.exe', 'ffmpeg')] + ct2_binaries,
     datas=[
-        ('Normalize-Music.py', '.'),
-        ('assets\\sonic_forge_mark.ico', 'assets'),
-        ('assets\\sonic_forge_mark.png', 'assets'),
-        ('assets\\fonts', 'assets\\fonts'),
-        ('packaging\\LANGUAGE_MODELS.txt', 'licenses'),
-        ('packaging\\Apache-2.0.txt', 'licenses'),
-        ('packaging/SEPARATION_ENGINE.txt', 'licenses'),
-        ('LICENSE', 'licenses/sonicforge'),
-        ('THIRD_PARTY_NOTICES.md', 'licenses/sonicforge'),
+        (project_file('src/Normalize-Music.py'), '.'),
+        (project_file('assets/sonic_forge_mark.ico'), 'assets'),
+        (project_file('assets/sonic_forge_mark.png'), 'assets'),
+        (project_file('assets/fonts'), 'assets/fonts'),
+        (project_file('packaging/LANGUAGE_MODELS.txt'), 'licenses'),
+        (project_file('packaging/Apache-2.0.txt'), 'licenses'),
+        (project_file('packaging/SEPARATION_ENGINE.txt'), 'licenses'),
+        (project_file('LICENSE'), 'licenses/sonicforge'),
+        (project_file('docs/THIRD_PARTY_NOTICES.md'), 'licenses/sonicforge'),
         ('C:/ffmpeg/LICENSE', 'licenses/ffmpeg'),
         ('C:/ffmpeg/README.txt', 'licenses/ffmpeg'),
-        ('build/separator/SonicForgeSeparator', 'separator'),
+        (project_file('build/separator/SonicForgeSeparator'), 'separator'),
     ] + license_datas + whisper_datas + language_datas + collect_data_files('anyascii') + collect_data_files('tkinterdnd2'),
     hiddenimports=collect_submodules('music2picture_v2') + [
         'faster_whisper',
@@ -58,7 +70,7 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=['scripts/splash_runtime.py'],
+    runtime_hooks=[project_file('scripts/splash_runtime.py')],
     excludes=[
         'IPython',
         'jedi',
@@ -97,9 +109,9 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets\\sonic_forge_mark.ico'],
-    version='packaging\\version_info.txt',
-    manifest='packaging\\SonicForge.manifest',
+    icon=[project_file('assets/sonic_forge_mark.ico')],
+    version=project_file('packaging/version_info.txt'),
+    manifest=project_file('packaging/SonicForge.manifest'),
 )
 
 coll = COLLECT(

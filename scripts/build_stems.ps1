@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$StemRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$StemRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $StemRoot
 $StemPython = Join-Path $StemRoot 'build\stem-python\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $StemPython)) {
@@ -15,5 +15,5 @@ if ($LASTEXITCODE -ne 0) {
 }
 & $StemPython scripts/stem_worker.py --prepare-model build/stem-model
 if ($LASTEXITCODE -ne 0) { throw 'Separation model verification failed' }
-& $StemPython -m PyInstaller --noconfirm --distpath build/separator --workpath build/separator-work SonicForgeSeparator.spec
+& $StemPython -m PyInstaller --noconfirm --distpath build/separator --workpath build/separator-work packaging/SonicForgeSeparator.spec
 if ($LASTEXITCODE -ne 0) { throw 'Separation worker build failed' }

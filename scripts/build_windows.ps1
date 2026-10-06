@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Root = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $Root
 
 # Never discard an open project's unsaved edits during a build.
@@ -10,13 +10,13 @@ if ($RunningTarget) {
     throw "Close the portable SonicForge application before rebuilding."
 }
 
-& (Join-Path $Root 'build_stems.ps1')
-python -m PyInstaller --noconfirm SonicForge.spec
+& (Join-Path $Root 'scripts\build_stems.ps1')
+python -m PyInstaller --noconfirm packaging/SonicForge.spec
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
 
 $IsccCandidates = @(
     "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
-    "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
     "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
 )
 $Iscc = $IsccCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1

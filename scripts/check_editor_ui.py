@@ -11,7 +11,7 @@ import sys
 import tempfile
 import time
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from audio_editor import render
 from music_polisher_gui import SonicForgeApp, configure_bundled_ffmpeg

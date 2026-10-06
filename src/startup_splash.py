@@ -195,7 +195,7 @@ def show_splash():
     local_data = os.environ.get('LOCALAPPDATA')
     if local_data and (Path(local_data) / 'SonicForge' / 'hide_splash.flag').exists():
         return
-    root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+    root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[1]))
     icon_path = root / 'assets' / 'sonic_forge_mark.ico'
     if icon_path.is_file():
         _splash = TransparentSplash(icon_path)

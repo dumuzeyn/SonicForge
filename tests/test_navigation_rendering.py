@@ -145,11 +145,11 @@ class NavigationRenderingTests(unittest.TestCase):
 class StartupPackagingTests(unittest.TestCase):
     def test_splash_uses_the_same_brand_artwork_as_the_application(self):
         root = Path(__file__).resolve().parents[1]
-        tree = ast.parse((root / 'SonicForge.spec').read_text(encoding='utf-8'))
+        tree = ast.parse((root / 'packaging/SonicForge.spec').read_text(encoding='utf-8'))
         analysis = next(node.value for node in tree.body if isinstance(node, ast.Assign)
                         and any(isinstance(target, ast.Name) and target.id == 'a' for target in node.targets))
         hooks = next(keyword.value for keyword in analysis.keywords if keyword.arg == 'runtime_hooks')
-        self.assertIn('scripts/splash_runtime.py', ast.literal_eval(hooks))
+        self.assertIn('scripts/splash_runtime.py', ast.unparse(hooks))
         self.assertNotIn('OptionalSplash', ast.unparse(tree))
 
 

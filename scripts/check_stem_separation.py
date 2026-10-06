@@ -8,7 +8,7 @@ import tempfile
 import time
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from audio_editor import read_waveform
 from music_polisher_gui import configure_bundled_ffmpeg
 from stem_separation import separate_clip

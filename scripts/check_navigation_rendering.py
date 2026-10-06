@@ -8,7 +8,7 @@ import time
 
 from PIL import Image
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from music_polisher_gui import SonicForgeApp
 from ui.windowing import _window_handle, _outer_bounds
 

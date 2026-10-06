@@ -17,10 +17,10 @@ def worker_command():
         if not executable.is_file():
             raise RuntimeError('Separation module is missing; reinstall Sonic Forge')
         return [str(executable)]
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parents[1]
     interpreter = root / 'build/stem-python/Scripts/python.exe'
     if not interpreter.is_file():
-        raise RuntimeError('Build the separation runtime with build_stems.ps1 first')
+        raise RuntimeError('Build the separation runtime with scripts/build_stems.ps1 first')
     return [str(interpreter), str(root / 'scripts/stem_worker.py'), '--model', str(root / 'build/stem-model')]
 
 

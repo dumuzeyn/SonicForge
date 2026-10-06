@@ -8,7 +8,8 @@ ENGLISH TERMS (controlling text)
    licenses of third-party software, fonts, models or other third-party works.
    Those components retain their own licenses, notices and rights, including
    any rights to commercial use granted by their authors. See
-   THIRD_PARTY_NOTICES.md and the license files bundled with the application.
+   docs/THIRD_PARTY_NOTICES.md in the source repository and
+   THIRD_PARTY_NOTICES.md in the license files bundled with the application.
 
 2. Permission. Subject to these terms, you may use, study, copy, modify and
    distribute the covered works, in source or binary form, solely for

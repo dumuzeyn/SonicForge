@@ -1,10 +1,11 @@
 import re
+import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageStat
 
 
-FONT_ROOT = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+FONT_ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[2])) / "assets" / "fonts"
 NOTO_SANS = str(FONT_ROOT / "NotoSans-Variable.ttf")
 NOTO_SERIF = str(FONT_ROOT / "NotoSerif-Variable.ttf")
 OSWALD = str(FONT_ROOT / "Oswald-Variable.ttf")

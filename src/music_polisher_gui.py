@@ -111,7 +111,7 @@ LYRICS_FORMAT_CHOICES = {
 
 
 def resource_path(relative_path):
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
     return base / relative_path
 
 
