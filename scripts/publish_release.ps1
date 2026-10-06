@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$Commit,
-    [string]$Tag = 'v2.0.0'
+    [string]$Tag = 'v2.0.0',
+    [long]$ResumeDraftId = 0
 )
 $ErrorActionPreference = 'Stop'
 $ReleaseRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -32,16 +33,36 @@ try {
     if ($ReleaseRepository.full_name -ne 'dumuzeyn/SonicForge' -or -not $ReleaseRepository.permissions.push) {
         throw 'Unexpected repository or insufficient publishing permissions'
     }
-    $ReleaseExisting = @(Invoke-RestMethod -Uri "$ReleaseApi/releases?per_page=100" -Headers $ReleaseHeaders)
-    if ($ReleaseExisting | Where-Object { $_.tag_name -eq $Tag }) { throw 'This release already exists; it will not be overwritten' }
+    $ReleaseExisting = Invoke-RestMethod -Uri "$ReleaseApi/releases?per_page=100" -Headers $ReleaseHeaders
+    $ReleaseMatching = $ReleaseExisting | Where-Object { $_.tag_name -eq $Tag }
+    if ($ReleaseMatching -and (-not $ResumeDraftId -or $ReleaseMatching.id -ne $ResumeDraftId -or -not $ReleaseMatching.draft)) {
+        throw 'This release already exists; it will not be overwritten'
+    }
     $ReleaseBody = Get-Content -LiteralPath (Join-Path $ReleaseRoot 'docs\RELEASE-2.0.md') -Raw -Encoding UTF8
     $ReleasePayload = @{ tag_name=$Tag; target_commitish=$Commit; name='SonicForge 2.0';
         body=$ReleaseBody; draft=$true; prerelease=$false } | ConvertTo-Json
-    $ReleaseDraft = Invoke-RestMethod -Method Post -Uri "$ReleaseApi/releases" -Headers $ReleaseHeaders `
-        -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($ReleasePayload))
+    if ($ResumeDraftId) {
+        if (-not $ReleaseMatching -or $ReleaseMatching.id -ne $ResumeDraftId -or -not $ReleaseMatching.draft) {
+            throw 'The specified private draft could not be verified'
+        }
+        $ReleaseDraft = Invoke-RestMethod -Method Patch -Uri "$ReleaseApi/releases/$ResumeDraftId" -Headers $ReleaseHeaders `
+            -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($ReleasePayload))
+    } else {
+        $ReleaseDraft = Invoke-RestMethod -Method Post -Uri "$ReleaseApi/releases" -Headers $ReleaseHeaders `
+            -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($ReleasePayload))
+    }
+    $ReleasePriorAssets = Invoke-RestMethod -Uri "$ReleaseApi/releases/$($ReleaseDraft.id)/assets" -Headers $ReleaseHeaders
     # Keep an incomplete upload private. Never replace an existing release.
     foreach ($ReleaseAsset in $ReleaseAssets) {
         $ReleaseFile = Get-Item -LiteralPath $ReleaseAsset
+        $ReleaseHash = (Get-FileHash -LiteralPath $ReleaseFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        $ReleasePrior = $ReleasePriorAssets | Where-Object { $_.name -eq $ReleaseFile.Name }
+        if ($ReleasePrior) {
+            if ($ReleasePrior.size -ne $ReleaseFile.Length -or $ReleasePrior.state -ne 'uploaded' -or
+                $ReleasePrior.digest -ne ('sha256:' + $ReleaseHash)) { throw 'Existing draft asset does not match the verified local file' }
+            Write-Host "Verified previously uploaded $($ReleaseFile.Name)"
+            continue
+        }
         $ReleaseUpload = $ReleaseDraft.upload_url -replace '\{.*\}$', ''
         $ReleaseUpload += '?name=' + [Uri]::EscapeDataString($ReleaseFile.Name)
         Write-Host "Uploading $($ReleaseFile.Name) ($([Math]::Round($ReleaseFile.Length / 1MB, 1)) MB)"
@@ -50,13 +71,12 @@ try {
         if ($ReleaseUploaded.size -ne $ReleaseFile.Length -or $ReleaseUploaded.state -ne 'uploaded') {
             throw 'Release upload verification failed; draft remains unpublished'
         }
-        $ReleaseHash = (Get-FileHash -LiteralPath $ReleaseFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($ReleaseUploaded.digest -and $ReleaseUploaded.digest -ne ('sha256:' + $ReleaseHash)) {
             throw 'Release asset checksum mismatch; draft remains unpublished'
         }
     }
-    $ReleaseUploadedAssets = @(Invoke-RestMethod -Uri "$ReleaseApi/releases/$($ReleaseDraft.id)/assets" -Headers $ReleaseHeaders)
-    if ($ReleaseUploadedAssets.Count -ne $ReleaseAssets.Count) { throw 'Incomplete release; draft remains unpublished' }
+    $ReleaseUploadedAssets = Invoke-RestMethod -Uri "$ReleaseApi/releases/$($ReleaseDraft.id)/assets" -Headers $ReleaseHeaders
+    if (@($ReleaseUploadedAssets).Count -ne $ReleaseAssets.Count) { throw 'Incomplete release; draft remains unpublished' }
     $ReleasePublished = Invoke-RestMethod -Method Patch -Uri "$ReleaseApi/releases/$($ReleaseDraft.id)" `
         -Headers $ReleaseHeaders -ContentType 'application/json' -Body '{"draft":false,"make_latest":"true"}'
     if ($ReleasePublished.draft -or $ReleasePublished.tag_name -ne $Tag) { throw 'Release publication could not be confirmed' }
