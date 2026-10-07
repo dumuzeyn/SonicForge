@@ -15,9 +15,9 @@ from music2picture_v2 import (
     audio_files,
     generate_descriptions,
 )
-from music2picture_v2.renderer import GENERATOR_VERSION, artistic_parameters, deterministic_seed
+from music2picture_v2.renderer import GENERATOR_VERSION, artistic_parameters, deterministic_seed, customize_parameters
 from music2picture_v2.variants import (
-    LEGACY_COLOR_MODES, LEGACY_COMMIT, STYLES, STYLE_CURRENT, STYLE_LEGACY,
+    LEGACY_COLOR_MODES, LEGACY_COMMIT, STYLES, STYLE_CURRENT, STYLE_LEGACY, STYLE_CUSTOM,
     render_legacy, render_variant,
 )
 
@@ -52,7 +52,8 @@ def make_cover(
     cancel_event=None,
     regenerate_description=False,
     preview=False,
-    use_lyrics_for_cover=True,
+    use_lyrics_for_cover=False,
+    custom_cover_settings=None,
     **_compatibility,
 ):
     """Analyze one track, persist its text artifacts, then render its cover."""
@@ -61,6 +62,9 @@ def make_cover(
     output_path = Path(output_path)
     if style not in STYLES:
         raise ValueError(f"Unknown cover style: {style}")
+    if style == STYLE_CUSTOM:
+        from music2picture_v2.custom_style import CustomCoverSettings
+        custom_cover_settings = CustomCoverSettings.parse(custom_cover_settings).to_dict()
     if legacy_color_mode not in LEGACY_COLOR_MODES:
         raise ValueError(f"Unknown historical color mode: {legacy_color_mode}")
     check_cancelled(cancel_event)
@@ -128,11 +132,13 @@ def make_cover(
     image = render_variant(
         path, bundle.visual_dna, bundle.visual_plan, style=style, size=size,
         seed=seed, preview=preview, legacy_color_mode=legacy_color_mode,
+        custom_cover_settings=custom_cover_settings,
     )
     image = _add_cover_text(image, title, artist, text_mode=text_mode, language=bundle.language)
     image.save(output_path, "PNG", optimize=True)
     if not preview:
-        _save_music2picture_profile(output_path, path, bundle, seed, text_mode, preview, style, legacy_color_mode)
+        _save_music2picture_profile(output_path, path, bundle, seed, text_mode, preview, style,
+                                   legacy_color_mode, custom_cover_settings)
     print(f"Обложка сохранена: {output_path} (Music2Picture: {style})")
     return output_path
 
@@ -170,7 +176,8 @@ def make_covers(
     legacy_color_mode="plasma",
     cancel_event=None,
     continue_on_error=True,
-    use_lyrics_for_cover=True,
+    use_lyrics_for_cover=False,
+    custom_cover_settings=None,
 ):
     source_path = Path(source).resolve()
     output_root = Path(output).resolve()
@@ -201,6 +208,7 @@ def make_covers(
                     mood_override=mood_override,
                     style=style,
                     legacy_color_mode=legacy_color_mode,
+                    custom_cover_settings=custom_cover_settings,
                     cancel_event=cancel_event,
                 )
                 if embed:
@@ -338,7 +346,7 @@ def apply_generated_covers(audio_root, generated_root, published_root, size=1000
 
 
 def _save_music2picture_profile(output_path, audio_path, bundle, seed, text_mode, preview=False,
-                                style=STYLE_CURRENT, legacy_color_mode="plasma"):
+                                style=STYLE_CURRENT, legacy_color_mode="plasma", custom_cover_settings=None):
     import json
 
     directory = output_path.parent / ".sonicforge"
@@ -350,13 +358,14 @@ def _save_music2picture_profile(output_path, audio_path, bundle, seed, text_mode
         "text_mode": text_mode,
         "generator_version": GENERATOR_VERSION,
         "style": style,
+        "custom_cover_settings": custom_cover_settings if style == STYLE_CUSTOM else None,
         "legacy_commit": LEGACY_COMMIT if style != STYLE_CURRENT else None,
         "legacy_color_mode": legacy_color_mode if style != STYLE_CURRENT else None,
         "preview": bool(preview),
-        "artistic_parameters": artistic_parameters(
-            bundle.visual_dna,
-            bundle.visual_plan,
-            deterministic_seed(bundle.visual_dna.fingerprint, seed),
+        "artistic_parameters": customize_parameters(
+            artistic_parameters(bundle.visual_dna, bundle.visual_plan,
+                                deterministic_seed(bundle.visual_dna.fingerprint, seed)),
+            custom_cover_settings["detail"] if style == STYLE_CUSTOM and custom_cover_settings else None,
         ).to_dict(),
         "analysis_bundle": bundle.to_dict(),
     }

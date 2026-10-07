@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 
 MAX_TAG_BYTES = 32 * 1024 * 1024
 FRAME_ID = re.compile(rb'[A-Z0-9]{4}')
@@ -150,12 +151,21 @@ def update_id3(path, added, remove_names=(), remove_custom=()):
             shutil.copyfileobj(source, destination, 1024 * 1024)
             destination.flush()
             os.fsync(destination.fileno())
-        current = path.stat()
-        if (current.st_size, current.st_mtime_ns, current.st_ino) != (
-                original_stamp.st_size, original_stamp.st_mtime_ns, original_stamp.st_ino):
-            raise OSError('The audio file changed during the tag update')
         shutil.copymode(path, temporary)
-        temporary.replace(path)
+        for attempt in range(5):
+            current = path.stat()
+            if (current.st_size, current.st_mtime_ns, current.st_ino) != (
+                    original_stamp.st_size, original_stamp.st_mtime_ns, original_stamp.st_ino):
+                raise OSError('The audio file changed during the tag update')
+            try:
+                temporary.replace(path)
+                break
+            except PermissionError as exc:
+                # Antivirus/indexing can briefly lock the atomic rename on Windows.
+                # Never force permissions or retry a changed source file.
+                if attempt == 4 or getattr(exc, 'winerror', None) not in (5, 32, 33):
+                    raise
+                time.sleep(.03 * 2 ** attempt)
     finally:
         if temporary is not None and temporary.exists():
             temporary.unlink()

@@ -2,11 +2,44 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from audio_tags import ID3Frame, read_id3, read_metadata, text_frame, update_id3, _size_bytes
 
 
 class AudioTagTests(unittest.TestCase):
+    def test_temporary_windows_lock_is_retried_without_losing_audio(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'song.mp3'
+            path.write_bytes(b'original MPEG audio')
+            original_replace = Path.replace
+            attempts = []
+            def replace(temporary, target):
+                attempts.append(True)
+                if len(attempts) == 1:
+                    error = PermissionError('Temporary sharing violation')
+                    error.winerror = 32
+                    raise error
+                return original_replace(temporary, target)
+            with patch.object(Path, 'replace', replace), patch('audio_tags.time.sleep'):
+                update_id3(path, [text_frame('USLT', 'A synthetic practice line')])
+            self.assertEqual(len(attempts), 2)
+            self.assertTrue(path.read_bytes().endswith(b'original MPEG audio'))
+
+    def test_retry_never_overwrites_a_file_changed_while_locked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'song.mp3'
+            path.write_bytes(b'original MPEG audio')
+            def replace(temporary, target):
+                path.write_bytes(b'changed outside SonicForge')
+                error = PermissionError('Temporary sharing violation')
+                error.winerror = 32
+                raise error
+            with patch.object(Path, 'replace', replace), patch('audio_tags.time.sleep'):
+                with self.assertRaises(OSError):
+                    update_id3(path, [text_frame('USLT', 'A synthetic practice line')])
+            self.assertEqual(path.read_bytes(), b'changed outside SonicForge')
+
     def test_both_versions_keep_unknown_frames_and_audio_bytes(self):
         for version in (3, 4):
             with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:

@@ -58,7 +58,7 @@ class SonicForgeView(ttk.Frame):
     def _localize(self, widget, key):
         widget.configure(text=self.app.t(key))
         self.localized.append((widget, key))
-        aliases = {"use_lyrics_for_cover_short": "use_lyrics_for_cover", "processing_start": "run",
+        aliases = {"processing_start": "run",
                    "processing_stop": "stop", "show_splash": "show_splash"}
         tip_key = "tip_" + aliases.get(key, key)
         if self.app.t(tip_key) != tip_key:
@@ -637,10 +637,6 @@ class SonicForgeView(ttk.Frame):
 
         options = ttk.Frame(controls, style="Surface.TFrame")
         options.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(SPACING["sm"], 0))
-        self.use_lyrics_check = self._localize(
-            SquareCheckbutton(options, self.app.use_lyrics_for_cover_var, fixed_width=175),
-            "use_lyrics_for_cover_short",
-        )
         self.cover_title_check = self._localize(
             SquareCheckbutton(options, self.app.cover_title_var, fixed_width=145),
             "cover_show_title",
@@ -649,20 +645,25 @@ class SonicForgeView(ttk.Frame):
             SquareCheckbutton(options, self.app.cover_artist_var, fixed_width=145),
             "cover_show_artist",
         )
-        self.use_lyrics_check.grid(row=0, column=0, sticky="w", padx=(0, SPACING["md"]))
-        self.cover_title_check.grid(row=0, column=1, sticky="w")
+        self.cover_title_check.grid(row=0, column=0, sticky="w")
         self.cover_artist_check.grid(row=1, column=0, sticky="w", pady=(SPACING["xs"], 0))
         self.embed_cover_check = self._localize(
             SquareCheckbutton(options, self.app.embed_cover_var, fixed_width=145), "embed_cover_short"
         )
         self.embed_cover_check.grid(row=1, column=1, sticky="w", pady=(SPACING["xs"], 0))
         self.cover_controls.extend(
-            (self.use_lyrics_check, self.cover_title_check, self.cover_artist_check, self.embed_cover_check)
+            (self.cover_title_check, self.cover_artist_check, self.embed_cover_check)
         )
         self.cover_generation_controls.extend(
-            (self.use_lyrics_check, self.cover_title_check, self.cover_artist_check)
+            (self.cover_title_check, self.cover_artist_check)
         )
-        self._tip(self.use_lyrics_check, "tip_use_lyrics_for_cover")
+
+        self.cover_style_settings_button = self._localize(
+            RoundedButton(controls, command=self.app.show_custom_cover_settings), "custom_style_configure"
+        )
+        self.cover_style_settings_button.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        self.cover_controls.append(self.cover_style_settings_button)
+        self.cover_generation_controls.append(self.cover_style_settings_button)
 
         preview = ttk.Frame(frame, style="Surface.TFrame")
         preview.grid(row=0, column=1, sticky="n")
@@ -771,21 +772,11 @@ class SonicForgeView(ttk.Frame):
             "overwrite_lyrics",
         )
         self.overwrite_lyrics_check.pack(side=tk.LEFT, padx=(0, SPACING["sm"]))
-        self.use_lyrics_check = self._localize(
-            SquareCheckbutton(
-                extra_options,
-                self.app.use_lyrics_for_cover_var,
-                fixed_width=175,
-            ),
-            "use_lyrics_for_cover_short",
-        )
-        self.use_lyrics_check.pack(side=tk.LEFT)
         self._tip(self.load_lyrics_button, "tip_lyrics_load")
         self._tip(self.save_lyrics_button, "tip_lyrics_save")
         self._tip(self.recognize_lyrics_button, "tip_lyrics_recognize")
         self._tip(self.lyrics_format, "tip_lyrics_format")
         self._tip(self.lyrics_language, "tip_lyrics_language")
-        self._tip(self.use_lyrics_check, "tip_use_lyrics_for_cover")
 
         status = ttk.Label(
             frame,
@@ -911,6 +902,9 @@ class SonicForgeView(ttk.Frame):
             self.lyrics_execution_frame, mode="determinate", style="Thin.Horizontal.TProgressbar")
         self.lyrics_execution_progress.grid(row=1, column=0, sticky="ew", pady=(SPACING["xs"], 0))
         self.reset_lyrics_execution(self.app.process_lyrics_var.get())
+        self._localize(ttk.Label(frame, style="SurfaceSecondary.TLabel", wraplength=650),
+                       "processing_audio_opt_in").grid(row=3, column=0, columnspan=3,
+                                                       sticky="w", pady=(SPACING["sm"], 0))
 
     def reset_lyrics_execution(self, enabled):
         self.lyrics_execution_stage = "waiting" if enabled else "disabled"
@@ -949,10 +943,8 @@ class SonicForgeView(ttk.Frame):
         stage = self.lyrics_execution_stage
         keys = {"started": "waiting", "file_started": "preparing"}
         key = "lyrics_batch_" + keys.get(stage, stage)
-        values = dict(total=0, index=0, file="", saved=0, preserved=0, uncertain=0, failed=0)
+        values = dict(total=0, index=0, file="", saved=0, preserved=0, uncertain=0, failed=0, error="")
         values.update(self.lyrics_execution_data)
-        filename = values.get("file", "")
-        values["file"] = filename if len(filename) <= 48 else filename[:45] + "..."
         self.lyrics_execution_status.set(self.app.t(key).format(**values))
 
     def _build_log(self, parent):

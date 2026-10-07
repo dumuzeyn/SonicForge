@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 import numpy as np
 from PIL import Image, ImageColor, ImageEnhance, ImageFilter
@@ -48,6 +48,7 @@ def render_cover(
     size: int = 1000,
     seed: int | None = None,
     preview: bool = False,
+    detail: float | None = None,
 ) -> Image.Image:
     """Render an organic, texture-first album cover without signal traces."""
     requested_size = max(64, int(size))
@@ -56,11 +57,24 @@ def render_cover(
     resolved_seed = deterministic_seed(visual_dna.fingerprint, seed)
     rng = np.random.default_rng(resolved_seed)
     parameters = artistic_parameters(visual_dna, visual_plan, resolved_seed)
+    parameters = customize_parameters(parameters, detail)
     texture = _artistic_texture(visual_dna, visual_plan, parameters, work_size, rng)
     image = _finish(texture, visual_dna, visual_plan, parameters, rng)
     if image.size != (requested_size, requested_size):
         image = image.resize((requested_size, requested_size), Image.Resampling.LANCZOS)
     return image.convert("RGB")
+
+
+def customize_parameters(parameters, detail=None):
+    if detail is None:
+        return parameters
+    amount = clamp(float(detail) / 100)
+    return replace(
+        parameters, meso_scale=clamp(parameters.meso_scale * (.5 + amount)),
+        micro_scale=clamp(parameters.micro_scale * (.25 + amount * 1.5)),
+        vein_strength=clamp(parameters.vein_strength * (.5 + amount)),
+        grain=clamp(parameters.grain * (.3 + amount * 1.4)),
+    )
 
 
 def deterministic_seed(fingerprint: str, seed: int | None = None) -> int:

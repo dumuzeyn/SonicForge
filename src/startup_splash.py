@@ -190,6 +190,8 @@ class TransparentSplash:
 
 def show_splash():
     global _splash
+    if sys.argv[1:2] == ['--lyrics-worker']:
+        return
     if sys.platform != 'win32' or _splash is not None:
         return
     local_data = os.environ.get('LOCALAPPDATA')

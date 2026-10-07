@@ -173,9 +173,10 @@ def process_music(
     lyrics_service=None,
     cover_style="current",
     cancel_event=None,
-    use_lyrics_for_cover=True,
+    use_lyrics_for_cover=False,
     lyrics_progress=None,
     custom_cover_path=None,
+    custom_cover_settings=None,
 ):
     from security import validate_output_directory, validate_source
 
@@ -234,6 +235,7 @@ def process_music(
                     text_mode=cover_text_mode,
                     mood_override=cover_mood,
                     style=cover_style,
+                    custom_cover_settings=custom_cover_settings,
                     cancel_event=cancel_event,
                 )
 

@@ -15,6 +15,12 @@ from lyrics_engine.service import detect_text_languages
 
 
 class LyricsEngineTests(unittest.TestCase):
+    def setUp(self):
+        import numpy as np
+        decoder = patch('lyrics_engine.providers.decode_song_audio', return_value=np.ones(16000 * 35, dtype=np.float32) * .1)
+        decoder.start()
+        self.addCleanup(decoder.stop)
+
     def test_accuracy_model_is_lazy_cached_and_can_be_overridden(self):
         with patch.dict(os.environ, {}, clear=True), patch("faster_whisper.WhisperModel") as factory:
             provider = FasterWhisperProvider()
@@ -22,7 +28,10 @@ class LyricsEngineTests(unittest.TestCase):
             factory.assert_not_called()
             first = provider._get_model()
             self.assertIs(first, provider._get_model())
-            factory.assert_called_once_with("large-v3-turbo", device="cpu", compute_type="int8")
+            self.assertEqual(factory.call_args.args, ('large-v3-turbo',))
+            self.assertEqual(factory.call_args.kwargs['compute_type'], 'int8')
+            self.assertEqual(factory.call_args.kwargs['num_workers'], 1)
+            self.assertLessEqual(factory.call_args.kwargs['cpu_threads'], 8)
         with patch.dict(os.environ, {"SONIC_FORGE_WHISPER_MODEL": "small"}):
             self.assertEqual(FasterWhisperProvider().model_name, "small")
             self.assertEqual(FasterWhisperProvider(model_name="base").model_name, "base")
@@ -70,7 +79,8 @@ class LyricsEngineTests(unittest.TestCase):
         result = LyricsService(provider=MockLyricsProvider(LyricsResult(text="Привет"))).recognize("unused.mp3")
         self.assertEqual(result.text, "Привет")
         self.assertEqual(result.quality, "low")
-        self.assertTrue(result.instrumental)
+        self.assertFalse(result.instrumental)
+        self.assertEqual(result.review_reason, 'confidence')
 
     def test_acoustic_language_votes_do_not_trust_one_intro_outlier(self):
         from lyrics_engine.language_detection import combine_language_predictions
@@ -94,7 +104,7 @@ class LyricsEngineTests(unittest.TestCase):
         self.assertEqual([start for start, _ in windows], [30.0, 90.0, 140.0])
         audio = np.linspace(0.1, 1.0, 200 * 16000, dtype=np.float32)
         self.assertEqual(detect_song_language(Model(), audio)[0], "ru")
-        self.assertEqual(len(calls), 3)
+        self.assertEqual(len(calls), 2)
         self.assertTrue(all(call[1]["language_detection_threshold"] == 1.0 for call in calls))
         cancelled = threading.Event()
         cancelled.set()

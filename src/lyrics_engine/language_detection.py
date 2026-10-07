@@ -69,6 +69,10 @@ def detect_song_language(model, audio, cancel_event=None, identifier=None):
             audio=sample, vad_filter=False,
             language_detection_segments=1, language_detection_threshold=1.0,
         ))
+        if len(predictions) >= 2:
+            language, probability = _supported_prediction(predictions, 0.80, 1.0, margin=0.35)
+            if language is not None:
+                return language, probability
     # Keep strong Whisper evidence: an independent model can confuse Russian
     # singing with Belarusian. Use it only to resolve weak/inconsistent votes.
     language, probability = _supported_prediction(predictions, 0.60, 2 / 3, margin=0.15)
@@ -86,6 +90,10 @@ def detect_song_language(model, audio, cancel_event=None, identifier=None):
                 raise InterruptedError("Lyrics recognition was cancelled.")
             if float(np.sqrt(np.mean(sample ** 2))) >= 0.001:
                 fallback.append(identifier.detect_language(sample))
+                if len(fallback) >= 3:
+                    language, confidence = _supported_prediction(fallback, 0.50, 1.0, margin=0.25, peak=0.55)
+                    if language is not None:
+                        return language, confidence
     except (OSError, RuntimeError, ValueError, ImportError):
         # Missing offline model must never silently turn an uncertain song English.
         return None, probability

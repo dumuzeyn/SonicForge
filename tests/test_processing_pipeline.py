@@ -93,6 +93,45 @@ class ProcessingPipelineTests(unittest.TestCase):
         service.recognize.assert_not_called()
         self.assertEqual(events[-1][1], dict(total=1, saved=0, preserved=1, uncertain=0, failed=0))
 
+    def test_uncertain_text_is_preserved_for_review_without_embedding(self):
+        result = LyricsResult(text='A synthetic practice line', review_reason='language')
+        service = LyricsService(provider=MockLyricsProvider(result))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'song.wav'
+            _write_silence(source)
+            process_music(source, root / 'out', process_steps={'lyrics'}, lyrics_service=service)
+            self.assertFalse((root / 'out/song.txt').exists())
+            review = root / 'out/song.lyrics-review.txt'
+            self.assertIn(result.text, review.read_text(encoding='utf-8'))
+
+    def test_metadata_or_save_error_on_one_file_does_not_stop_165_file_batch(self):
+        from lyrics_engine import recognize_batch
+        result = LyricsResult(text='A synthetic practice line')
+        service = mock.Mock()
+        service.load_existing.side_effect = lambda path: (_ for _ in ()).throw(ValueError('Bad tags')) if path.name == 'song-000.wav' else None
+        service.recognize.return_value = result
+        events = []
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index in range(165):
+                (root / f'song-{index:03d}.wav').touch()
+            def save(path, *_args):
+                if path.name == 'song-080.wav':
+                    raise OSError('File locked')
+            with mock.patch('lyrics_engine.batch.save_lyrics', side_effect=save):
+                recognize_batch(root, root, service=service,
+                                progress=lambda stage, data: events.append((stage, data)))
+        self.assertEqual(events[-1][1], dict(total=165, saved=163, preserved=0, uncertain=0, failed=2))
+
+    def test_owned_batch_service_is_closed_even_when_cancelled(self):
+        from lyrics_engine import recognize_batch
+        with mock.patch('lyrics_engine.batch.LyricsService') as factory, \
+             mock.patch('lyrics_engine.batch._recognize_batch', side_effect=InterruptedError):
+            with self.assertRaises(InterruptedError):
+                recognize_batch('source', 'staging')
+        factory.return_value.close.assert_called_once()
+
     def test_disabled_cover_lyrics_skip_lookup_but_keep_recognition_stage(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -59,7 +59,7 @@ def main():
     splash_constants = set(constants(embedded.extract('startup_splash')))
     assert {'UpdateLayeredWindow', 'premultiply_bgra', 'sonic_forge_mark.ico', 'hide_splash.flag'} <= splash_constants, 'Per-pixel transparent splash missing'
     identity_constants = set(constants(embedded.extract('app_identity')))
-    assert {'SonicForge', '2.0.0', 'https://github.com/dumuzeyn/SonicForge',
+    assert {'SonicForge', '2.1.0', 'https://github.com/dumuzeyn/SonicForge',
             'https://pay.cloudtips.ru/p/53cc3806'} <= identity_constants, 'Current title or project links missing'
     assert not any(name == 'mutagen' or name.startswith('mutagen.') for name in embedded.toc), 'Test-only checker is included in the application'
     assert 'audio_tags' in embedded.toc, 'Current tag writer is missing'

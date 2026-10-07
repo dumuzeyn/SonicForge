@@ -20,6 +20,32 @@ from ui.widgets import ModernScale, RoundedButton, SquareCheckbutton
 
 
 class GuiAcceptanceTests(unittest.TestCase):
+    def test_audio_processing_requires_explicit_selection(self):
+        self.assertFalse(self.app.process_audio_var.get())
+        self.app.process_audio_var.set(False)
+        try:
+            with patch.object(self.app, '_run_process') as run:
+                self.app.run_selected_steps()
+            self.assertNotIn('audio', run.call_args.args[0])
+            self.app.process_audio_var.set(True)
+            with patch.object(self.app, '_run_process') as run:
+                self.app.run_selected_steps()
+            self.assertIn('audio', run.call_args.args[0])
+        finally:
+            self.app.process_audio_var.set(False)
+
+    def test_lyrics_failure_displays_full_filename_and_reason(self):
+        filename = 'Полное название песни ' * 7 + '.mp3'
+        error = 'RecognitionMemoryError: available RAM: 128 MB'
+        self.app.view.update_lyrics_execution('failed', dict(index=2, total=165, file=filename, error=error))
+        status = self.app.view.lyrics_execution_status.get()
+        self.assertIn(filename, status)
+        self.assertIn(error, status)
+        self.app.toggle_language()
+        self.assertIn(filename, self.app.view.lyrics_execution_status.get())
+        self.assertIn(error, self.app.view.lyrics_execution_status.get())
+        self.app.view.reset_lyrics_execution(True)
+
     def _send_control_key(self, widget, letter):
         if os.name == "nt":
             widget.event_generate("<Control-KeyPress>", keycode=ord(letter.upper()), state=4)
@@ -90,6 +116,9 @@ class GuiAcceptanceTests(unittest.TestCase):
         editor = self.app.view.lyrics_editor
         self.app.view.show_tab("lyrics")
         self.app.view.set_lyrics_text("Первая строка\nВторая строка")
+        # Finish native page mapping before requesting keyboard focus. A focus
+        # event from a previously closed dialog must not overtake this request.
+        self.app.update()
         editor.focus_force()
         self.app.update()
         if os.name == "nt":
@@ -387,8 +416,8 @@ class GuiAcceptanceTests(unittest.TestCase):
                         )
         self.assertEqual(failures, [])
 
-    def test_five_cover_styles_relocalize(self):
-        self.assertEqual(len(self.app.cover_choice_values("style")), 5)
+    def test_six_cover_styles_relocalize(self):
+        self.assertEqual(len(self.app.cover_choice_values("style")), 6)
         self.assertNotIn("disabled", self.app.view.cover_style_combo.state())
         self.app.cover_style_var.set("Классический узор · современные цвета")
         self.assertEqual(self.app._process_kwargs()["cover_style"], "legacy_current_colors")
@@ -405,12 +434,91 @@ class GuiAcceptanceTests(unittest.TestCase):
         self.assertFalse(hasattr(self.app.view, "cover_title_mode_combo"))
         self.assertFalse(hasattr(self.app.view, "description_generate_button"))
 
+    def test_custom_style_apply_cancel_and_relocalization(self):
+        from ui.dialogs import CustomCoverDialog
+        initial = dict(self.app.custom_cover_settings)
+        initial_style = self.app.cover_style_var.get()
+        try:
+            dialog = CustomCoverDialog(self.app)
+            dialog.variables["detail"].set(77)
+            dialog.close()
+            self.assertEqual(self.app.custom_cover_settings, initial)
+            dialog = CustomCoverDialog(self.app)
+            dialog.pattern.set(self.app.t("custom_pattern_legacy"))
+            dialog.colors[0] = "#123456"
+            dialog.variables["softness"].set(35)
+            dialog.apply()
+            self.assertEqual(self.app.custom_cover_settings["pattern"], "legacy")
+            self.assertEqual(self.app.custom_cover_settings["colors"][0], "#123456")
+            self.assertEqual(self.app._process_kwargs()["custom_cover_settings"]["softness"], 35)
+            self.assertEqual(self.app.cover_choice("style", self.app.cover_style_var.get()), "custom")
+            self.app.toggle_language()
+            self.assertEqual(self.app.cover_style_var.get(), "Custom style")
+            dialog = CustomCoverDialog(self.app)
+            self.assertEqual(dialog.title(), "Custom cover style")
+            dialog.reset()
+            self.assertEqual(dialog.variables["softness"].get(), 0)
+            dialog.close()
+            with patch("music2picture.make_cover") as render:
+                self.app._cover_preview_worker("song.wav", "preview.png", 384, 38, "", "title",
+                                              "auto", "custom", False, dict(self.app.custom_cover_settings))
+            self.assertEqual(render.call_args.kwargs["custom_cover_settings"]["pattern"], "legacy")
+        finally:
+            if self.app.language != "ru":
+                self.app.toggle_language()
+            self.app.custom_cover_settings = initial
+            self.app.cover_style_var.set(initial_style)
+            self.app._cover_preview_ready.clear()
+
+    def test_palette_has_no_count_limit_and_can_reorder_edit_remove(self):
+        from ui.dialogs import CustomCoverDialog
+        from music2picture_v2.custom_style import CustomCoverSettings
+        initial = dict(self.app.custom_cover_settings)
+        initial_style = self.app.cover_style_var.get()
+        dialog = CustomCoverDialog(self.app)
+        try:
+            self.app.update()
+            self.assertGreater(dialog.palette_list.winfo_width(), 250)
+            dialog.colors = [f"#{index:06x}" for index in range(1024)]
+            dialog._refresh_palette(1023)
+            self.assertEqual(dialog.palette_list.size(), 1024)
+            self.assertIn("1024", dialog.palette_count.cget("text"))
+            with patch("ui.dialogs.colorchooser.askcolor", return_value=((255, 0, 0), "#ff0000")):
+                dialog.add_color()
+            self.assertEqual(dialog.colors[-1], "#ff0000")
+            self.assertEqual(dialog.palette_list.size(), 1025)
+            dialog.move_color(-1)
+            self.assertEqual(dialog.colors[-2], "#ff0000")
+            with patch("ui.dialogs.colorchooser.askcolor", return_value=((0, 255, 0), "#00ff00")):
+                dialog.edit_color()
+            self.assertEqual(dialog.colors[-2], "#00ff00")
+            dialog.remove_color()
+            self.assertEqual(len(dialog.colors), 1024)
+            dialog.apply()
+            self.assertEqual(len(self.app._process_kwargs()["custom_cover_settings"]["colors"]), 1024)
+            self.assertEqual(len(CustomCoverSettings.parse(self.app.custom_cover_settings).colors), 1024)
+            dialog = CustomCoverDialog(self.app)
+            self.assertEqual(dialog.palette_list.size(), 1024)
+            dialog.colors = ["#001122"]
+            dialog._refresh_palette()
+            dialog.remove_color()
+            self.assertEqual(dialog.colors, ["#001122"])
+            with patch("ui.dialogs.colorchooser.askcolor", return_value=(None, None)):
+                dialog.add_color()
+            self.assertEqual(dialog.colors, ["#001122"])
+        finally:
+            if dialog.winfo_exists():
+                dialog.close()
+            self.app.custom_cover_settings = initial
+            self.app.cover_style_var.set(initial_style)
+
     def test_custom_cover_switches_off_generation_controls_and_reaches_processing(self):
         previous = self.app.custom_cover_path_var.get()
         try:
             self.app.custom_cover_path_var.set("C:/Music/my-cover.png")
             self.app.view.update_cover_source()
             self.assertIn("disabled", self.app.view.cover_style_combo.state())
+            self.assertIn("disabled", self.app.view.cover_style_settings_button.state())
             self.assertIn("my-cover.png", self.app.view.cover_custom_status.cget("text"))
             self.assertEqual(self.app._process_kwargs()["custom_cover_path"], "C:/Music/my-cover.png")
             self.app.toggle_language()
@@ -561,9 +669,6 @@ class GuiAcceptanceTests(unittest.TestCase):
         self.assertFalse(self.app._folder_picker_open)
 
     def test_preview_button_renders_quick_image_and_displays_it(self):
-        previous = self.app.use_lyrics_for_cover_var.get()
-        self.addCleanup(self.app.use_lyrics_for_cover_var.set, previous)
-        self.app.use_lyrics_for_cover_var.set(False)
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "song.wav"
             with wave.open(str(source), "wb") as audio:
@@ -596,8 +701,8 @@ class GuiAcceptanceTests(unittest.TestCase):
             self.app.source_var.set("")
 
     def test_cover_lyrics_switch_reaches_preview_and_processing(self):
-        previous = self.app.use_lyrics_for_cover_var.get()
-        self.app.use_lyrics_for_cover_var.set(False)
+        self.assertFalse(hasattr(self.app, 'use_lyrics_for_cover_var'))
+        self.assertFalse(hasattr(self.app.view, 'use_lyrics_check'))
         try:
             kwargs = self.app._process_kwargs()
             self.assertIs(kwargs["use_lyrics_for_cover"], False)
@@ -607,7 +712,6 @@ class GuiAcceptanceTests(unittest.TestCase):
                                               "Editor test text", "none", "auto", "current", False)
             self.assertIs(render.call_args.kwargs["use_lyrics_for_cover"], False)
         finally:
-            self.app.use_lyrics_for_cover_var.set(previous)
             self.app._cover_preview_ready.clear()
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg is required for cover rendering")

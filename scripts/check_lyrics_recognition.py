@@ -41,11 +41,15 @@ def main():
             cyrillic += sum("а" <= letter.lower() <= "я" or letter.lower() == "ё" for letter in segment.text)
             latin += sum("a" <= letter.lower() <= "z" for letter in segment.text)
             print(json.dumps({"line": count, "start": segment.start,
-                              "characters": len(segment.text)}, ensure_ascii=True), flush=True)
+                              "end": segment.end, "characters": len(segment.text),
+                              "letters": sum(c.isalpha() for c in segment.text),
+                              "confidence": segment.confidence}, ensure_ascii=True), flush=True)
         result = provider.transcribe(args.audio, on_segment=on_segment)
         print(json.dumps({"lines": count, "cyrillic": cyrillic, "latin": latin,
                           "model": provider.model_name, "language": result.language,
                           "language_confidence": result.language_confidence,
+                          "quality": result.quality, "review_reason": result.review_reason,
+                          "instrumental": result.instrumental,
                           "first_start": result.segments[0].start if result.segments else None,
                           "last_end": result.segments[-1].end if result.segments else None,
                           "elapsed": round(time.monotonic() - started, 2)}), flush=True)

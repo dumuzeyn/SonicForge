@@ -25,9 +25,9 @@ if (-not $Iscc) { throw "Inno Setup 6 is not installed" }
 if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
 
 $Exe = Get-Item -LiteralPath "dist\SonicForge\SonicForge.exe"
-$Installer = Get-Item -LiteralPath "dist\SonicForge-Setup-2.0.0.exe"
+$Installer = Get-Item -LiteralPath "dist\SonicForge-Setup-2.1.0.exe"
 if ($Exe.VersionInfo.ProductName -ne "SonicForge") { throw "Invalid ProductName in EXE" }
-if ($Exe.VersionInfo.ProductVersion -ne "2.0.0") { throw "Invalid ProductVersion in EXE" }
+if ($Exe.VersionInfo.ProductVersion -ne "2.1.0") { throw "Invalid ProductVersion in EXE" }
 Write-Host "Built $($Exe.FullName)"
 Write-Host "Built $($Installer.FullName)"
 & (Join-Path $Root 'scripts\refresh_windows_shortcuts.ps1') -ApplicationPaths @($Exe.FullName)

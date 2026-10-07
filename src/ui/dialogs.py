@@ -1,8 +1,8 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, colorchooser
 
-from .theme import COLORS, SPACING, SIZES
-from .widgets import RoundedButton, SquareCheckbutton, ToolTip
+from .theme import COLORS, SPACING, SIZES, FONTS
+from .widgets import RoundedButton, SquareCheckbutton, ToolTip, ModernScale
 from .windowing import show_centered
 
 
@@ -17,6 +17,206 @@ class CenteredDialog(tk.Toplevel):
         self._dialog_size = (self.winfo_width(), self.winfo_height())
         self.grab_release()
         self.withdraw()
+
+
+class CustomCoverDialog(CenteredDialog):
+    """Stage edits locally; applying selects the custom generated style."""
+    def __init__(self, app):
+        super().__init__(app)
+        self.withdraw()
+        self.app = app
+        self._dialog_size = (700, 670)
+        self.title(app.t("custom_style_title"))
+        self.configure(bg=COLORS["bg"])
+        self.minsize(650, 650)
+        self.transient(app)
+        from music2picture_v2.custom_style import CustomCoverSettings
+        settings = CustomCoverSettings.parse(app.custom_cover_settings)
+        self.patterns = {app.t("custom_pattern_modern"): "modern",
+                         app.t("custom_pattern_legacy"): "legacy"}
+        self.pattern = tk.StringVar(self, next(label for label, key in self.patterns.items()
+                                             if key == settings.pattern))
+        self.variables = {key: tk.DoubleVar(self, getattr(settings, key))
+                          for key in ("detail", "contrast", "saturation", "softness")}
+        self.colors = list(settings.colors)
+        body = ttk.Frame(self, padding=SPACING["lg"])
+        body.pack(fill=tk.BOTH, expand=True)
+        body.columnconfigure(1, weight=1)
+        ttk.Label(body, text=app.t("custom_style_description"), wraplength=590,
+                  style="Secondary.TLabel").grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 14))
+        ttk.Label(body, text=app.t("custom_pattern")).grid(row=1, column=0, sticky="w", padx=(0, 16))
+        self.pattern_combo = ttk.Combobox(body, textvariable=self.pattern, values=tuple(self.patterns),
+                                         state="readonly")
+        self.pattern_combo.grid(row=1, column=1, sticky="ew")
+        palette = ttk.Frame(body)
+        palette.grid(row=2, column=0, columnspan=2, sticky="ew", pady=12)
+        palette.columnconfigure(0, weight=1)
+        ttk.Label(palette, text=app.t("custom_palette")).grid(row=0, column=0, sticky="w", pady=(0, 6))
+        self.palette_count = ttk.Label(palette, style="Secondary.TLabel")
+        self.palette_count.grid(row=0, column=2, sticky="e", pady=(0, 6))
+        self.palette_list = tk.Listbox(
+            palette, height=4, font=FONTS["body"], exportselection=False,
+            bg=COLORS["field"], fg=COLORS["text"], relief="flat", borderwidth=0,
+            highlightthickness=1, highlightbackground=COLORS["border"], activestyle="none",
+        )
+        self.palette_list.grid(row=1, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(palette, orient="vertical", command=self.palette_list.yview)
+        scrollbar.grid(row=1, column=1, sticky="ns", padx=(0, 8))
+        self.palette_list.configure(yscrollcommand=scrollbar.set)
+        self.palette_list.bind("<<ListboxSelect>>", self._update_palette_actions)
+        self.palette_list.bind("<Double-Button-1>", lambda _event: self.edit_color())
+        self.palette_list.bind("<Delete>", lambda _event: self.remove_color())
+        buttons = ttk.Frame(palette)
+        buttons.grid(row=1, column=2, sticky="n")
+        RoundedButton(buttons, text=app.t("custom_palette_add"), command=self.add_color).grid(row=0, column=0, sticky="ew", padx=3)
+        self.edit_button = RoundedButton(buttons, text=app.t("custom_palette_edit"), command=self.edit_color)
+        self.edit_button.grid(row=0, column=1, sticky="ew", padx=3)
+        self.remove_button = RoundedButton(buttons, text=app.t("custom_palette_remove"), command=self.remove_color)
+        self.remove_button.grid(row=1, column=0, sticky="ew", padx=3, pady=4)
+        moves = ttk.Frame(buttons)
+        moves.grid(row=1, column=1, sticky="ew", padx=3, pady=4)
+        self.up_button = RoundedButton(moves, text="↑", width=1, command=lambda: self.move_color(-1))
+        self.up_button.pack(side=tk.LEFT)
+        self.down_button = RoundedButton(moves, text="↓", width=1, command=lambda: self.move_color(1))
+        self.down_button.pack(side=tk.RIGHT)
+        ToolTip(self.up_button, lambda: app.t("custom_palette_up"))
+        ToolTip(self.down_button, lambda: app.t("custom_palette_down"))
+        self.gradient = tk.Canvas(palette, height=34, highlightthickness=0, borderwidth=0)
+        self.gradient.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        self.gradient.bind("<Configure>", self._draw_gradient)
+        self._refresh_palette()
+        self.scales = {}
+        for row, (key, lower, upper) in enumerate(
+                (("detail", 0, 100), ("contrast", 50, 150), ("saturation", 0, 150), ("softness", 0, 100)), start=3):
+            ttk.Label(body, text=app.t("custom_" + key)).grid(row=row, column=0, sticky="w", padx=(0, 16))
+            slider = ModernScale(body, variable=self.variables[key], from_=lower, to=upper,
+                                 surface=False, show_value=True, height=46,
+                                 value_formatter=lambda value: f"{value:.0f}%")
+            slider.grid(row=row, column=1, sticky="ew", pady=3)
+            ToolTip(slider, lambda key=key: app.t("tip_custom_" + key))
+            self.scales[key] = slider
+        ttk.Label(body, text=app.t("custom_style_hint"), wraplength=590,
+                  style="Secondary.TLabel").grid(row=7, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        body.rowconfigure(8, weight=1)
+        actions = ttk.Frame(body)
+        actions.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        RoundedButton(actions, text=app.t("custom_reset"), command=self.reset).pack(side=tk.LEFT)
+        RoundedButton(actions, text=app.t("custom_cancel"), command=self.close).pack(side=tk.RIGHT)
+        RoundedButton(actions, text=app.t("custom_apply"), style="Primary.TButton",
+                      command=self.apply).pack(side=tk.RIGHT, padx=8)
+        self.protocol("WM_DELETE_WINDOW", self.close)
+        self.bind("<Escape>", lambda _event: self.close())
+        self.show()
+
+    def _selected_color(self):
+        selection = self.palette_list.curselection()
+        return selection[0] if selection else None
+
+    def add_color(self, color=None):
+        if color is None:
+            _, color = colorchooser.askcolor(self.colors[-1], parent=self,
+                                            title=self.app.t("custom_palette_add"))
+        if color:
+            self.colors.append(color)
+            self._refresh_palette(len(self.colors) - 1)
+
+    def edit_color(self):
+        index = self._selected_color()
+        if index is None:
+            return
+        _, color = colorchooser.askcolor(self.colors[index], parent=self,
+                                        title=self.app.t("custom_palette_edit"))
+        if color:
+            self.colors[index] = color
+            self._refresh_palette(index)
+
+    def remove_color(self):
+        index = self._selected_color()
+        if index is not None and len(self.colors) > 1:
+            self.colors.pop(index)
+            self._refresh_palette(min(index, len(self.colors) - 1))
+
+    def move_color(self, direction):
+        index = self._selected_color()
+        if index is not None and 0 <= index + direction < len(self.colors):
+            other = index + direction
+            self.colors[index], self.colors[other] = self.colors[other], self.colors[index]
+            self._refresh_palette(other)
+
+    def _refresh_palette(self, selection=0):
+        from PIL import ImageColor
+        self.palette_list.delete(0, tk.END)
+        for index, color in enumerate(self.colors):
+            self.palette_list.insert(tk.END, f"  {index + 1}.  {color.upper()}")
+            red, green, blue = ImageColor.getrgb(color)
+            foreground = "#ffffff" if .2126 * red + .7152 * green + .0722 * blue < 140 else "#181824"
+            self.palette_list.itemconfigure(index, background=color, foreground=foreground,
+                                            selectbackground=COLORS["accent"], selectforeground="#ffffff")
+        self.palette_list.selection_set(selection)
+        self.palette_list.activate(selection)
+        self.palette_list.see(selection)
+        self.palette_count.configure(text=self.app.t("custom_palette_count").format(count=len(self.colors)))
+        self._update_palette_actions()
+        self._draw_gradient()
+
+    def _update_palette_actions(self, _event=None):
+        index = self._selected_color()
+        for button, enabled in ((self.edit_button, index is not None),
+                                (self.remove_button, index is not None and len(self.colors) > 1),
+                                (self.up_button, index is not None and index > 0),
+                                (self.down_button, index is not None and index < len(self.colors) - 1)):
+            button.configure(state="normal" if enabled else "disabled")
+
+    def _draw_gradient(self, *_):
+        import numpy as np
+        from music2picture_v2.custom_style import palette_rgb
+        width = max(1, self.gradient.winfo_width())
+        self.gradient.delete("all")
+        for index, rgb in enumerate(palette_rgb(self.colors, np.linspace(0, 1, 160))):
+            color = "#" + "".join(f"{channel:02x}" for channel in rgb)
+            self.gradient.create_rectangle(index * width / 160, 0, (index + 1) * width / 160 + 1,
+                                           34, fill=color, outline="")
+
+    def reset(self):
+        from music2picture_v2.custom_style import CustomCoverSettings
+        defaults = CustomCoverSettings()
+        self.pattern.set(next(label for label, key in self.patterns.items() if key == defaults.pattern))
+        for key, variable in self.variables.items():
+            variable.set(getattr(defaults, key))
+        self.colors = list(defaults.colors)
+        self._refresh_palette()
+
+    def apply(self):
+        from music2picture_v2.custom_style import CustomCoverSettings
+        settings = {key: variable.get() for key, variable in self.variables.items()}
+        settings["colors"] = list(self.colors)
+        settings["pattern"] = self.patterns[self.pattern.get()]
+        self.app.custom_cover_settings = CustomCoverSettings.parse(settings).to_dict()
+        self.app.cover_style_var.set(next(label for label in self.app.cover_choice_values("style")
+                                         if self.app.cover_choice("style", label) == "custom"))
+        self.close()
+
+    def close(self):
+        widgets = []
+        pending = list(self.winfo_children())
+        while pending:
+            widget = pending.pop()
+            widgets.append(widget)
+            pending.extend(widget.winfo_children())
+        self.grab_release()
+        self.destroy()
+        # Release Tcl variables on the UI thread, not later during a worker's
+        # garbage collection (which can block or fail Tk calls).
+        for scale in self.scales.values():
+            scale.variable = None
+        self.scales.clear()
+        self.variables.clear()
+        self.pattern = None
+        for widget in widgets:
+            if isinstance(widget, RoundedButton):
+                widget._raster = None
+                widget.font = None
+                widget.command = None
 
 
 class AdvancedAudioDialog(CenteredDialog):

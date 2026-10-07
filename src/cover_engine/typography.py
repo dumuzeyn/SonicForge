@@ -125,7 +125,8 @@ class TypographyEngine:
         elif scale_intent == "restrained":
             width_ratio -= .10
         max_width = int(size * min(.86, max(.46, width_ratio)))
-        max_height = int(size * (.34 if len(treatment_lines) > 1 else .22))
+        max_height = int(size * (.42 if style == "artistic title" else
+                                 .34 if len(treatment_lines) > 1 else .22))
         base_scale = STYLE_SCALE.get(style, .088)
         base_scale *= {
             "dominant": 1.22,
@@ -670,24 +671,35 @@ class TypographyEngine:
         words = text.replace("_", " ").split()
         minimum = int(canvas_size * .018)
         maximum = int(canvas_size * base_scale)
+        whole_words = set(words)
         for font_size in range(maximum, minimum - 1, -2):
             font = self._font(font_size, font_candidates, text)
             tracking = max(.5, round(font_size * tracking_ratio, 2)) if tracking_ratio > 0 else 0
+            layouts = []
             if preferred_lines:
-                lines = []
+                preferred_layout = []
                 for preferred in preferred_lines:
-                    lines.extend(self._wrap(preferred.split(), font, max_width, tracking))
-            else:
-                lines = self._wrap(words, font, max_width, tracking)
+                    preferred_layout.extend(self._wrap(preferred.split(), font, max_width, tracking))
+                layouts.append(preferred_layout)
+            layouts.append(self._wrap(words, font, max_width, tracking))
             draw = ImageDraw.Draw(Image.new("L", (4, 4)))
-            boxes = [draw.textbbox((0, 0), line, font=font) for line in lines]
-            height = sum(box[3] - box[1] for box in boxes) + max(0, len(lines)-1) * int(font_size*.11)
-            orphan_fragment = any(
-                len(line.strip()) <= 2 and line.strip() not in {"×", "X", "&"}
-                for line in lines
-            )
-            if len(lines) <= 4 and height <= max_height and not orphan_fragment:
-                return font, lines
+            fitting = []
+            for preference, lines in enumerate(layouts):
+                boxes = [draw.textbbox((0, 0), line, font=font) for line in lines]
+                height = sum(box[3] - box[1] for box in boxes) + max(0, len(lines)-1) * int(font_size*.11)
+                widths = [self._text_length(line, font, tracking) for line in lines]
+                # "Im", "Я", "So" etc. are real words, not broken fragments.
+                # A suggested editorial break must never force the whole title
+                # down to the minimum font size. Try automatic wrapping too.
+                fragment = any(len(line.strip()) <= 2 and line.strip() not in whole_words
+                               and line.strip() not in {"×", "X", "&"} for line in lines)
+                if not lines or len(lines) > 4 or height > max_height or fragment or max(widths) > max_width:
+                    continue
+                short_orphans = sum(len(line.strip()) <= 2 for line in lines) if len(lines) > 1 else 0
+                imbalance = (max(widths) - min(widths)) / max_width
+                fitting.append((short_orphans, imbalance + preference * .02, lines))
+            if fitting:
+                return font, min(fitting, key=lambda item: item[:2])[2]
         font = self._font(minimum, font_candidates, text)
         tracking = max(.5, round(minimum * tracking_ratio, 2)) if tracking_ratio > 0 else 0
         return font, self._wrap(words, font, max_width, tracking)

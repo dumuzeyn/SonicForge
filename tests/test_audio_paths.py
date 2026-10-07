@@ -16,6 +16,8 @@ class AudioPathsTests(unittest.TestCase):
             root = Path(directory)
             for relative in ("Album/original.MP3", "second.wav", "notes.txt",
                              "SonicForgeProgect/Album/original.mp3",
+                             "SonicForgeProgect2/Album/exported.mp3",
+                             "SonicForgeProgect12/processed.mp3",
                              "Album/sonicforgeprogect/nested.mp3",
                              "musicpolisher_pending/processed/song.mp3"):
                 path = root / relative
@@ -27,6 +29,8 @@ class AudioPathsTests(unittest.TestCase):
             # Explicitly selecting a previously processed project still works.
             project = root / "SonicForgeProgect"
             self.assertEqual(find_audio_files(project, extensions), [project / "Album/original.mp3"])
+            numbered = root / 'SonicForgeProgect2'
+            self.assertEqual(find_audio_files(numbered, extensions), [numbered / 'Album/exported.mp3'])
             self.assertEqual(find_audio_files(root / "missing", extensions), [])
             self.assertEqual(find_audio_files(root / "notes.txt", extensions), [])
 
@@ -41,8 +45,19 @@ class AudioPathsTests(unittest.TestCase):
             project = root / "SonicForgeProgect"
             project.mkdir()
             (project / "processed.mp3").touch()
+            numbered = root / 'SonicForgeProgect2'
+            numbered.mkdir()
+            (numbered / 'processed.mp3').touch()
             for discover in (music_metadata.audio_files, batch.audio_files,
                              legacy_music2picture.audio_files,
                              easy_music_process.normalize_music_file.audio_files):
                 with self.subTest(stage=discover.__module__):
                     self.assertEqual(discover(root), [original])
+
+    def test_similarly_named_album_is_not_excluded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            album = Path(directory) / 'SonicForgeProgectLive'
+            album.mkdir()
+            song = album / 'song.mp3'
+            song.touch()
+            self.assertEqual(find_audio_files(directory, {'.mp3'}), [song])

@@ -4,8 +4,10 @@ import math
 from dataclasses import replace
 from abc import ABC, abstractmethod
 from contextlib import nullcontext
+from itertools import chain
 
 from .models import LyricsResult, TranscriptSegment
+from .audio import decode_song_audio
 from .verification import repair_repeated_words, verified_segments
 
 
@@ -39,9 +41,6 @@ class FasterWhisperProvider(LyricsProvider):
                 "Локальный модуль распознавания не установлен. Установите faster-whisper "
                 "или загрузите уже готовый TXT/LRC рядом с песней."
             )
-        if progress:
-            progress("loading_model")
-        model = self._get_model()
         self._audio_duration = None
         segments = []
         word_groups = []
@@ -50,8 +49,15 @@ class FasterWhisperProvider(LyricsProvider):
         phonetic_language = {"other_en": "en", "other_ru": "ru"}.get(language)
         requested_language = None if phonetic_language or language in (None, "", "auto") else language
         with self._vocal_audio(audio_path) as prepared_audio:
+            prepared_audio = decode_song_audio(prepared_audio, cancel_event)
+            self._audio_duration = len(prepared_audio) / 16000
+            if not len(prepared_audio) or not prepared_audio.any():
+                return LyricsResult(text='', source=self.name, instrumental=True, review_reason='no_text')
+            if progress:
+                progress('loading_model')
+            model = self._get_model()
             options = dict(
-                beam_size=8,
+                beam_size=5,
                 best_of=5,
                 task="transcribe",
                 vad_filter=False,
@@ -63,19 +69,22 @@ class FasterWhisperProvider(LyricsProvider):
                 temperature=(0.0, 0.2, 0.4),
                 language_detection_segments=3,
                 language_detection_threshold=0.85,
+                no_speech_threshold=0.85,
             )
+            uncertain_language = False
             detected_language, probability = (requested_language, None)
             if requested_language is None and hasattr(model, "detect_language"):
                 detected_language, probability = self._detect_song_language(
                     model, prepared_audio, cancel_event, progress,
                 )
                 if detected_language is None:
-                    return LyricsResult(text="", language="unknown", quality="low", source=self.name,
-                                        review_reason="language")
+                    # A weak language vote is not evidence of an instrumental.
+                    # Let acoustic decoding run, but keep its text review-only.
+                    uncertain_language = True
                 from faster_whisper.tokenizer import _LANGUAGE_CODES
-                if detected_language not in _LANGUAGE_CODES:
-                    return LyricsResult(text="", language=detected_language, language_confidence=probability,
-                                        quality="low", source=self.name, review_reason="language")
+                if detected_language is not None and detected_language not in _LANGUAGE_CODES:
+                    uncertain_language = True
+                    detected_language = None
             if detected_language == "ka" and self.model_name == "large-v3-turbo":
                 if progress:
                     progress("loading_model")
@@ -85,8 +94,25 @@ class FasterWhisperProvider(LyricsProvider):
                 model = None
                 model = self._get_native_model(detected_language)
             raw_segments, info = model.transcribe(
-                str(prepared_audio), language=detected_language, **options,
+                prepared_audio, language=detected_language, **options,
             )
+            if progress:
+                progress('transcribing')
+            raw_segments = iter(raw_segments)
+            first = next(raw_segments, None)
+            # Spoken-voice thresholds can reject singing over a strong backing
+            # track. Retry an empty result only with real acoustic language evidence.
+            if first is None and (requested_language or (probability or 0) >= .60):
+                if cancel_event is not None and cancel_event.is_set():
+                    raise InterruptedError('Lyrics recognition was cancelled.')
+                if progress:
+                    progress('verifying')
+                fallback_options = dict(options, beam_size=3, temperature=0.0,
+                                        no_speech_threshold=None, log_prob_threshold=None)
+                raw_segments, info = model.transcribe(prepared_audio, language=detected_language, **fallback_options)
+                raw_segments = iter(raw_segments)
+                first = next(raw_segments, None)
+            raw_segments = chain((first,), raw_segments) if first is not None else iter(())
             detected_language = detected_language or getattr(info, "language", "unknown") or "unknown"
             if probability is None:
                 probability = getattr(info, "language_probability", None) if requested_language is None else None
@@ -96,16 +122,16 @@ class FasterWhisperProvider(LyricsProvider):
                 transcription_alphabet = phonetic_language or "ru"
             verification_options = dict(options, language=detected_language)
             def verification_progress(stage):
-                nonlocal unreliable_text
                 if stage == "unreliable_tail":
-                    unreliable_text = True
+                    # A discarded padded tail does not invalidate the real song.
                     stage = "verifying"
                 if progress:
                     progress(stage)
-            raw_segments = verified_segments(model, str(prepared_audio), raw_segments,
+            raw_segments = verified_segments(model, prepared_audio, raw_segments,
                                              verification_options, cancel_event, verification_progress,
-                                             limit=4 if transcription_alphabet else 12,
-                                             audio_duration=self._audio_duration)
+                                             limit=4,
+                                             audio_duration=self._audio_duration,
+                                             is_implausible=lambda segment: _implausible_text(segment, detected_language))
             for raw in raw_segments:
                 if cancel_event is not None and cancel_event.is_set():
                     raise InterruptedError("Lyrics recognition was cancelled.")
@@ -143,20 +169,20 @@ class FasterWhisperProvider(LyricsProvider):
             segments=tuple(segments),
             language=detected_language,
             language_confidence=float(probability) if probability is not None else None,
-            quality="low" if unreliable_text else _quality(average),
-            instrumental=not bool(segments),
+            quality="low" if unreliable_text or uncertain_language else _quality(average),
+            instrumental=False,
             source=self.name,
             transcription_alphabet=transcription_alphabet,
-            review_reason="text" if unreliable_text else "",
+            review_reason="no_text" if not text else "language" if uncertain_language else "text" if unreliable_text else "",
         )
 
     def _detect_song_language(self, model, audio_path, cancel_event=None, progress=None):
-        from faster_whisper.audio import decode_audio
         from .language_detection import detect_song_language
 
         if progress:
             progress("detecting_language")
-        audio = decode_audio(str(audio_path), sampling_rate=16000)
+        import numpy as np
+        audio = audio_path if isinstance(audio_path, np.ndarray) else decode_song_audio(audio_path, cancel_event)
         self._audio_duration = len(audio) / 16000
         from .language_identifier import LocalLanguageIdentifier
         if self._language_identifier is None:
@@ -190,7 +216,8 @@ class FasterWhisperProvider(LyricsProvider):
             from faster_whisper import WhisperModel
             self._model = None
             self._model = WhisperModel(
-                model_name, device=self.device, compute_type=self.compute_type
+                model_name, device=self.device, compute_type=self.compute_type,
+                cpu_threads=min(8, max(1, (os.cpu_count() or 2) // 2)), num_workers=1,
             )
             self._loaded_model_name = model_name
         return self._model

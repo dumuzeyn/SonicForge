@@ -17,6 +17,9 @@ from lyrics_engine.verification import duplicate_boundary_segment, verified_segm
 class ForeignLyricsTests(unittest.TestCase):
     def setUp(self):
         self.audio = np.ones(16000 * 100, dtype=np.float32) * 0.1
+        decoder = patch('lyrics_engine.providers.decode_song_audio', return_value=self.audio)
+        decoder.start()
+        self.addCleanup(decoder.stop)
 
     def test_strong_russian_id_does_not_load_secondary_model(self):
         model = Mock()
@@ -44,17 +47,21 @@ class ForeignLyricsTests(unittest.TestCase):
         ]
         language, probability = detect_song_language(model, self.audio, identifier=classifier)
         self.assertEqual(language, 'ka')
-        self.assertAlmostEqual(probability, .423)
+        self.assertAlmostEqual(probability, (.396 + .631 + .541) / 3)
 
     def test_uncertain_id_does_not_force_english_or_autosave(self):
         provider = FasterWhisperProvider()
         model = Mock()
+        model.transcribe.return_value = (iter([SimpleNamespace(start=2, end=5,
+            text='A detected practice line', no_speech_prob=.05, words=())]), SimpleNamespace(language='en'))
         with patch.object(provider, 'available', return_value=True), \
              patch.object(provider, '_get_model', return_value=model), \
              patch.object(provider, '_detect_song_language', return_value=(None, .28)):
             result = LyricsService(provider=provider).recognize('unused.mp3')
-        model.transcribe.assert_not_called()
-        self.assertEqual(result.language, 'unknown')
+        model.transcribe.assert_called_once()
+        self.assertIsNone(model.transcribe.call_args.kwargs['language'])
+        self.assertTrue(result.text)
+        self.assertFalse(result.instrumental)
         self.assertEqual(result.review_reason, 'language')
         self.assertFalse(LyricsService.is_usable(result))
 

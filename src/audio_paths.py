@@ -7,6 +7,12 @@ from pathlib import Path
 PROJECT_FOLDER = "SonicForgeProgect"
 
 
+def _generated_folder(name):
+    folded = name.casefold()
+    base = PROJECT_FOLDER.casefold()
+    return folded.startswith(base) and (folded == base or folded[len(base):].isdecimal())
+
+
 def default_output_path(source):
     return Path(source).expanduser().parent / PROJECT_FOLDER
 
@@ -19,7 +25,7 @@ def find_audio_files(source, extensions):
     for folder, directories, names in os.walk(source, followlinks=False):
         directories[:] = [
             name for name in directories
-            if name.casefold() not in {PROJECT_FOLDER.casefold(), ".sonicforge"}
+            if not _generated_folder(name) and name.casefold() != ".sonicforge"
             and not name.casefold().startswith("musicpolisher_")
         ]
         files.extend(

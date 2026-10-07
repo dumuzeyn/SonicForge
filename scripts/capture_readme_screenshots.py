@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from audio_editor import read_waveform
 from music_polisher_gui import SonicForgeApp
+from ui.dialogs import CustomCoverDialog
 from music2picture import make_cover
 from scripts.check_navigation_rendering import capture, settle
 
@@ -85,7 +86,13 @@ def main():
                     settle(dialog)
                     capture(dialog, output / f'{name}-{language}.png')
                 dialog.close()
-            print(f'Captured 20 native-resolution screenshots in {output}')
+                app.custom_cover_settings["colors"] = ["#123b53", "#306982", "#54a4a3", "#85c0b0", "#b9cfac", "#ebd79b",
+                                                        "#f4c66a", "#e99354", "#af5972", "#705488", "#484d77", "#142f49"]
+                custom_dialog = CustomCoverDialog(app)
+                settle(custom_dialog)
+                capture(custom_dialog, output / f'cover-custom-{language}.png')
+                custom_dialog.close()
+            print(f'Captured 22 native-resolution screenshots in {output}')
         finally:
             app._close()
 

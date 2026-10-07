@@ -1,6 +1,7 @@
 """Verify doubtful singing against shifted audio context, never a lyric dictionary."""
 import re
 import copy
+import numpy as np
 from collections import Counter, defaultdict
 from dataclasses import replace
 from difflib import SequenceMatcher
@@ -102,14 +103,33 @@ def choose_verified_segment(original, candidates, after_pause=False):
 
 
 def verified_segments(model, audio, raw_segments, options, cancel_event=None, progress=None, limit=12,
-                      audio_duration=None):
+                      audio_duration=None, is_implausible=None):
     def recheck(original, start, end):
-        verification_options = dict(options, temperature=0.0, clip_timestamps=[start, end])
-        verification, _ = model.transcribe(audio, **verification_options)
+        verification_options = dict(options, temperature=0.0, beam_size=3)
+        offset = 0.0
+        if isinstance(audio, np.ndarray):
+            start_sample = int(start * 16000)
+            clip = audio[start_sample:int(end * 16000)]
+            if not len(clip):
+                return []
+            offset = start_sample / 16000
+            verification_options.pop('clip_timestamps', None)
+        else:
+            clip = audio
+            verification_options['clip_timestamps'] = [start, end]
+        verification, _ = model.transcribe(clip, **verification_options)
         candidates = []
         for candidate in islice(verification, 16):
             if cancel_event is not None and cancel_event.is_set():
                 raise InterruptedError("Lyrics recognition was cancelled.")
+            if offset:
+                candidate = copy.copy(candidate)
+                candidate.start += offset
+                candidate.end += offset
+                candidate.words = [copy.copy(word) for word in getattr(candidate, 'words', None) or ()]
+                for word in candidate.words:
+                    word.start += offset
+                    word.end += offset
             if candidate.start >= original.end + 1.5:
                 break
             candidates.append(candidate)
@@ -118,6 +138,7 @@ def verified_segments(model, audio, raw_segments, options, cancel_event=None, pr
     previous_end = 0.0
     previous_segment = None
     attempts = 0
+    repair_attempts = 0
     for raw in raw_segments:
         if cancel_event is not None and cancel_event.is_set():
             raise InterruptedError("Lyrics recognition was cancelled.")
@@ -134,11 +155,31 @@ def verified_segments(model, audio, raw_segments, options, cancel_event=None, pr
                 break
         if duplicate_boundary_segment(raw, previous_segment):
             continue
+        if is_implausible is not None and is_implausible(raw) and repair_attempts < 2:
+            repair_attempts += 1
+            if progress:
+                progress('verifying')
+            start = max(0.0, raw.start - 3.0)
+            candidates = recheck(raw, start, max(start + 30.0, raw.end + 3.0))
+            replacements = [candidate for candidate in candidates
+                            if not is_implausible(candidate) and candidate.text.strip()
+                            and candidate.start >= raw.start - 1.0
+                            and candidate.end <= raw.end + 1.0
+                            and candidate.end > candidate.start
+                            and float(getattr(candidate, 'avg_logprob', -10)) >= -1.0]
+            if replacements:
+                for candidate in replacements:
+                    previous_end = max(previous_end, candidate.end)
+                    previous_segment = candidate
+                    yield candidate
+                continue
         after_pause = suspicious_after_pause(raw, previous_end)
         opening = previous_segment is None and bool(getattr(raw, "words", None))
         if opening and len(tokens(raw.text)) <= 4 and doubtful_words(raw):
             after_pause = True
-        if attempts < limit and (opening or after_pause or doubtful_words(raw)):
+        weak = doubtful_words(raw)
+        needs_check = after_pause or (opening and weak) or any(float(w.probability) < .60 for w in weak)
+        if attempts < limit and needs_check:
             attempts += 1
             if progress:
                 progress("verifying")

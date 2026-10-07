@@ -3,7 +3,7 @@ from pathlib import Path
 
 from .formats import load_sidecar, parse_lrc
 from .models import LyricsResult
-from .providers import FasterWhisperProvider
+from .isolated import IsolatedLyricsProvider
 
 
 CYRILLIC_RE = re.compile(r"[А-Яа-яЁё]")
@@ -12,8 +12,13 @@ LATIN_RE = re.compile(r"[A-Za-z]")
 
 class LyricsService:
     def __init__(self, provider=None, metadata_reader=None):
-        self.provider = provider or FasterWhisperProvider()
+        self.provider = provider or IsolatedLyricsProvider()
         self.metadata_reader = metadata_reader
+
+    def close(self):
+        close = getattr(self.provider, 'close', None)
+        if close is not None:
+            close()
 
     def load_existing(self, audio_path):
         result = None if Path(audio_path).suffix.lower() == ".mp3" else load_sidecar(audio_path)
@@ -49,10 +54,10 @@ class LyricsService:
                 language_confidence=result.language_confidence,
                 mixed_languages=result.mixed_languages,
                 quality="low",
-                instrumental=True,
+                instrumental=result.instrumental and not bool(result.text.strip()),
                 source=result.source,
                 transcription_alphabet=result.transcription_alphabet,
-                review_reason=result.review_reason,
+                review_reason=result.review_reason or ('confidence' if result.text.strip() else 'no_text'),
             )
         return result
 

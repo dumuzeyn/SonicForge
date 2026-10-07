@@ -1,7 +1,13 @@
+import sys
+
+if __name__ == '__main__' and sys.argv[1:2] == ['--lyrics-worker']:
+    from lyrics_engine.worker import main as lyrics_worker_main
+    lyrics_worker_main()
+    raise SystemExit
+
 import os
 import math
 import queue
-import sys
 import threading
 import traceback
 import tkinter as tk
@@ -14,7 +20,7 @@ from tkinterdnd2 import TkinterDnD
 from PIL import Image, ImageTk
 
 from lyrics_engine import LyricsResult, LyricsService, TranscriptSegment, save_lyrics
-from ui.dialogs import AdditionalMetadataDialog, AdvancedAudioDialog
+from ui.dialogs import AdditionalMetadataDialog, AdvancedAudioDialog, CustomCoverDialog
 from ui.i18n import APP_NAMES, I18N
 from app_identity import set_windows_app_identity
 from audio_paths import default_output_path
@@ -36,6 +42,7 @@ COVER_CHOICES = {
             "Слияние рисунков": "blend",
             "Классический узор · современные цвета": "legacy_current_colors",
             "Классический Music2Picture": "legacy",
+            "Свой стиль": "custom",
         },
         "en": {
             "Modern artwork": "current",
@@ -43,6 +50,7 @@ COVER_CHOICES = {
             "Blended artwork": "blend",
             "Classic pattern · modern colors": "legacy_current_colors",
             "Classic Music2Picture": "legacy",
+            "Custom style": "custom",
         },
     },
     "mood": {
@@ -267,6 +275,8 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.seed_var = tk.StringVar()
         self.cover_size_var = tk.IntVar(value=1000)
         self.cover_style_var = tk.StringVar(value="Современный рисунок")
+        from music2picture_v2.custom_style import CustomCoverSettings
+        self.custom_cover_settings = CustomCoverSettings().to_dict()
         self.cover_mood_var = tk.StringVar(value="Автоматически")
         self.cover_title_var = tk.BooleanVar(value=True)
         self.cover_artist_var = tk.BooleanVar(value=True)
@@ -274,13 +284,12 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.no_change_cover_var = tk.BooleanVar(value=False)
         self.custom_cover_path_var = tk.StringVar()
         self.process_metadata_var = tk.BooleanVar(value=True)
-        self.process_audio_var = tk.BooleanVar(value=True)
+        self.process_audio_var = tk.BooleanVar(value=False)
         self.process_lyrics_var = tk.BooleanVar(value=True)
         self.process_cover_var = tk.BooleanVar(value=True)
         self.lyrics_format_var = tk.StringVar(value="В песню (MP3, USLT)")
         self.lyrics_language_var = tk.StringVar(value=next(iter(LYRICS_LANGUAGE_CHOICES["ru"])))
         self.overwrite_lyrics_var = tk.BooleanVar(value=False)
-        self.use_lyrics_for_cover_var = tk.BooleanVar(value=True)
         self.show_splash_var = tk.BooleanVar(value=not splash_preference_path().is_file())
         self.lyrics_status_key = "lyrics_status_empty"
         self.lyrics_status_args = {}
@@ -639,6 +648,9 @@ class SonicForgeApp(TkinterDnD.Tk):
             return
         self.advanced_dialog = AdvancedAudioDialog(self)
 
+    def show_custom_cover_settings(self):
+        CustomCoverDialog(self)
+
     def show_additional_metadata(self):
         if self.metadata_dialog and self.metadata_dialog.winfo_exists():
             self.metadata_dialog.show()
@@ -969,16 +981,15 @@ class SonicForgeApp(TkinterDnD.Tk):
             "extra_metadata": self._metadata_values(),
             "cover_seed": self._parse_seed(),
             "cover_style": self.cover_choice("style", self.cover_style_var.get()),
+            "custom_cover_settings": dict(self.custom_cover_settings),
             "cover_size": int(self.cover_size_var.get()),
             "cover_text_mode": self._cover_text_mode(),
             "cover_mood": self.cover_choice("mood", self.cover_mood_var.get()),
             "embed_cover": bool(self.embed_cover_var.get()),
             "change_cover": not bool(self.no_change_cover_var.get()),
             "custom_cover_path": self.custom_cover_path_var.get().strip() or None,
-            "use_lyrics_for_cover": bool(self.use_lyrics_for_cover_var.get()),
-            "cover_lyrics_text": self.view.get_lyrics_text()
-            if self.use_lyrics_for_cover_var.get()
-            else "",
+            "use_lyrics_for_cover": False,
+            "cover_lyrics_text": "",
             "lyrics_format": self.lyrics_format_key(),
             "lyrics_language": self.lyrics_language_key(),
             "overwrite_lyrics": bool(self.overwrite_lyrics_var.get()),
@@ -1032,6 +1043,8 @@ class SonicForgeApp(TkinterDnD.Tk):
 
     def _process_worker(self, kwargs):
         kwargs = dict(kwargs)
+        if 'lyrics' in kwargs.get('process_steps', ()):
+            kwargs['lyrics_service'] = self._get_lyrics_service()
         kwargs["lyrics_progress"] = lambda stage, data: self.log_queue.put(("__LYRICS_BATCH_PROGRESS__", stage, data))
         result_key = "run_failed"
         old_stdout, old_stderr = sys.stdout, sys.stderr
@@ -1120,8 +1133,8 @@ class SonicForgeApp(TkinterDnD.Tk):
         cover_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonicForge" / "cover_preview"
         preview_size = min(size, 384)
         output_path = cover_dir / f"{source.stem}_cover_preview_{preview_size}_{seed}_{uuid.uuid4().hex[:8]}.png"
-        use_lyrics_for_cover = bool(self.use_lyrics_for_cover_var.get())
-        lyrics_text = self.view.get_lyrics_text() if use_lyrics_for_cover else ""
+        use_lyrics_for_cover = False
+        lyrics_text = ""
         text_mode = self._cover_text_mode()
         mood = self.cover_choice("mood", self.cover_mood_var.get())
         self.cancel_event.clear()
@@ -1143,6 +1156,7 @@ class SonicForgeApp(TkinterDnD.Tk):
                 mood,
                 style,
                 use_lyrics_for_cover,
+                dict(self.custom_cover_settings),
             ),
             daemon=True,
         )
@@ -1151,7 +1165,7 @@ class SonicForgeApp(TkinterDnD.Tk):
 
     def _cover_preview_worker(
         self, source, output_path, size, seed, lyrics_text, text_mode,
-        mood, style, use_lyrics_for_cover=True
+        mood, style, use_lyrics_for_cover=False, custom_cover_settings=None
     ):
         try:
             import music2picture
@@ -1165,6 +1179,7 @@ class SonicForgeApp(TkinterDnD.Tk):
                 text_mode=text_mode,
                 mood_override=mood,
                 style=style,
+                custom_cover_settings=custom_cover_settings,
                 cancel_event=self.cancel_event,
                 preview=True,
             )
@@ -1204,13 +1219,15 @@ class SonicForgeApp(TkinterDnD.Tk):
         elif not self._cover_preview_displayed and not self.cancel_event.is_set():
             messagebox.showerror(self.app_name(), self.t("cover_preview_failed"))
 
-    def _lyrics_worker(self, source, language):
+    def _get_lyrics_service(self):
         import music_metadata
+        if self._lyrics_service is None:
+            self._lyrics_service = LyricsService(metadata_reader=music_metadata.read_all_metadata)
+        return self._lyrics_service
 
+    def _lyrics_worker(self, source, language):
         try:
-            if self._lyrics_service is None:
-                self._lyrics_service = LyricsService(metadata_reader=music_metadata.read_all_metadata)
-            service = self._lyrics_service
+            service = self._get_lyrics_service()
             result = service.recognize(
                 source,
                 cancel_event=self.cancel_event,
@@ -1238,7 +1255,7 @@ class SonicForgeApp(TkinterDnD.Tk):
         self._lyrics_after_id = None
         done = False
         try:
-            while True:
+            for _ in range(80):
                 event, value = self._lyrics_results.get_nowait()
                 if event == "line":
                     self.view.append_lyrics_line(value.text)
@@ -1480,6 +1497,8 @@ class SonicForgeApp(TkinterDnD.Tk):
         """Cancel Tcl callbacks before direct test/host destruction as well as WM close."""
         if self.worker and self.worker.is_alive():
             self.cancel_event.set()
+        if self._lyrics_service is not None:
+            threading.Thread(target=self._lyrics_service.close, daemon=True).start()
         self._cancel_scheduled_callbacks()
         if hasattr(self, "view"):
             self.view._cancel_tab_transition()
@@ -1495,6 +1514,10 @@ class SonicForgeApp(TkinterDnD.Tk):
     def write_log(self, text):
         self.view.log.configure(state=tk.NORMAL)
         self.view.log.insert(tk.END, text)
+        # Keep a bounded visible history during large folder jobs.
+        lines = int(self.view.log.index('end-1c').split('.')[0])
+        if lines > 5000:
+            self.view.log.delete('1.0', f'{lines - 4000}.0')
         self.view.log.see(tk.END)
         self.view.log.configure(state=tk.DISABLED)
 

@@ -1,4 +1,4 @@
-"""Five cover styles combining the current renderer with Music2Picture 342013a.
+"""Five presets and a custom style using the current or Music2Picture renderer.
 
 The historical renderer is imported only when one of its styles is requested.
 """
@@ -16,18 +16,20 @@ STYLE_CURRENT_LEGACY_COLORS = "current_legacy_colors"
 STYLE_BLEND = "blend"
 STYLE_LEGACY_CURRENT_COLORS = "legacy_current_colors"
 STYLE_LEGACY = "legacy"
+STYLE_CUSTOM = "custom"
 STYLES = (
     STYLE_CURRENT,
     STYLE_CURRENT_LEGACY_COLORS,
     STYLE_BLEND,
     STYLE_LEGACY_CURRENT_COLORS,
     STYLE_LEGACY,
+    STYLE_CUSTOM,
 )
 LEGACY_COLOR_MODES = ("ocean", "plasma", "fusion", "aurora")
 LEGACY_COMMIT = "342013aaa8bdb4cb86c8c14fec0acb038e50b5ca"
 
 
-def render_legacy(audio_path, size=1000, seed=None, color_mode="plasma"):
+def render_legacy(audio_path, size=1000, seed=None, color_mode="plasma", patterns=2):
     """Render the original 342013a artwork before its optional title layer."""
     from . import legacy_music2picture as legacy
 
@@ -46,7 +48,7 @@ def render_legacy(audio_path, size=1000, seed=None, color_mode="plasma"):
     )
     rgb = legacy.render_random_cover(
         spectrum, rms, bass, mids, highs, size,
-        patterns=2, bpm=bpm, bpm_curve=bpm_curve,
+        patterns=patterns, bpm=bpm, bpm_curve=bpm_curve,
         color_mode=color_mode, motion_curve=motion_curve,
         energy_curve=energy_curve, global_energy=global_energy, rng=rng,
     )
@@ -81,11 +83,24 @@ def apply_palette(pattern: Image.Image, colors: Image.Image) -> Image.Image:
 
 
 def render_variant(audio_path, visual_dna, visual_plan, *, style=STYLE_CURRENT,
-                   size=1000, seed=None, preview=False, legacy_color_mode="plasma"):
+                   size=1000, seed=None, preview=False, legacy_color_mode="plasma",
+                   custom_cover_settings=None):
     if style not in STYLES:
         raise ValueError(f"Unknown cover style: {style}")
     if legacy_color_mode not in LEGACY_COLOR_MODES:
         raise ValueError(f"Unknown historical color mode: {legacy_color_mode}")
+    if style == STYLE_CUSTOM:
+        from .custom_style import CustomCoverSettings, finish_custom_background
+        settings = CustomCoverSettings.parse(custom_cover_settings)
+        if settings.pattern == "legacy":
+            background = render_legacy(
+                audio_path, size=size, seed=seed, color_mode=legacy_color_mode,
+                patterns=1 + round(settings.detail / 25),
+            )
+        else:
+            background = render_cover(visual_dna, visual_plan, size=size, seed=seed,
+                                      preview=preview, detail=settings.detail)
+        return finish_custom_background(background, settings)
     current = None
     historical = None
     if style != STYLE_LEGACY:
