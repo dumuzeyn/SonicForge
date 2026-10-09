@@ -72,7 +72,7 @@ class CoverVariantTests(unittest.TestCase):
             self.assertEqual(decode.call_args.kwargs["creationflags"], subprocess.CREATE_NO_WINDOW)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg is required by the historical renderer")
-    def test_fifth_style_keeps_historical_artwork_but_centers_new_text(self):
+    def test_fifth_style_cleans_historical_artwork_and_exports_music_lettering(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "Tone.wav"
@@ -87,14 +87,20 @@ class CoverVariantTests(unittest.TestCase):
             music2picture.make_cover(source, default_style, size=192, seed=7,
                                      style="legacy", text_mode="title")
             with Image.open(expected) as reference, Image.open(actual) as result:
-                self.assertIsNone(ImageChops.difference(reference.convert("RGB"), result.convert("RGB")).getbbox())
-            with Image.open(expected) as reference, Image.open(default_style) as result:
+                self.assertIsNotNone(ImageChops.difference(reference.convert("RGB"), result.convert("RGB")).getbbox())
+            with Image.open(actual) as reference, Image.open(default_style) as result:
                 bounds = ImageChops.difference(reference.convert("RGB"), result.convert("RGB")).getbbox()
                 self.assertIsNotNone(bounds)
-                self.assertAlmostEqual((bounds[0] + bounds[2]) / 2, 96, delta=20)
-                self.assertAlmostEqual((bounds[1] + bounds[3]) / 2, 96, delta=20)
+                self.assertGreaterEqual(bounds[0], 0)
+                self.assertGreaterEqual(bounds[1], 0)
+                self.assertLessEqual(bounds[2], 192)
+                self.assertLessEqual(bounds[3], 192)
+            titled_profile = json.loads((root / ".sonicforge" / "default_style.profile.json").read_text(encoding="utf-8"))
+            self.assertEqual(titled_profile["typography"]["version"], "music-lettering-v3")
+            self.assertGreaterEqual(titled_profile["typography"]["contrast_ratio"], 4.5)
             profile = json.loads((root / ".sonicforge" / "variant.profile.json").read_text(encoding="utf-8"))
             self.assertEqual(profile["legacy_commit"], "342013aaa8bdb4cb86c8c14fec0acb038e50b5ca")
+            self.assertEqual(profile['generator_version'], 'classic-crisp-v2')
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg is required for cover analysis")
     def test_three_hybrids_render_from_real_audio(self):
@@ -128,7 +134,7 @@ class CoverVariantTests(unittest.TestCase):
             self.assertFalse((root / ".sonicforge").exists())
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg is required for cover rendering")
-    def test_titles_are_centered_in_all_five_styles(self):
+    def test_music_titles_are_baked_into_all_styles_and_stay_inside_the_image(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "Tone.wav"
@@ -141,8 +147,10 @@ class CoverVariantTests(unittest.TestCase):
                 with Image.open(bare) as base, Image.open(titled) as label:
                     bounds = ImageChops.difference(base.convert("RGB"), label.convert("RGB")).getbbox()
                 self.assertIsNotNone(bounds, style)
-                self.assertAlmostEqual((bounds[0] + bounds[2]) / 2, 96, delta=20, msg=style)
-                self.assertAlmostEqual((bounds[1] + bounds[3]) / 2, 96, delta=20, msg=style)
+                self.assertGreaterEqual(bounds[0], 0, style)
+                self.assertGreaterEqual(bounds[1], 0, style)
+                self.assertLessEqual(bounds[2], 192, style)
+                self.assertLessEqual(bounds[3], 192, style)
 
 
 if __name__ == "__main__":

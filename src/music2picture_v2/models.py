@@ -50,6 +50,7 @@ class AudioAnalysis:
     climax_position: float
     intro_energy: float
     ending_energy: float
+    activity_curve: tuple[float, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -102,6 +103,7 @@ class VisualDNA:
     intro_energy: float
     ending_energy: float
     fingerprint: str
+    activity_curve: tuple[float, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

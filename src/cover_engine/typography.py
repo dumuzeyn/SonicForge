@@ -102,10 +102,19 @@ class TypographyEngine:
         self, image, title, artist="", profile=None, enabled=True, show_artist=True,
         language="unknown", song_profile=None, title_treatment=None,
         placement_override=None,
+        visual_dna=None,
     ):
         self.last_layout = {}
         if not enabled or not title.strip():
             return image
+        if visual_dna is not None:
+            from .music_lettering import compose_music_title
+
+            return compose_music_title(
+                self, image, title, artist, visual_dna, profile=profile,
+                show_artist=show_artist, language=language,
+                placement_override=placement_override,
+            )
         canvas = image.convert("RGBA")
         size = canvas.width
         style = self._contextual_style(image, profile, song_profile)
@@ -747,25 +756,27 @@ class TypographyEngine:
 
     @staticmethod
     def _text_length(text, font, tracking=0):
-        draw = ImageDraw.Draw(Image.new("L", (4, 4)))
-        return sum(float(draw.textlength(character, font=font)) for character in text) + max(0, len(text) - 1) * tracking
+        from .music_lettering import clusters
+        return float(font.getlength(text)) + max(0, len(clusters(text)) - 1) * tracking
 
     @classmethod
     def _draw_tracked(
         cls, draw, position, text, font, fill, tracking=0, stroke_width=0,
         stroke_fill=None, emphasis_words=(), emphasis_fill=None,
     ):
+        from .music_lettering import clusters, positions
+
         x, y = position
         emphasis = {str(word).lower().strip(".,:;!?()[]") for word in emphasis_words}
+        fills = []
         for token in re_split_words(text):
             token_key = token.lower().strip(".,:;!?()[]")
             token_fill = emphasis_fill if token_key in emphasis and emphasis_fill else fill
-            for character in token:
-                draw.text(
-                    (x, y), character, font=font, fill=token_fill,
-                    stroke_width=stroke_width, stroke_fill=stroke_fill,
-                )
-                x += cls._text_length(character, font) + tracking
+            fills.extend(token_fill for _ in clusters(token))
+        items, _ = positions(text, font, tracking)
+        for (character, offset), token_fill in zip(items, fills):
+            draw.text((x + offset, y), character, font=font, fill=token_fill,
+                      stroke_width=stroke_width, stroke_fill=stroke_fill)
 
     @staticmethod
     def _font(size, candidates=None, text=""):
@@ -789,11 +800,14 @@ class TypographyEngine:
     @staticmethod
     def _supports_text(font, text):
         required = set(text or "") | {"Ё", "ё"}
+        missing = font.getmask("\uffff")
+        missing_signature = (missing.size, bytes(missing))
         for character in required:
             if character.isspace():
                 continue
             try:
-                if font.getmask(character).getbbox() is None:
+                mask = font.getmask(character)
+                if mask.getbbox() is None or (mask.size, bytes(mask)) == missing_signature:
                     return False
             except (OSError, ValueError):
                 return False

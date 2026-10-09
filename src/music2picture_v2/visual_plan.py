@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import hashlib
-import random
 
 from .models import VisualDNA, VisualPlan
 from .utils import clamp, hsv_hex
+from .character import musical_character
 
 
 KEY_HUES = {
@@ -26,9 +26,9 @@ KEY_HUES = {
 def build_visual_plan(dna: VisualDNA, variation: int = 0) -> VisualPlan:
     anchor = KEY_HUES.get(dna.key, 210.0)
     fingerprint_digest = hashlib.sha256(dna.fingerprint.encode("utf-8", errors="replace")).digest()
-    fingerprint_shift = (int.from_bytes(fingerprint_digest[:2], "little") % 111) - 55
+    fingerprint_shift = (int.from_bytes(fingerprint_digest[:2], "little") % 17) - 8
     emotional_shift = (dna.warmth - 0.5) * 48.0 + (dna.valence - 0.5) * 34.0
-    variation_shift = ((variation * 47) % 71) - 35 if variation else 0
+    variation_shift = ((variation * 11) % 15) - 7 if variation else 0
     primary_hue = (anchor + emotional_shift + variation_shift + fingerprint_shift) % 360.0
     palette_width = clamp(0.20 + dna.harmonic_complexity * 0.42 + dna.dissonance * 0.38)
     separation = 28.0 + palette_width * 112.0
@@ -131,78 +131,25 @@ def _lighting(dna: VisualDNA, contrast: float) -> str:
 
 
 def _build_palette(dna, primary_hue, saturation, luminance, contrast, variation):
-    digest = hashlib.sha256(
-        f"palette-v3|{dna.fingerprint}|{variation}|{dna.key}|{dna.mode}".encode("utf-8")
-    ).digest()
-    rng = random.Random(int.from_bytes(digest[:8], "little"))
-    if dna.spectral_flatness > 0.64 or dna.aggressiveness > 0.68:
-        candidates = ("dark_neon", "high_contrast", "saturated", "complementary", "triadic")
-    elif dna.relaxation > 0.66 or dna.acousticness > 0.68:
-        candidates = ("analogous", "pastel", "muted", "cold_dominant", "split_complementary")
-    elif dna.valence > 0.64:
-        candidates = ("triadic", "warm_dominant", "pastel", "saturated", "complementary")
+    """Ordered calm-to-drive swatches; musical character chooses their usage."""
+    drive = musical_character(dna).drive
+    if dna.spectral_flatness > .64 or dna.aggressiveness > .68:
+        scheme = 'high_contrast'
+    elif drive < .22:
+        scheme = 'muted'
+    elif drive < .4:
+        scheme = 'analogous'
+    elif drive < .6:
+        scheme = 'split_complementary'
     else:
-        candidates = (
-            "split_complementary", "dark_neon", "analogous", "triadic",
-            "cold_dominant", "warm_dominant", "high_contrast",
-        )
-    scheme = rng.choice(candidates)
-    offsets = {
-        "analogous": (-58, -30, 0, 24, 52, 76),
-        "complementary": (-24, 0, 22, 154, 180, 206),
-        "split_complementary": (-28, 0, 25, 138, 218, 244),
-        "triadic": (-18, 0, 34, 116, 222, 250),
-        "dark_neon": (-36, 0, 42, 128, 178, 238),
-        "pastel": (-42, -18, 12, 72, 142, 214),
-        "muted": (-54, -20, 16, 62, 154, 224),
-        "warm_dominant": (-34, -12, 10, 34, 58, 172),
-        "cold_dominant": (-44, -16, 12, 46, 82, 178),
-        "high_contrast": (-18, 0, 34, 162, 184, 218),
-        "saturated": (-48, -10, 28, 88, 152, 218),
-    }[scheme]
-    count = rng.choices((3, 4, 5, 6), weights=(1, 4, 4, 1), k=1)[0]
-    selected = list(offsets)
-    while len(selected) < count:
-        selected.append(rng.uniform(-180, 180))
-    rng.shuffle(selected)
-    selected = selected[:count]
-    selected[0] = 0
-    colors = []
-    for index, offset in enumerate(selected):
-        hue = (primary_hue + offset + rng.uniform(-8, 8)) % 360
-        if scheme == "warm_dominant":
-            hue = (22.0 + offset + rng.uniform(-7, 7)) % 360
-            sat = rng.uniform(0.68, 0.98)
-            value = rng.uniform(0.16, 0.34) if index == 0 else rng.uniform(0.62, 0.98)
-        elif scheme == "cold_dominant":
-            hue = (212.0 + offset + rng.uniform(-8, 8)) % 360
-            sat = rng.uniform(0.54, 0.94)
-            value = rng.uniform(0.14, 0.32) if index == 0 else rng.uniform(0.58, 0.96)
-        elif scheme == "high_contrast":
-            sat = rng.uniform(0.72, 1.0)
-            value = rng.uniform(0.10, 0.24) if index == 0 else rng.uniform(0.76, 1.0)
-        elif scheme == "saturated":
-            sat = rng.uniform(0.78, 1.0)
-            value = rng.uniform(0.14, 0.32) if index == 0 else rng.uniform(0.66, 1.0)
-        elif scheme == "dark_neon":
-            sat = clamp(saturation * rng.uniform(1.02, 1.35), 0.62, 1.0)
-            value = rng.uniform(0.16, 0.40) if index == 0 else rng.uniform(0.62, 0.98)
-        elif scheme == "pastel":
-            sat = clamp(saturation * rng.uniform(0.46, 0.74), 0.24, 0.68)
-            value = rng.uniform(0.28, 0.48) if index == 0 else rng.uniform(0.72, 0.96)
-        elif scheme == "muted":
-            sat = clamp(saturation * rng.uniform(0.48, 0.78), 0.22, 0.70)
-            value = rng.uniform(0.18, 0.38) if index == 0 else rng.uniform(0.46, 0.80)
-        else:
-            sat = clamp(saturation * rng.uniform(0.90, 1.28), 0.52, 1.0)
-            value = rng.uniform(0.13, 0.36) if index == 0 else clamp(
-                luminance + rng.uniform(-0.04, 0.38) + contrast * 0.12, 0.48, 0.98
-            )
-        colors.append(hsv_hex(hue, sat, value))
-    if scheme not in {"muted", "pastel"}:
-        colors[-1] = hsv_hex(
-            (primary_hue + selected[-1] + rng.uniform(-6, 6)) % 360,
-            clamp(saturation + 0.18, 0.55, 1.0),
-            clamp(0.82 + contrast * 0.16, 0.82, 1.0),
-        )
-    return scheme, tuple(colors)
+        scheme = 'saturated'
+    # Neighboring hues form one material. Large hue jumps produced muddy
+    # brown/neon-green combinations even in a narrow character-selected range.
+    accent_offset = 12 + dna.tension * 24 + dna.dissonance * 10
+    offsets = (-14, -6, 0, accent_offset * .4, accent_offset)
+    colors = tuple(hsv_hex(
+        (primary_hue + offset) % 360,
+        clamp(.28 + index * .10 + saturation * .18, .24, .84),
+        clamp(.22 + index * .14 + luminance * .10 + contrast * .03, .20, .88),
+    ) for index, offset in enumerate(offsets))
+    return scheme, colors

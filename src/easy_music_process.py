@@ -171,6 +171,7 @@ def process_music(
     lyrics_language="auto",
     overwrite_lyrics=False,
     lyrics_service=None,
+    edited_lyrics_result=None,
     cover_style="current",
     cancel_event=None,
     use_lyrics_for_cover=False,
@@ -321,7 +322,21 @@ def process_music(
             print("\nОбложки оставлены без изменений")
 
         check_cancelled(cancel_event)
-        if "lyrics" in steps:
+        if "lyrics" in steps and edited_lyrics_result is not None:
+            from lyrics_engine import save_lyrics
+            files = music_metadata.audio_files(staging_path)
+            if len(files) != 1:
+                raise ValueError('Edited lyrics require one rendered editor mix')
+            data = dict(index=1, total=1, file=files[0].name)
+            if lyrics_progress:
+                lyrics_progress('started', dict(total=1))
+                lyrics_progress('saving', data)
+            check_cancelled(cancel_event)
+            save_lyrics(files[0], edited_lyrics_result, lyrics_format)
+            if lyrics_progress:
+                lyrics_progress('saved', data)
+                lyrics_progress('completed', dict(total=1, saved=1, preserved=0, uncertain=0, failed=0))
+        elif "lyrics" in steps:
             print("\nРаспознавание текста песен")
             from lyrics_engine import recognize_batch
 

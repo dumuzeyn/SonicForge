@@ -2,13 +2,13 @@
 
 <a id="russian"></a>
 
-<h1 align="center">SonicForge 2.1 · Кузница Звука</h1>
+<h1 align="center">SonicForge 2.2 · Кузница Звука</h1>
 
 <p align="center">Настольный аудиоредактор: дорожки, звук, метаданные, текст песни и обложки.</p>
 
 <p align="center">
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.1.0/SonicForge-Setup-2.1.0.exe"><img src="https://img.shields.io/badge/Скачать_EXE-Версия_2.1-6750bd?style=for-the-badge" alt="Скачать установщик SonicForge 2.1"></a>
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.1.0/SonicForge-2.1.0-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Скачать портативную версию"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.2.0/SonicForge-Setup-2.2.0.exe"><img src="https://img.shields.io/badge/Скачать_EXE-Версия_2.2-6750bd?style=for-the-badge" alt="Скачать установщик SonicForge 2.2"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.2.0/SonicForge-2.2.0-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Скачать портативную версию"></a>
   <a href="#english"><img src="https://img.shields.io/badge/English-Open-ffd12f?style=for-the-badge&labelColor=17151d" alt="Open English guide"></a>
 </p>
 
@@ -20,7 +20,7 @@
 
 ## Установка и первый запуск
 
-1. На странице релиза скачайте **SonicForge-Setup-2.1.0.exe** и запустите установщик. Это полноценный установщик, а не одинокий EXE без библиотек.
+1. На странице релиза скачайте **SonicForge-Setup-2.2.0.exe** и запустите установщик. Это полноценный установщик, а не одинокий EXE без библиотек.
 2. Выберите папку установки; ярлык рабочего стола можно включить отдельно. Права администратора обычно не нужны: установка выполняется для текущего пользователя.
 3. Запустите SonicForge. Для обработки звука и создания обложек отдельно устанавливать Python и FFmpeg не требуется.
 4. Для смены языка откройте «Настройки». Справка доступна в верхней полосе и по F1.
@@ -39,7 +39,9 @@ Windows x64. Сборка рассчитана на Windows 10/11. Устано�
 | Посмотреть обложку | «Обложка» | «Предпросмотр обложки» |
 | Записать вручную исправленный текст в выбранную песню | «Текст песни» | «Записать в песню» |
 
-Файлы в редакторе не становятся источником пакетной обработки. Настройки раздела «Звук» не применяются к редактору. Предпросмотры не запускают «Выполнение».
+Кнопка «Связь с редактором» переключает режим. **Выкл.** — редактор экспортирует отдельно, остальные разделы используют выбранный исходник. **Вкл.** — анализ, обложка, текст и «Выполнение» используют текущий монтаж всех включённых дорожек, без ручного экспорта. Экспорт редактора доступен в обоих режимах. Настройки раздела «Звук» не меняют фрагменты на дорожках; при выполнении они дополнительно применяются к рабочему миксу. Предпросмотры не запускают «Выполнение».
+
+Рядом с переключателем выберите формат рабочей версии: MP3, WAV или M4A. Без этапа «Звук» это также формат результата; при включении этого этапа создаётся MP3 с настройками раздела «Звук». Пока монтаж не изменён, рабочая версия используется повторно. Правки дорожек, смена режима или формата очищают старые предпросмотры и текст, поскольку таймкоды могли измениться. Обновите их перед «Выполнением». В связанном режиме «Записать в песню» сохраняет текст только в рабочую версию, а «Выполнение» — в итоговый файл. Рабочие файлы временные и удаляются при закрытии приложения; перед выходом выполните обработку или экспорт.
 
 ## Аудиоредактор
 
@@ -141,7 +143,7 @@ Windows x64. Сборка рассчитана на Windows 10/11. Устано�
 
 1. Выберите один исходный файл.
 2. Установите желаемый результат и силу профиля.
-3. При необходимости нажмите «Анализировать», затем отдельно «Применить рекомендацию».
+3. При необходимости нажмите «Анализировать», затем отдельно «Применить рекомендацию». Видны текущий этап, движущийся индикатор, время работы и кнопка «Отменить». Для быстрой предварительной оценки длинной песни используются три разнесённых участка общей длиной до 24 секунд; короткая песня анализируется целиком. Это не точное измерение LUFS всей записи. Повторный анализ неизменённого файла использует кэш. Рекомендация сама не применяется и звук не меняет.
 4. Нажмите «Создать сравнение» и сравните «Оригинал» / «Результат».
 5. Для сохранения готовой копии включите этап «Звук» и запустите «Выполнение».
 
@@ -207,9 +209,13 @@ Windows x64. Сборка рассчитана на Windows 10/11. Устано�
 
 ## Обложка: генерация и собственная картинка
 
+Название меняет толщину, пропорции, наклон и интервалы по характеру музыки. Его размещение согласуется с одним из 40 семейств символов и дополнительными дугами, гранями или плавными формами. Буквы и фигуры сглаживаются при отрисовке, а весь текст помещается внутри круга с запасом для круглых обложек плеера. Исполнитель выключен по умолчанию; его можно включить вручную. Новое оформление применяется при повторной генерации и входит в сохраняемый PNG. [Подробнее о системе и исследованиях](docs/music-lettering.md).
+
 ![Предпросмотр обложки и кнопка выбора своей картинки](docs/images/cover-ru.png)
 
 Music2Picture анализирует звук и строит процедурную абстрактную графику локально. Анализ спектра, ритма, гармонии и структуры влияет на палитру, плотность, изгибы, зерно и композицию. Это художественная интерпретация, **не научный график спектра и не изображение конкретного сюжета песни**.
+
+Современный рисунок выбирает семейство узора по музыкальным признакам, а не случайно по имени/отпечатку файла. Спокойное звучание даёт более крупные мягкие формы, энергичный ритм — плотные складки, резкие атаки и шероховатый тембр — более выраженное движение и детали. Активность измеряется отдельно по участкам песни: основной характер задаёт фон, устойчивые противоположные фрагменты добавляют небольшие мягко смешанные цветовые и текстурные акценты вдоль существующих складок, без отдельных пятен. Соседние оттенки и светотень сохраняют объём даже в одноцветной палитре. Тишина и одиночные выбросы не считаются такими фрагментами. Seed меняет детали расположения, но не подменяет музыкальный характер.
 
 | Управление | Действие |
 | --- | --- |
@@ -225,7 +231,7 @@ Music2Picture анализирует звук и строит процедурн
 | «Выбрать свою картинку» | Принимает PNG, JPEG, WebP; проверяет изображение, приводит к квадрату выбранного размера |
 | «Использовать генерацию» | Возвращает автоматический источник после выбора своей картинки |
 
-Пять стилей: современный рисунок; современный рисунок с классическими цветами; смесь обоих рисунков 50/50; классический узор с современными цветами; классический Music2Picture. Классический вариант основан на [закреплённой версии Music2Picture](https://github.com/dumuzeyn/Music2Picture/tree/342013aaa8bdb4cb86c8c14fec0acb038e50b5ca).
+Пять стилей: современный рисунок; современный рисунок с классическими цветами; смесь обоих рисунков 50/50; классический узор с современными цветами; классический Music2Picture. Классический вариант основан на [закреплённой версии Music2Picture](https://github.com/dumuzeyn/Music2Picture/tree/342013aaa8bdb4cb86c8c14fec0acb038e50b5ca). Исходные поля, изломы и тонкие контуры сохраняются, в том числе у коротких песен. Отдельные шумные пиксели удаляются медианным фильтром 3×3, без общего размытия картинки. Длительность и разнообразие звучания регулируют силу контуров, а не заменяют узор упрощённым шаблоном. Увеличение размера картинки не добавляет новых слоёв или мелкого шума.
 
 Настроение задаётся внутренней автоматической обработкой: в текущем окне нет поля ручного описания сцены. Своя картинка заменяет генерацию; параметры генератора для неё не применяются, оригинальное изображение не меняется. При «Выполнении» полный PNG сохраняется в папке covers; при включённом встраивании он добавляется к выходному аудио. Предпросмотр ещё не означает, что картинка записана в песню.
 
@@ -233,9 +239,13 @@ Music2Picture анализирует звук и строит процедурн
 
 ![Настройки своей палитры и узора](docs/images/cover-custom-ru.png)
 
-Нажмите «Настроить свой стиль…», выберите современную органическую текстуру или классический Music2Picture. В списке палитры нет ограничения на количество цветов: используйте «Добавить…», «Изменить…» и «Удалить»; стрелки меняют порядок переходов, а полоска показывает результат. Большой список прокручивается. Остаётся минимум один цвет — в этом случае узор использует оттенки выбранного цвета. «Детализация» меняет мелкие структуры современного рисунка или количество слоёв классического узора. Контраст работает в диапазоне 50–150%, насыщенность — 0–150% (0% даёт чёрно-белый фон), мягкость — 0–100% (0% отключает размытие). Фильтры применяются **до** надписей, поэтому название не размывается.
+**Левая часть шкалы — спокойствие, правая — драйв.** Разместите подходящие вам спокойные цвета слева, энергичные справа. Песня использует ограниченный диапазон вокруг своего основного характера, а не всю палитру сразу. Быстрый фрагмент спокойной песни даст небольшой акцент справа; спокойный фрагмент энергичной — слева. Маркеры определяют, какие цвета соответствуют каждому уровню активности. Это правило работает для обеих основ «Своего стиля»: современного рисунка и классического узора.
 
-«Применить» выбирает «Свой стиль»; затем нажмите «Предпросмотр обложки» и, если результат подходит, выполните этап обложки. «Отмена» не меняет настройки, «По умолчанию» сбрасывает поля окна до применения. Для повторяемого результата сохраните одинаковые цвета, параметры и Seed. Настройки записываются в профиль рядом с готовым PNG. Короткие слова в названии не мешают автоматическому переносу: размер надписи подбирается по всей композиции.
+Нажмите «Настроить свой стиль…», выберите современную органическую текстуру или классический Music2Picture. В списке палитры нет ограничения на количество цветов: используйте «Добавить…», «Изменить…» и «Удалить». **Перетаскивайте цветные маркеры под шкалой**, чтобы менять положение цветов и ширину переходов; при переносе через соседний маркер меняется порядок. Шкала обновляется сразу, а позиции используются и в готовой обложке. Стрелки ↑/↓ меняют цвета местами, не сдвигая позиции. Для точной настройки выберите маркер и нажимайте ←/→ (шаг 1%, с Shift — 0,1%). Если маркеры перекрываются, выберите нужный цвет в списке. Новый цвет добавляется справа и может быть перетащен в любое место. Большой список прокручивается; рядом с каждым цветом показана его позиция. «Применить» сохраняет настройки, «Отмена» оставляет прежние. Остаётся минимум один цвет — в этом случае узор использует оттенки выбранного цвета. «Детализация» меняет мелкие структуры современного рисунка или плавно регулирует плотность и силу деталей классического узора от 0 до 100. Контраст работает в диапазоне 50–150%, насыщенность — 0–150% (0% даёт чёрно-белый фон), мягкость — 0–100% (0% отключает размытие). Фильтры применяются **до** надписей, поэтому название не размывается.
+
+«Применить» выбирает «Свой стиль» и запоминает палитру, позиции цветов, узор, детализацию, контраст, насыщенность и мягкость между запусками. Настройки хранятся отдельно от программы в `%LOCALAPPDATA%/SonicForge/custom_cover.json`, поэтому обновление приложения их не сбрасывает. Затем нажмите «Предпросмотр обложки» и, если результат подходит, выполните этап обложки. «Отмена» не меняет сохранённые настройки, «По умолчанию» сбрасывает поля окна до применения. Для повторяемого результата сохраните одинаковые цвета, параметры и Seed. Настройки также записываются в профиль рядом с готовым PNG. Короткие слова в названии не мешают автоматическому переносу: размер надписи подбирается по всей композиции.
+
+При замене только обложки MP3 обновляются только кадры картинки APIC: существующий текст USLT/SYLT, остальные метаданные и звуковые байты сохраняются. Неподдерживаемые или повреждённые заголовки ID3 отклоняются без изменения файла. Отдельно выбранные этапы очистки метаданных или перезаписи текста по-прежнему выполняют свои действия.
 
 ## Текст песни
 
@@ -244,7 +254,7 @@ Music2Picture анализирует звук и строит процедурн
 1. Выберите один файл в блоке источника.
 2. «Открыть готовый» читает текст из тегов или соседнего TXT/LRC без повторного распознавания.
 3. «Распознать» запускает локальную обработку звука; строки появляются по мере работы.
-4. Проверьте слова вручную. Двойной щелчок выделяет слово с учётом Unicode, апострофов и дефисов; Ctrl+A/C/X/V/Z работают и в русской раскладке.
+4. Проверьте слова вручную. Двойной щелчок выделяет слово с учётом Unicode, апострофов и дефисов; Ctrl+A/C/X/V/Z работают и в русской раскладке. Ctrl+C в поле текста копирует выделение, а без выделения — весь текст песни. Кнопка «Копировать текст» и пункт правого меню копируют весь текст, даже во время распознавания. Правое меню также позволяет скопировать только выделенное и выделить всё.
 5. Сохраните исправленный текст кнопкой «Записать в песню» / сохранения.
 
 | Настройка | Значение |
@@ -273,7 +283,7 @@ Music2Picture анализирует звук и строит процедурн
 
 1. Проверьте источник и папку назначения.
 2. Выберите только нужные этапы: «Звук», «Метаданные», «Текст песни», «Обложка».
-3. Уточните настройки этих разделов. Правки редактора сюда не входят.
+3. Уточните настройки этих разделов. Включите «Связь с редактором», если хотите обработать монтаж, или оставьте выключенной для обработки исходника.
 4. Нажмите «Запустить», дождитесь сообщения о завершении и проверьте журнал.
 5. Откройте папку результата, послушайте выходные файлы и проверьте теги.
 
@@ -335,7 +345,7 @@ python -m unittest discover -s tests -t .
 .\scripts\build_windows.ps1
 ~~~
 
-Результаты: dist\SonicForge\SonicForge.exe вместе с _internal и **dist\SonicForge-Setup-2.1.0.exe**. Скрипт не закрывает насильно открытый портативный проект. Служебные сборки, локальные проверки, кэши и бинарные релизы не коммитятся в исходный репозиторий.
+Результаты: dist\SonicForge\SonicForge.exe вместе с _internal и **dist\SonicForge-Setup-2.2.0.exe**. Скрипт не закрывает насильно открытый портативный проект. Служебные сборки, локальные проверки, кэши и бинарные релизы не коммитятся в исходный репозиторий.
 
 Командные инструменты: `python src/easy_music_process.py` — полная обработка; `python src/music2picture.py covers` / `describe` — обложки и описания; `python src/music_metadata.py` — метаданные. Для параметров используйте --help. Ключи, меняющие файлы, применяйте сначала на копиях.
 
@@ -377,13 +387,13 @@ python -m unittest discover -s tests -t .
 
 <p align="center"><img src="assets/sonic_forge_mark.png" width="120" alt="SonicForge application icon"></p>
 
-<h1 align="center">SonicForge 2.1 · Sound Forge</h1>
+<h1 align="center">SonicForge 2.2 · Sound Forge</h1>
 
 <p align="center">A desktop audio editor: tracks, sound, metadata, lyrics and cover art.</p>
 
 <p align="center">
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.1.0/SonicForge-Setup-2.1.0.exe"><img src="https://img.shields.io/badge/Download_EXE-Version_2.1-6750bd?style=for-the-badge" alt="Download SonicForge 2.1 installer"></a>
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.1.0/SonicForge-2.1.0-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Download portable edition"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.2.0/SonicForge-Setup-2.2.0.exe"><img src="https://img.shields.io/badge/Download_EXE-Version_2.2-6750bd?style=for-the-badge" alt="Download SonicForge 2.2 installer"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.2.0/SonicForge-2.2.0-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Download portable edition"></a>
   <a href="#russian"><img src="https://img.shields.io/badge/Русский-Открыть-ffd12f?style=for-the-badge&labelColor=17151d" alt="Открыть русское руководство"></a>
 </p>
 
@@ -395,7 +405,7 @@ python -m unittest discover -s tests -t .
 
 ## Install and start
 
-1. Download **SonicForge-Setup-2.1.0.exe** from the release page and run it. This is the complete installer, not a standalone launcher missing its libraries.
+1. Download **SonicForge-Setup-2.2.0.exe** from the release page and run it. This is the complete installer, not a standalone launcher missing its libraries.
 2. Select an installation folder. The desktop shortcut is optional. Installation normally requires no administrator rights and is scoped to the current user.
 3. Start SonicForge. The packaged application does not require a separate Python or FFmpeg installation for audio processing or artwork.
 4. Open Settings to choose the interface language. Use the Help tab or F1 for instructions.
@@ -404,7 +414,7 @@ Windows x64; the build targets Windows 10/11. The installer registers Open with 
 
 If a portable archive is attached, extract the **entire** archive and open **SonicForge/SonicForge.exe**. Keep **_internal** beside the executable.
 
-## Two independent workflows
+## Separate or linked workflows
 
 | Task | Workspace | Output action |
 | --- | --- | --- |
@@ -414,7 +424,9 @@ If a portable archive is attached, extract the **entire** archive and open **Son
 | Inspect artwork | Cover art | Preview cover |
 | Save manually corrected lyrics into the selected song | Lyrics | Save into song |
 
-Editor tracks are not the batch source. Audio-tab settings do not affect Editor clips. A preview does not start Processing.
+The Link editor button switches workflows. **Off:** editor export is independent and other sections use the selected original. **On:** analysis, artwork, lyrics and Processing use the current mix of all unmuted lanes, without manual export. Export remains available in both modes. Audio-tab settings never alter timeline clips; Processing can apply them to the working mix. Previews do not start Processing.
+
+Choose MP3, WAV or M4A as the working mix format next to the mode button. With Sound disabled, this is also the final audio format; enabling Sound converts to MP3 using the Sound settings. Prepare the mix only once for unchanged edits. Editing the timeline, switching modes or changing the format clears derived previews and lyrics, since their timing may be outdated. Refresh them before running Processing. In linked mode, Save into song writes only to the temporary working mix; Run publishes the final file with the checked text. Session working files are removed when the app closes, so export or run Processing before exiting.
 
 ## Audio editor
 
@@ -516,7 +528,7 @@ Actions can read the selected file's tags, open additional fields or create a co
 
 1. Select one source file.
 2. Choose the desired profile and strength.
-3. Optionally Analyze, then Apply recommendation separately.
+3. Optionally Analyze, then Apply recommendation separately. The current stage, animated indicator, elapsed time and Cancel button are visible. Long songs use three spread excerpts totaling up to 24 seconds for a quick preliminary estimate; short songs are analyzed in full. This is not a full-recording LUFS measurement. Repeating analysis of an unchanged file uses the cache. Recommendations never apply themselves or alter audio.
 4. Create comparison, then switch between Original and Processed.
 5. To save a finished copy, enable Audio in Processing and Run.
 
@@ -582,9 +594,13 @@ Done closes the window. These settings affect batch audio, not Editor clips.
 
 ## Cover art: generated or your own image
 
+Titles adjust weight, proportions, slant and spacing to the recording's musical character. Placement is coordinated with one of 40 symbol families and supporting sweeps, facets or flowing shapes. Letter and figure edges are antialiased, and all text fits inside an inset circle for circular player artwork. Artist lettering is off by default and can be enabled manually. Regenerate existing covers to apply the new artwork; the saved PNG contains all elements. [System details and research](docs/music-lettering.md).
+
 ![Artwork preview and the custom-image button](docs/images/cover-en.png)
 
 Music2Picture analyzes audio and draws procedural abstract artwork locally. Spectrum, rhythm, harmony and structural features influence palette, density, curvature, grain and composition. It is an artistic interpretation, **not a scientific spectrum plot or a literal picture of the song's story**.
+
+Modern artwork chooses its pattern family from musical evidence, not a random file fingerprint. Calm sound produces broader, softer forms; energetic rhythms create denser folds, while sharp attacks and rough timbres increase movement and detail. Activity is measured across separate song sections: the dominant character sets the background, and sustained contrasting sections add small, softly blended color and texture accents along the existing folds, without isolated spots. Neighboring hues and tonal shading retain depth even with a single-color palette. Silence and isolated spikes do not count as contrasting sections. Seed varies the fine layout without overriding the musical character.
 
 | Control | Function |
 | --- | --- |
@@ -592,7 +608,7 @@ Music2Picture analyzes audio and draws procedural abstract artwork locally. Spec
 | Customize artwork… | Pattern, a palette with any number of colors, detail, contrast, saturation and background softness |
 | Seed | Integer variation; matching source, settings and version help reproduce a pattern |
 | Size, px | Square output side; upscaling does not add real detail to a supplied photograph |
-| Title | Centered lettering from tags or filename |
+| Title | Lettering shaped by the music and placed to suit the artwork, using tags or filename |
 | Artist | Extra lettering when title is enabled |
 | Embed in file | Inserts artwork into output audio during the cover stage |
 | Do not change cover | Retains existing artwork instead of replacing it |
@@ -600,7 +616,7 @@ Music2Picture analyzes audio and draws procedural abstract artwork locally. Spec
 | Choose your image | PNG, JPEG or WebP; validates and fits it to the requested square |
 | Use generation | Switches back after choosing a custom image |
 
-Styles: modern artwork; modern artwork with classic colors; a 50/50 blend; classic pattern with modern colors; classic Music2Picture. The classic variant uses a [pinned Music2Picture revision](https://github.com/dumuzeyn/Music2Picture/tree/342013aaa8bdb4cb86c8c14fec0acb038e50b5ca).
+Styles: modern artwork; modern artwork with classic colors; a 50/50 blend; classic pattern with modern colors; classic Music2Picture. The classic variant is based on a [pinned Music2Picture revision](https://github.com/dumuzeyn/Music2Picture/tree/342013aaa8bdb4cb86c8c14fec0acb038e50b5ca). Original fields, angular warps and fine contours are retained, including for short songs. A 3×3 median filter removes isolated noisy pixels without blurring the entire image. Duration and musical variety adjust contour strength rather than substitute a simplified template. Increasing image size does not add extra layers or fine noise.
 
 Mood is handled internally; the current window has no manual scene-description field. A custom image replaces generation and does not use generator-specific controls. Its original is unchanged. Processing saves a full PNG in covers and embeds it if enabled. A preview does not mean the song already contains the picture.
 
@@ -608,9 +624,13 @@ Mood is handled internally; the current window has no manual scene-description f
 
 ![Custom palette and pattern controls](docs/images/cover-custom-en.png)
 
-Click Customize artwork… and choose modern organic textures or classic Music2Picture. The palette has no color-count cap: use Add…, Edit… and Remove; arrows change the transition order, and the strip previews the result. Large lists scroll. Keep at least one color; a single-color pattern uses tonal shades of that hue. Detail changes fine modern structures or the number of classic pattern layers. Contrast ranges from 50–150%, saturation from 0–150% (0% is grayscale), and softness from 0–100% (0% disables blur). Filters run **before** lettering, keeping the title sharp.
+**Left means calm; right means driven.** Put your calm colors on the left and energetic colors on the right. A song uses a limited range around its dominant character, not the whole palette at once. An energetic section in a calm song creates a small right-side accent; a calm section in an energetic song adds a left-side accent. Stop positions assign colors to activity levels. This applies to both Custom style patterns: modern artwork and the classic pattern.
 
-Apply selects Custom style; click Preview, then run the cover stage when satisfied. Cancel keeps existing settings; Reset defaults resets the dialog fields until applied. Keep colors, controls and Seed identical for reproducible output. Settings are saved in the profile beside the finished PNG. Short words no longer prevent automatic title wrapping or force tiny lettering.
+Click Customize artwork… and choose modern organic textures or classic Music2Picture. The palette has no color-count cap: use Add…, Edit… and Remove. **Drag the colored stops below the strip** to change color positions and transition widths; crossing another stop changes their order. The strip updates immediately, and final artwork uses these positions too. ↑/↓ swap colors without moving positions. Select a stop and use ←/→ for precise adjustment (1%, or 0.1% with Shift). If stops overlap, select the desired color in the list. New colors appear at the right endpoint and can be dragged anywhere. Large lists scroll, and each row shows its stop position. Apply saves settings; Cancel retains the previous ones. Keep at least one color; a single-color pattern uses tonal shades of that hue. Detail changes fine modern structures or continuously adjusts the density and strength of classic details from 0 to 100. Contrast ranges from 50–150%, saturation from 0–150% (0% is grayscale), and softness from 0–100% (0% disables blur). Filters run **before** lettering, keeping the title sharp.
+
+Apply selects Custom style and remembers the palette, stop positions, pattern, detail, contrast, saturation and softness between launches. Preferences are stored outside the application in `%LOCALAPPDATA%/SonicForge/custom_cover.json`, so updating the app does not reset them. Click Preview, then run the cover stage when satisfied. Cancel keeps saved settings; Reset defaults resets the dialog fields until applied. Keep colors, controls and Seed identical for reproducible output. Settings are also saved in the profile beside the finished PNG. Short words no longer prevent automatic title wrapping or force tiny lettering.
+
+Replacing only MP3 artwork updates the APIC picture frames only: existing USLT/SYLT lyrics, other metadata and audio bytes are retained. Unsupported or damaged ID3 headers are rejected without modifying the file. Explicitly selected metadata-clearing or lyric-overwriting stages still perform their own actions.
 
 ## Lyrics
 
@@ -619,7 +639,7 @@ Apply selects Custom style; click Preview, then run the cover stage when satisfi
 1. Select one file in Source.
 2. Load existing reads tags or a neighboring TXT/LRC without recognition.
 3. Recognize starts local transcription; lines appear as they are processed.
-4. Review words manually. Double-click selects a Unicode word, including internal apostrophes/hyphens. Ctrl+A/C/X/V/Z also work with a Russian keyboard layout.
+4. Review words manually. Double-click selects a Unicode word, including internal apostrophes/hyphens. Ctrl+A/C/X/V/Z also work with a Russian keyboard layout. Ctrl+C in the lyric editor copies the selection, or all lyrics when nothing is selected. Copy lyrics and its context-menu action copy the complete text, including during recognition. The context menu also offers copying the selection and selecting all.
 5. Save the corrected text using Save into song / the save button.
 
 | Setting | Meaning |
@@ -648,7 +668,7 @@ MP3 saving updates lyric ID3 frames while retaining MPEG audio bytes, artwork an
 
 1. Check source and destination.
 2. Enable only needed stages: Audio, Metadata, Lyrics, Cover.
-3. Configure those tabs. Editor edits are not a Processing stage.
+3. Configure those tabs. Enable Link editor to process the current mix, or leave it off to process the original.
 4. Run, wait for completion and inspect the log.
 5. Open the output folder, listen and check tags.
 
@@ -710,7 +730,7 @@ Windows packaging also requires Inno Setup 6. The current profile expects FFmpeg
 .\scripts\build_windows.ps1
 ~~~
 
-Outputs: dist\SonicForge\SonicForge.exe with _internal, and **dist\SonicForge-Setup-2.1.0.exe**. The build script does not forcibly close an open portable project. Build directories, local validation, caches and binary releases are excluded from source commits.
+Outputs: dist\SonicForge\SonicForge.exe with _internal, and **dist\SonicForge-Setup-2.2.0.exe**. The build script does not forcibly close an open portable project. Build directories, local validation, caches and binary releases are excluded from source commits.
 
 Command-line tools: `python src/easy_music_process.py` for full processing; `python src/music2picture.py covers` / `describe` for artwork/descriptions; `python src/music_metadata.py` for tags. Use --help for arguments and test file-changing operations on copies.
 

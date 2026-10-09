@@ -1,9 +1,11 @@
 import threading
 import unittest
+import numpy as np
 from types import SimpleNamespace
 
 from lyrics_engine import TranscriptSegment
-from lyrics_engine.verification import choose_verified_segment, repair_repeated_words, verified_segments
+from lyrics_engine.verification import (choose_verified_segment, repair_repeated_words, verified_segments,
+                                        confirmed_opening, trim_covered_segment)
 
 
 def segment(text, start=10.0, end=15.0, probabilities=None, logprob=-0.3):
@@ -16,6 +18,55 @@ def segment(text, start=10.0, end=15.0, probabilities=None, logprob=-0.3):
 
 
 class LyricsVerificationTests(unittest.TestCase):
+    def test_skipped_opening_is_recovered_without_duplicate_main_fragments(self):
+        opening = segment("Первая полная строка звучит раньше", start=20.8, end=26.3)
+        next_line = segment("Следующая полная строка песни", start=26.7, end=31.7)
+        old_fragment = segment("Первая строка", start=27.2, end=29.98)
+        old_next = segment("строка песни", start=30, end=31.72)
+        following = segment("Дальше продолжается песня", start=34, end=39)
+        calls = []
+        class Model:
+            def transcribe(self, _audio, **options):
+                # The cropped model outputs local time; no expected text prompt.
+                start = (15.2, 18.2)[len(calls)]
+                calls.append(options)
+                return iter([segment(opening.text, opening.start-start, opening.end-start),
+                             segment(next_line.text, next_line.start-start, next_line.end-start)]), None
+        result = list(verified_segments(Model(), np.ones(60*16000, dtype=np.float32),
+                                        [old_fragment, old_next, following], {'language': 'ru'}, limit=4,
+                                        audio_duration=60))
+        self.assertEqual([r.text for r in result], [opening.text, next_line.text, following.text])
+        self.assertAlmostEqual(result[0].start, 20.8)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all('initial_prompt' not in call and call['language'] == 'ru' for call in calls))
+
+    def test_opening_requires_two_matching_acoustic_contexts(self):
+        original = segment('Неполная строка', 27, 30)
+        opening = segment('Полная первая строка звучит гораздо раньше', 21, 26)
+        self.assertEqual(confirmed_opening(original, [opening], []), [])
+        other = segment('Совсем другая фраза без общей части', 21, 26)
+        self.assertEqual(confirmed_opening(original, [opening], [other]), [])
+        short = segment('Лишние слова', 21, 26)
+        self.assertEqual(confirmed_opening(original, [short], [short]), [])
+        weak = segment(opening.text, 21, 26, [.3] * 7)
+        self.assertEqual(confirmed_opening(original, [weak], [weak]), [])
+        shifted = segment(opening.text, 16, 20)
+        self.assertEqual(confirmed_opening(original, [opening], [shifted]), [])
+        self.assertEqual(confirmed_opening(original, [opening], [opening], lambda _: True), [])
+
+    def test_recovered_prefix_keeps_timed_main_suffix(self):
+        raw = segment('Первая строка потом вторая строка', 20, 32)
+        trimmed = trim_covered_segment(raw, 24)
+        self.assertEqual(trimmed.text, 'потом вторая строка')
+        self.assertEqual(trimmed.start, 24.8)
+        self.assertEqual(raw.text, 'Первая строка потом вторая строка')
+        self.assertIsNone(trim_covered_segment(raw, 32))
+        tail = segment('Полная строка потом вторая строка', 20, 31.18)
+        fragment = segment('вторая строка', 30, 31.72)
+        self.assertIsNone(trim_covered_segment(fragment, tail.end, tail))
+        raw.words = None
+        self.assertIs(trim_covered_segment(raw, 24), raw)
+
     def test_verification_stops_after_nearby_evidence(self):
         consumed = []
         original = segment("Тихая строка песни", probabilities=[0.5, 0.9, 0.9])

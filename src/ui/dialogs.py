@@ -39,6 +39,12 @@ class CustomCoverDialog(CenteredDialog):
         self.variables = {key: tk.DoubleVar(self, getattr(settings, key))
                           for key in ("detail", "contrast", "saturation", "softness")}
         self.colors = list(settings.colors)
+        self.positions = list(settings.positions)
+        self._palette_drag = None
+        self._palette_drag_origin = None
+        self._palette_drag_moved = False
+        self._palette_draw_job = None
+        self._gradient_image = None
         body = ttk.Frame(self, padding=SPACING["lg"])
         body.pack(fill=tk.BOTH, expand=True)
         body.columnconfigure(1, weight=1)
@@ -66,6 +72,8 @@ class CustomCoverDialog(CenteredDialog):
         self.palette_list.bind("<<ListboxSelect>>", self._update_palette_actions)
         self.palette_list.bind("<Double-Button-1>", lambda _event: self.edit_color())
         self.palette_list.bind("<Delete>", lambda _event: self.remove_color())
+        self.palette_list.bind("<Left>", lambda event: self._nudge_palette_color(-1, event))
+        self.palette_list.bind("<Right>", lambda event: self._nudge_palette_color(1, event))
         buttons = ttk.Frame(palette)
         buttons.grid(row=1, column=2, sticky="n")
         RoundedButton(buttons, text=app.t("custom_palette_add"), command=self.add_color).grid(row=0, column=0, sticky="ew", padx=3)
@@ -81,9 +89,18 @@ class CustomCoverDialog(CenteredDialog):
         self.down_button.pack(side=tk.RIGHT)
         ToolTip(self.up_button, lambda: app.t("custom_palette_up"))
         ToolTip(self.down_button, lambda: app.t("custom_palette_down"))
-        self.gradient = tk.Canvas(palette, height=34, highlightthickness=0, borderwidth=0)
+        self.gradient = tk.Canvas(palette, height=52, highlightthickness=0, borderwidth=0,
+                                  bg=COLORS["bg"], cursor="hand2", takefocus=True)
         self.gradient.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(8, 0))
         self.gradient.bind("<Configure>", self._draw_gradient)
+        self.gradient.bind("<Button-1>", self._start_palette_drag)
+        self.gradient.bind("<B1-Motion>", self._drag_palette_color)
+        self.gradient.bind("<ButtonRelease-1>", self._end_palette_drag)
+        self.gradient.bind("<Double-Button-1>", lambda _event: self.edit_color())
+        self.gradient.bind("<Left>", lambda event: self._nudge_palette_color(-1, event))
+        self.gradient.bind("<Right>", lambda event: self._nudge_palette_color(1, event))
+        ttk.Label(palette, text=app.t("custom_palette_drag"), style="Secondary.TLabel",
+                  wraplength=590).grid(row=3, column=0, columnspan=3, sticky="w")
         self._refresh_palette()
         self.scales = {}
         for row, (key, lower, upper) in enumerate(
@@ -117,7 +134,14 @@ class CustomCoverDialog(CenteredDialog):
             _, color = colorchooser.askcolor(self.colors[-1], parent=self,
                                             title=self.app.t("custom_palette_add"))
         if color:
+            import numpy as np
+            evenly_spaced = np.allclose(self.positions, np.linspace(0, 1, len(self.colors)), rtol=0, atol=1e-9)
             self.colors.append(color)
+            if evenly_spaced:
+                self.positions = list(np.linspace(0, 1, len(self.colors)))
+            else:
+                # Never move explicitly placed stops when extending the palette.
+                self.positions.append(1.0)
             self._refresh_palette(len(self.colors) - 1)
 
     def edit_color(self):
@@ -134,6 +158,7 @@ class CustomCoverDialog(CenteredDialog):
         index = self._selected_color()
         if index is not None and len(self.colors) > 1:
             self.colors.pop(index)
+            self.positions.pop(index)
             self._refresh_palette(min(index, len(self.colors) - 1))
 
     def move_color(self, direction):
@@ -145,9 +170,12 @@ class CustomCoverDialog(CenteredDialog):
 
     def _refresh_palette(self, selection=0):
         from PIL import ImageColor
+        if len(self.positions) != len(self.colors):
+            import numpy as np
+            self.positions = list(np.linspace(0, 1, len(self.colors)))
         self.palette_list.delete(0, tk.END)
         for index, color in enumerate(self.colors):
-            self.palette_list.insert(tk.END, f"  {index + 1}.  {color.upper()}")
+            self.palette_list.insert(tk.END, f"  {index + 1}.  {color.upper()} · {self.positions[index]:.1%}")
             red, green, blue = ImageColor.getrgb(color)
             foreground = "#ffffff" if .2126 * red + .7152 * green + .0722 * blue < 140 else "#181824"
             self.palette_list.itemconfigure(index, background=color, foreground=foreground,
@@ -157,7 +185,6 @@ class CustomCoverDialog(CenteredDialog):
         self.palette_list.see(selection)
         self.palette_count.configure(text=self.app.t("custom_palette_count").format(count=len(self.colors)))
         self._update_palette_actions()
-        self._draw_gradient()
 
     def _update_palette_actions(self, _event=None):
         index = self._selected_color()
@@ -166,16 +193,101 @@ class CustomCoverDialog(CenteredDialog):
                                 (self.up_button, index is not None and index > 0),
                                 (self.down_button, index is not None and index < len(self.colors) - 1)):
             button.configure(state="normal" if enabled else "disabled")
+        self._draw_gradient()
+
+    def _palette_x(self, position):
+        return 10 + position * max(1, self.gradient.winfo_width() - 20)
+
+    def _start_palette_drag(self, event):
+        self.gradient.focus_set()
+        selected = self._selected_color()
+        # Overlapping stops remain accessible by selecting their list row.
+        if selected is not None and abs(self._palette_x(self.positions[selected]) - event.x) <= 9:
+            index = selected
+        else:
+            index = min(range(len(self.colors)), key=lambda item: abs(self._palette_x(self.positions[item]) - event.x))
+        self._palette_drag = index
+        self._palette_drag_origin = event.x
+        self._palette_drag_moved = False
+        self._refresh_palette(index)
+
+    def _place_palette_color(self, index, position):
+        from bisect import bisect_right
+        position = min(1.0, max(0.0, position))
+        if position == self.positions[index]:
+            return index
+        color = self.colors.pop(index)
+        self.positions.pop(index)
+        index = bisect_right(self.positions, position)
+        self.colors.insert(index, color)
+        self.positions.insert(index, position)
+        return index
+
+    def _drag_palette_color(self, event):
+        if self._palette_drag is None:
+            return
+        if not self._palette_drag_moved and abs(event.x - self._palette_drag_origin) < 3:
+            return
+        self._palette_drag_moved = True
+        position = (event.x - 10) / max(1, self.gradient.winfo_width() - 20)
+        self._palette_drag = self._place_palette_color(self._palette_drag, position)
+        # Coalesce dense mouse events, including palettes with thousands of stops.
+        if self._palette_draw_job is None:
+            self._palette_draw_job = self.after_idle(self._refresh_dragged_palette)
+
+    def _refresh_dragged_palette(self):
+        self._palette_draw_job = None
+        if self._palette_drag is not None:
+            self._refresh_palette(self._palette_drag)
+
+    def _end_palette_drag(self, event):
+        if self._palette_drag is not None:
+            self._drag_palette_color(event)
+            if self._palette_draw_job is not None:
+                self.after_cancel(self._palette_draw_job)
+                self._palette_draw_job = None
+            self._refresh_palette(self._palette_drag)
+            self._palette_drag = None
+            self._palette_drag_origin = None
+
+    def _nudge_palette_color(self, direction, event):
+        index = self._selected_color()
+        if index is not None:
+            step = .001 if event.state & 1 else .01
+            index = self._place_palette_color(index, self.positions[index] + direction * step)
+            self._refresh_palette(index)
+        return "break"
 
     def _draw_gradient(self, *_):
         import numpy as np
+        from PIL import Image, ImageDraw, ImageTk
         from music2picture_v2.custom_style import palette_rgb
-        width = max(1, self.gradient.winfo_width())
+        width = max(21, self.gradient.winfo_width())
+        scale = 3
+        raster = Image.new("RGB", (width * scale, 52 * scale), COLORS["bg"])
+        strip = Image.fromarray(palette_rgb(self.colors, np.linspace(0, 1, width - 20), self.positions)[None, ...])
+        raster.paste(strip.resize(((width - 20) * scale, 24 * scale), Image.Resampling.BILINEAR), (10 * scale, 2 * scale))
+        draw = ImageDraw.Draw(raster)
+        selected = self._selected_color()
+        # Draw at most one unselected handle per pixel; never limit stored colors.
+        handles = {round(self._palette_x(position)): index for index, position in enumerate(self.positions)}
+        indices = [index for index in handles.values() if index != selected]
+        if selected is not None:
+            indices.append(selected)
+        for index in indices:
+            x = self._palette_x(self.positions[index]) * scale
+            points = [(x, 25 * scale), (x + 7 * scale, 33 * scale),
+                      (x + 7 * scale, 46 * scale), (x - 7 * scale, 46 * scale),
+                      (x - 7 * scale, 33 * scale)]
+            draw.polygon(points, fill=self.colors[index])
+            draw.line(points + [points[0]], fill=COLORS["accent"] if index == selected else COLORS["border"],
+                      width=(2 if index == selected else 1) * scale, joint="curve")
+            if index == selected:
+                draw.ellipse((x - 2 * scale, 36 * scale, x + 2 * scale, 40 * scale), fill="#ffffff")
+        photo = ImageTk.PhotoImage(raster.resize((width, 52), Image.Resampling.LANCZOS), master=self)
         self.gradient.delete("all")
-        for index, rgb in enumerate(palette_rgb(self.colors, np.linspace(0, 1, 160))):
-            color = "#" + "".join(f"{channel:02x}" for channel in rgb)
-            self.gradient.create_rectangle(index * width / 160, 0, (index + 1) * width / 160 + 1,
-                                           34, fill=color, outline="")
+        self.gradient.create_image(0, 0, anchor="nw", image=photo)
+        self._gradient_image = photo
 
     def reset(self):
         from music2picture_v2.custom_style import CustomCoverSettings
@@ -184,19 +296,22 @@ class CustomCoverDialog(CenteredDialog):
         for key, variable in self.variables.items():
             variable.set(getattr(defaults, key))
         self.colors = list(defaults.colors)
+        self.positions = list(defaults.positions)
         self._refresh_palette()
 
     def apply(self):
-        from music2picture_v2.custom_style import CustomCoverSettings
         settings = {key: variable.get() for key, variable in self.variables.items()}
         settings["colors"] = list(self.colors)
+        settings["positions"] = list(self.positions)
         settings["pattern"] = self.patterns[self.pattern.get()]
-        self.app.custom_cover_settings = CustomCoverSettings.parse(settings).to_dict()
-        self.app.cover_style_var.set(next(label for label in self.app.cover_choice_values("style")
-                                         if self.app.cover_choice("style", label) == "custom"))
-        self.close()
+        if self.app.apply_custom_cover_settings(settings):
+            self.close()
 
     def close(self):
+        if self._palette_draw_job is not None:
+            self.after_cancel(self._palette_draw_job)
+            self._palette_draw_job = None
+        self._palette_drag = None
         widgets = []
         pending = list(self.winfo_children())
         while pending:
@@ -212,6 +327,7 @@ class CustomCoverDialog(CenteredDialog):
         self.scales.clear()
         self.variables.clear()
         self.pattern = None
+        self._gradient_image = None
         for widget in widgets:
             if isinstance(widget, RoundedButton):
                 widget._raster = None

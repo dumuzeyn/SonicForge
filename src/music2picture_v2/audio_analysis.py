@@ -154,7 +154,37 @@ def analyze_audio_array(audio: np.ndarray, sample_rate: int = DEFAULT_SAMPLE_RAT
         climax_position=float(climax_position),
         intro_energy=float(intro_energy),
         ending_energy=float(ending_energy),
+        activity_curve=_activity_profile(rms_db, onset_curve, spectral_flux_curve,
+                                        onset_peaks, sample_rate / hop),
     )
+
+
+def _activity_profile(rms_db, onset, flux, peaks, frame_rate):
+    """Absolute local drive, not a per-song stretch from calm to energetic."""
+    count = min(64, max(1, round(len(rms_db) / frame_rate / 3)))
+    radius = max(1, round(frame_rate * 3), round(len(rms_db) / count * .55))
+    positions = np.linspace(0, max(0, len(rms_db) - 1), count)
+    values = []
+    for center in positions:
+        left, right = max(0, round(center) - radius), min(len(rms_db), round(center) + radius + 1)
+        levels = rms_db[left:right]
+        # Silence is marked separately and is excluded from opposite-section accents.
+        if float(np.percentile(levels, 75)) < -55:
+            values.append(0.0)
+            continue
+        duration = (right - left) / frame_rate
+        density = np.count_nonzero((peaks >= left) & (peaks < right)) / max(.1, duration)
+        tempo, confidence = _tempo(onset[left:right], frame_rate)
+        rhythm = clamp(scale(density, .25, 4.5))
+        pace = clamp(scale(tempo, 55, 185)) * confidence
+        attack = clamp(float(np.percentile(onset[left:right], 85)) / .16)
+        motion = clamp(float(np.median(flux[left:right])) / .075)
+        loudness = clamp(scale(float(np.median(levels)), -42, -9))
+        drive = .36 * rhythm + .22 * pace + .20 * attack + .14 * loudness + .08 * motion
+        # Calibrate against musical activity, not the unattainable case where
+        # every feature is maximal. Dense half-time rhythms can still be driven.
+        values.append(round(max(.02, clamp((drive - .07) / .68)), 5))
+    return tuple(values)
 
 
 def _frame_audio(audio: np.ndarray) -> tuple[np.ndarray, int]:

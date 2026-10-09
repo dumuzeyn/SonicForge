@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from io import BytesIO
 import shutil
 import subprocess
 import sys
@@ -18,7 +19,7 @@ from music2picture_v2 import (
 from music2picture_v2.renderer import GENERATOR_VERSION, artistic_parameters, deterministic_seed, customize_parameters
 from music2picture_v2.variants import (
     LEGACY_COLOR_MODES, LEGACY_COMMIT, STYLES, STYLE_CURRENT, STYLE_LEGACY, STYLE_CUSTOM,
-    render_legacy, render_variant,
+    CLASSIC_RENDERER_VERSION, render_legacy, render_variant,
 )
 
 
@@ -73,15 +74,32 @@ def make_cover(
         import music_metadata
 
         tags = music_metadata.read_all_metadata(path)
+        lettering_layout = {}
+        lettering_bundle = DEFAULT_PIPELINE.analyse(
+            path, metadata={key: value for key, value in tags.items() if "lyrics" not in str(key).lower()},
+            lyrics=lyrics_text if use_lyrics_for_cover else "",
+            mood_override=mood_override, variation=int(seed or 0),
+            force=regenerate_description,
+            progress=lambda stage: check_cancelled(cancel_event),
+        )
         image = render_legacy(path, size=size, seed=seed, color_mode=legacy_color_mode)
+        image, symbol_layout = _add_cover_symbol(
+            image, lettering_bundle.visual_dna, tags.get("title") or clean_stem(path),
+            lyrics_text if use_lyrics_for_cover else "",
+            show_title=text_mode != 'none',
+        )
         image = _add_cover_text(
             image, tags.get("title") or clean_stem(path), tags.get("artist", ""),
             text_mode=text_mode, language="unknown",
+            visual_dna=lettering_bundle.visual_dna if lettering_bundle else None,
+            layout_out=lettering_layout,
+            symbol_layout=symbol_layout,
         )
+        check_cancelled(cancel_event)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         image.save(output_path, "PNG", optimize=True)
         if not preview:
-            _save_legacy_profile(output_path, path, seed, text_mode, legacy_color_mode)
+            _save_legacy_profile(output_path, path, seed, text_mode, legacy_color_mode, lettering_layout, symbol_layout)
         print(f"Обложка сохранена: {output_path} (Music2Picture: {style})")
         return output_path
 
@@ -134,32 +152,56 @@ def make_cover(
         seed=seed, preview=preview, legacy_color_mode=legacy_color_mode,
         custom_cover_settings=custom_cover_settings,
     )
-    image = _add_cover_text(image, title, artist, text_mode=text_mode, language=bundle.language)
+    lettering_layout = {}
+    image, symbol_layout = _add_cover_symbol(image, bundle.visual_dna, title, resolved_lyrics,show_title=text_mode != 'none')
+    image = _add_cover_text(image, title, artist, text_mode=text_mode, language=bundle.language,
+                            visual_dna=bundle.visual_dna, layout_out=lettering_layout,
+                            symbol_layout=symbol_layout)
+    check_cancelled(cancel_event)
     image.save(output_path, "PNG", optimize=True)
     if not preview:
         _save_music2picture_profile(output_path, path, bundle, seed, text_mode, preview, style,
-                                   legacy_color_mode, custom_cover_settings)
+                                   legacy_color_mode, custom_cover_settings, lettering_layout, symbol_layout)
     print(f"Обложка сохранена: {output_path} (Music2Picture: {style})")
     return output_path
 
 
-def _add_cover_text(image, title, artist, *, text_mode, language):
+def _add_cover_symbol(image, visual_dna, title, lyrics="", *, show_title=True):
+    if visual_dna is None:
+        return image, {}
+    from cover_engine.song_symbol import compose_song_symbol
+
+    return compose_song_symbol(image, visual_dna, title, lyrics,show_title=show_title)
+
+
+def _add_cover_text(image, title, artist, *, text_mode, language, visual_dna=None, layout_out=None,
+                    symbol_layout=None):
     if text_mode == "none":
         return image
     from cover_engine.typography import TypographyEngine
     from cover_engine.titles import clean_artist, resolve_title
 
     title_resolution = resolve_title(title, "stylized")
-    return TypographyEngine().compose(
+    engine = TypographyEngine()
+    result = engine.compose(
         image, title_resolution.selected, clean_artist(artist),
         profile=SimpleNamespace(
             typography_style="artistic title", typography_locked=True,
             text_position="center",
+            candidate_type="abstract",
+            protected_boxes=(symbol_layout["bounds"],) if symbol_layout and "bounds" in symbol_layout else (),
+            composition_zone=(symbol_layout or {}).get('composition',{}).get('title_zone_pixels'),
+            composition_alignment=(symbol_layout or {}).get('composition',{}).get('title_alignment'),
+            round_safe_radius=(symbol_layout or {}).get('composition',{}).get('round_safe_radius'),
         ),
         title_treatment=title_resolution, enabled=True,
         show_artist=text_mode == "title_artist", language=language,
-        placement_override="center",
+        visual_dna=visual_dna,
+        placement_override=None if visual_dna is not None else "center",
     )
+    if layout_out is not None:
+        layout_out.update(engine.last_layout)
+    return result
 
 
 def make_covers(
@@ -298,21 +340,32 @@ def generate_text_descriptions(
 
 
 def embed_cover(mp3_path, image_path):
+    """Replace artwork only; retain raw lyric/metadata frames and audio bytes."""
+    from audio_tags import ID3Frame, MAX_TAG_BYTES, update_id3
+    from security import validate_image_file
+
     mp3_path = Path(mp3_path)
     if mp3_path.suffix.lower() != ".mp3":
         return False
-    temporary = mp3_path.with_name(f"{mp3_path.stem}.cover_tmp.mp3")
-    subprocess.run(
-        [
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-            "-i", str(mp3_path), "-i", str(image_path),
-            "-map", "0:a:0", "-map", "1:v:0", "-c:a", "copy", "-c:v", "mjpeg",
-            "-disposition:v:0", "attached_pic", "-map_metadata", "0", "-id3v2_version", "3", str(temporary),
-        ],
-        check=True,
-        **STARTUP_KWARGS,
-    )
-    temporary.replace(mp3_path)
+    image_path = validate_image_file(image_path)
+    if image_path.stat().st_size >= MAX_TAG_BYTES:
+        raise ValueError('The cover exceeds the safe ID3 tag size limit')
+    with Image.open(image_path) as image:
+        if image.format in ('PNG', 'JPEG'):
+            mime = b'image/png' if image.format == 'PNG' else b'image/jpeg'
+            data = image_path.read_bytes()
+        else:
+            # Use broadly supported PNG for WebP input, including transparency.
+            mime = b'image/png'
+            with BytesIO() as converted:
+                image.save(converted, format='PNG')
+                data = converted.getvalue()
+    if len(data) >= MAX_TAG_BYTES:
+        raise ValueError('The cover exceeds the safe ID3 tag size limit')
+    # APIC: Latin-1 encoding, MIME, front-cover type, empty description, image.
+    # No container remux: FFmpeg can drop SYLT/unknown frames or rewrite USLT.
+    cover = ID3Frame('APIC', b'\x00' + mime + b'\x00\x03\x00' + data)
+    update_id3(mp3_path, [cover], remove_names=('APIC',))
     return True
 
 
@@ -346,7 +399,8 @@ def apply_generated_covers(audio_root, generated_root, published_root, size=1000
 
 
 def _save_music2picture_profile(output_path, audio_path, bundle, seed, text_mode, preview=False,
-                                style=STYLE_CURRENT, legacy_color_mode="plasma", custom_cover_settings=None):
+                                style=STYLE_CURRENT, legacy_color_mode="plasma", custom_cover_settings=None,
+                                lettering_layout=None, symbol_layout=None):
     import json
 
     directory = output_path.parent / ".sonicforge"
@@ -361,6 +415,10 @@ def _save_music2picture_profile(output_path, audio_path, bundle, seed, text_mode
         "custom_cover_settings": custom_cover_settings if style == STYLE_CUSTOM else None,
         "legacy_commit": LEGACY_COMMIT if style != STYLE_CURRENT else None,
         "legacy_color_mode": legacy_color_mode if style != STYLE_CURRENT else None,
+        "classic_renderer_version": CLASSIC_RENDERER_VERSION if (
+            style not in (STYLE_CURRENT, STYLE_CUSTOM) or
+            style == STYLE_CUSTOM and custom_cover_settings and custom_cover_settings.get('pattern') == 'legacy'
+        ) else None,
         "preview": bool(preview),
         "artistic_parameters": customize_parameters(
             artistic_parameters(bundle.visual_dna, bundle.visual_plan,
@@ -368,6 +426,8 @@ def _save_music2picture_profile(output_path, audio_path, bundle, seed, text_mode
             custom_cover_settings["detail"] if style == STYLE_CUSTOM and custom_cover_settings else None,
         ).to_dict(),
         "analysis_bundle": bundle.to_dict(),
+        "typography": lettering_layout or {},
+        "song_symbol": symbol_layout or {},
     }
     target = directory / f"{output_path.stem}.profile.json"
     temporary = target.with_suffix(".tmp")
@@ -375,7 +435,8 @@ def _save_music2picture_profile(output_path, audio_path, bundle, seed, text_mode
     temporary.replace(target)
 
 
-def _save_legacy_profile(output_path, audio_path, seed, text_mode, color_mode):
+def _save_legacy_profile(output_path, audio_path, seed, text_mode, color_mode, lettering_layout=None,
+                          symbol_layout=None):
     import json
 
     directory = output_path.parent / ".sonicforge"
@@ -383,12 +444,15 @@ def _save_legacy_profile(output_path, audio_path, seed, text_mode, color_mode):
     target = directory / f"{output_path.stem}.profile.json"
     data = {
         "engine": "Music2Picture",
+        "generator_version": CLASSIC_RENDERER_VERSION,
         "style": STYLE_LEGACY,
         "legacy_commit": LEGACY_COMMIT,
         "legacy_color_mode": color_mode,
         "audio_path": str(audio_path),
         "seed": seed,
         "text_mode": text_mode,
+        "typography": lettering_layout or {},
+        "song_symbol": symbol_layout or {},
     }
     temporary = target.with_suffix(".tmp")
     temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

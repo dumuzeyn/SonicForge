@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import tempfile
 import wave
+from unittest.mock import patch
 
 import numpy as np
 
@@ -42,8 +43,9 @@ def main():
         make_demo(song, 220)
         make_demo(harmony, 330, 12)
         cover = demo / 'cover.png'
-        make_cover(song, cover, size=440, seed=42, preview=True, use_lyrics_for_cover=False)
-        app = SonicForgeApp()
+        make_cover(song, cover, size=440, seed=42, preview=True, text_mode='title', use_lyrics_for_cover=False)
+        with patch('cover_preferences.preference_path', return_value=demo / 'custom_cover.json'):
+            app = SonicForgeApp()
         try:
             settle(app)
             app.geometry('1100x850')
@@ -88,6 +90,7 @@ def main():
                 dialog.close()
                 app.custom_cover_settings["colors"] = ["#123b53", "#306982", "#54a4a3", "#85c0b0", "#b9cfac", "#ebd79b",
                                                         "#f4c66a", "#e99354", "#af5972", "#705488", "#484d77", "#142f49"]
+                app.custom_cover_settings["positions"] = []
                 custom_dialog = CustomCoverDialog(app)
                 settle(custom_dialog)
                 capture(custom_dialog, output / f'cover-custom-{language}.png')

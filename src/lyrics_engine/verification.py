@@ -102,10 +102,62 @@ def choose_verified_segment(original, candidates, after_pause=False):
     return original
 
 
+def confirmed_opening(original, first_context, second_context, is_implausible=None):
+    """Recover skipped singing only when two shifted acoustic windows agree."""
+    def reliable(segment):
+        words = getattr(segment, 'words', None) or ()
+        return (bool(words) and segment.end > segment.start
+                and float(getattr(segment, 'avg_logprob', -10)) >= -.65
+                and float(getattr(segment, 'no_speech_prob', 0)) < .8
+                and sum(float(w.probability) for w in words) / len(words) >= .65
+                and (is_implausible is None or not is_implausible(segment)))
+
+    confirmed = []
+    for candidate in first_context:
+        if not reliable(candidate) or candidate.end > original.end + 2:
+            continue
+        matches = [other for other in second_context if reliable(other)
+                   and abs(candidate.start - other.start) <= 1.0
+                   and abs(candidate.end - other.end) <= 1.0
+                   and SequenceMatcher(None, tokens(candidate.text), tokens(other.text)).ratio() >= .8]
+        if not matches:
+            continue
+        other = max(matches, key=lambda s: float(getattr(s, 'avg_logprob', -10)))
+        chosen = choose_verified_segment(candidate, [other])
+        confirmed.append(chosen)
+    # Short acoustic guesses in a music-only intro are not enough evidence.
+    if not confirmed or confirmed[0].start > original.start - 2 or len(tokens(confirmed[0].text)) < 5:
+        return []
+    return confirmed
+
+
+def trim_covered_segment(segment, end, covered=None):
+    """Keep the timed suffix of a main-pass segment after recovered opening."""
+    if segment.end <= end + .25:
+        return None
+    if covered is not None and abs(segment.end - covered.end) <= 1.0 and segment.start < covered.end:
+        old, recovered = tokens(segment.text), tokens(covered.text)
+        if len(old) >= 2 and len(old) <= len(recovered) and old == recovered[-len(old):]:
+            return None  # Word alignment jitter must not repeat the recovered tail.
+    if segment.start >= end - .25:
+        return segment
+    words = [word for word in getattr(segment, 'words', None) or () if word.start >= end - .25]
+    if not words:
+        return segment  # Never discard an untimed main-pass suffix.
+    trimmed = copy.copy(segment)
+    trimmed.words = words
+    trimmed.start, trimmed.end = words[0].start, words[-1].end
+    separator = '' if any(word.word[:1].isspace() for word in words) else ' '
+    trimmed.text = separator.join(word.word for word in words).strip()
+    return trimmed
+
+
 def verified_segments(model, audio, raw_segments, options, cancel_event=None, progress=None, limit=12,
                       audio_duration=None, is_implausible=None):
-    def recheck(original, start, end):
-        verification_options = dict(options, temperature=0.0, beam_size=3)
+    def recheck(original, start, end, beam_size=3):
+        if cancel_event is not None and cancel_event.is_set():
+            raise InterruptedError("Lyrics recognition was cancelled.")
+        verification_options = dict(options, temperature=0.0, beam_size=beam_size)
         offset = 0.0
         if isinstance(audio, np.ndarray):
             start_sample = int(start * 16000)
@@ -139,6 +191,9 @@ def verified_segments(model, audio, raw_segments, options, cancel_event=None, pr
     previous_segment = None
     attempts = 0
     repair_attempts = 0
+    opening_examined = False
+    recovered_end = None
+    recovered_tail = None
     for raw in raw_segments:
         if cancel_event is not None and cancel_event.is_set():
             raise InterruptedError("Lyrics recognition was cancelled.")
@@ -153,6 +208,36 @@ def verified_segments(model, audio, raw_segments, options, cancel_event=None, pr
                 if progress:
                     progress("unreliable_tail")
                 break
+        if recovered_end is not None:
+            raw = trim_covered_segment(raw, recovered_end, recovered_tail)
+            if raw is None:
+                continue
+        if not opening_examined:
+            opening_examined = True
+            # Long intros can cause Whisper to decode only the tail of the
+            # first sung phrase. Move its window boundary without using lyrics
+            # as prompts, and demand independent timing/text confirmation.
+            if (isinstance(audio, np.ndarray) and 12 <= raw.start <= 60 and bool(getattr(raw, 'words', None))
+                    and (len(tokens(raw.text)) <= 5 or doubtful_words(raw))
+                    and attempts + 2 <= limit):
+                attempts += 2
+                if progress:
+                    progress('verifying')
+                first_start = max(0.0, raw.start - 12.0)
+                second_start = max(0.0, raw.start - 9.0)
+                first_context = recheck(raw, first_start, first_start + 30, beam_size=5)
+                second_context = recheck(raw, second_start, second_start + 30, beam_size=5)
+                recovered = confirmed_opening(raw, first_context, second_context, is_implausible)
+                if recovered:
+                    for candidate in recovered:
+                        previous_end = max(previous_end, candidate.end)
+                        previous_segment = candidate
+                        yield candidate
+                    recovered_end = previous_end
+                    recovered_tail = previous_segment
+                    raw = trim_covered_segment(raw, recovered_end, recovered_tail)
+                    if raw is None:
+                        continue
         if duplicate_boundary_segment(raw, previous_segment):
             continue
         if is_implausible is not None and is_implausible(raw) and repair_attempts < 2:

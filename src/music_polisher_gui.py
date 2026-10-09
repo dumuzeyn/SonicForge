@@ -6,6 +6,7 @@ if __name__ == '__main__' and sys.argv[1:2] == ['--lyrics-worker']:
     raise SystemExit
 
 import os
+import copy
 import math
 import queue
 import threading
@@ -24,6 +25,9 @@ from ui.dialogs import AdditionalMetadataDialog, AdvancedAudioDialog, CustomCove
 from ui.i18n import APP_NAMES, I18N
 from app_identity import set_windows_app_identity
 from audio_paths import default_output_path
+from editor_pipeline import EditorPipelineSource
+from sound_analysis import SoundAnalysisCache
+from cover_preferences import load_custom_cover_settings, save_custom_cover_settings
 from ui.folder_picker import choose_windows_folder
 from ui.layout import SonicForgeView
 from ui.theme import COLORS, FONTS, SIZES, SPACING, configure_styles
@@ -191,6 +195,9 @@ class SonicForgeApp(TkinterDnD.Tk):
         self._lyrics_after_id = None
         self._undo_history = {}
         self._closing = False
+        self._editor_source = EditorPipelineSource()
+        self._sound_analysis_cache = SoundAnalysisCache()
+        self._audio_analysis_active = False
         self._window_icon_photo = None
         self._create_variables()
         self._configure_window()
@@ -199,6 +206,7 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.header_image = None
         self.view = SonicForgeView(self, self, None)
         self.source_var.trace_add("write", lambda *_: self._sync_lyrics_format())
+        self.editor_output_format_var.trace_add('write', lambda *_: self._editor_project_changed())
         self._sync_lyrics_format()
         self.view.update_dependencies()
         self._bind_shortcuts()
@@ -212,6 +220,9 @@ class SonicForgeApp(TkinterDnD.Tk):
 
     def _create_variables(self):
         self.source_var = tk.StringVar()
+        self.editor_pipeline_var = tk.BooleanVar(value=False)
+        self.editor_output_format_var = tk.StringVar(value='MP3')
+        self.editor_source_label_var = tk.StringVar()
         self.output_var = tk.StringVar()
         self.title_var = tk.StringVar()
         self.genre_var = tk.StringVar()
@@ -276,10 +287,13 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.cover_size_var = tk.IntVar(value=1000)
         self.cover_style_var = tk.StringVar(value="Современный рисунок")
         from music2picture_v2.custom_style import CustomCoverSettings
-        self.custom_cover_settings = CustomCoverSettings().to_dict()
+        saved_cover_settings = load_custom_cover_settings()
+        self.custom_cover_settings = saved_cover_settings or CustomCoverSettings().to_dict()
+        if saved_cover_settings is not None:
+            self.cover_style_var.set("Свой стиль")
         self.cover_mood_var = tk.StringVar(value="Автоматически")
         self.cover_title_var = tk.BooleanVar(value=True)
-        self.cover_artist_var = tk.BooleanVar(value=True)
+        self.cover_artist_var = tk.BooleanVar(value=False)
         self.embed_cover_var = tk.BooleanVar(value=True)
         self.no_change_cover_var = tk.BooleanVar(value=False)
         self.custom_cover_path_var = tk.StringVar()
@@ -421,7 +435,8 @@ class SonicForgeApp(TkinterDnD.Tk):
         return value
 
     def lyrics_format_values(self):
-        suffix = Path(self.source_var.get().strip()).suffix.lower()
+        suffix = ('.' + self.editor_output_format_var.get().lower() if self.editor_pipeline_var.get()
+                  else Path(self.source_var.get().strip()).suffix.lower())
         keys = {"uslt"} if suffix == ".mp3" else (
             {"txt", "lrc"} if suffix in {".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma"}
             else {"uslt", "txt", "lrc"}
@@ -651,6 +666,17 @@ class SonicForgeApp(TkinterDnD.Tk):
     def show_custom_cover_settings(self):
         CustomCoverDialog(self)
 
+    def apply_custom_cover_settings(self, settings):
+        try:
+            saved = save_custom_cover_settings(settings)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror(self.app_name(), self.t('custom_save_failed').format(error=exc))
+            return False
+        self.custom_cover_settings = saved
+        self.cover_style_var.set(next(label for label in self.cover_choice_values('style')
+                                      if self.cover_choice('style', label) == 'custom'))
+        return True
+
     def show_additional_metadata(self):
         if self.metadata_dialog and self.metadata_dialog.winfo_exists():
             self.metadata_dialog.show()
@@ -700,10 +726,12 @@ class SonicForgeApp(TkinterDnD.Tk):
             return "none"
         return "title_artist" if self.cover_artist_var.get() else "title"
 
-    def load_metadata(self):
+    def load_metadata(self, _prepared_source=None):
+        if self.editor_pipeline_var.get() and _prepared_source is None:
+            return self._prepare_editor_source(lambda source: self.load_metadata(source))
         import music_metadata
 
-        source = Path(self.source_var.get().strip())
+        source = _prepared_source or Path(self.source_var.get().strip())
         if not source.is_file():
             messagebox.showerror(self.app_name(), self.t("metadata_single_file"))
             return
@@ -861,12 +889,27 @@ class SonicForgeApp(TkinterDnD.Tk):
         if hasattr(self, "view"):
             self.view.schedule_audio_summary()
 
-    def analyze_audio_settings(self, silent=False):
+    def analyze_audio_settings(self, silent=False, _prepared_source=None):
+        if self.worker and self.worker.is_alive():
+            return
+        if self.editor_pipeline_var.get() and _prepared_source is None:
+            self.audio_analysis_data = None
+            self.audio_recommended_profile = None
+            self.view.set_audio_recommendation_ready(False)
+            self.audio_analysis_var.set(self.t('editor_preparing'))
+            self._audio_analysis_active = True
+            self.view.start_audio_activity()
+            self.view.set_audio_activity_stage('editor', {})
+            started = self._prepare_editor_source(lambda source: self.analyze_audio_settings(silent, source))
+            if not started:
+                self._audio_analysis_active = False
+                self.view.finish_audio_activity(cancelled=True)
+            return
         import music_metadata
 
         if self.worker and self.worker.is_alive():
             return
-        source = Path(self.source_var.get().strip())
+        source = _prepared_source or Path(self.source_var.get().strip())
         if not source.is_file() or source.suffix.lower() not in music_metadata.AUDIO_EXTENSIONS:
             if not silent:
                 messagebox.showerror(self.app_name(), self.t("audio_single_file"))
@@ -875,7 +918,12 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.audio_recommended_profile = None
         self.view.set_audio_recommendation_ready(False)
         self.audio_analysis_var.set(self.t("audio_analysis_working"))
+        if not self._audio_analysis_active:
+            self.view.start_audio_activity()
+        self._audio_analysis_active = True
         self.view.set_audio_task_busy(True)
+        self.cancel_event.clear()
+        self.view.set_busy(True)
         self.worker = threading.Thread(target=self._audio_analysis_worker, args=(source,), daemon=True)
         self.worker.start()
 
@@ -890,28 +938,36 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.audio_profile_var.set(label)
         self.audio_profile_changed()
 
+    def cancel_audio_analysis(self):
+        if self._audio_analysis_active:
+            self.cancel_event.set()
+            self.view.audio_cancel_button.configure(state='disabled')
+
     def _audio_analysis_worker(self, source):
         try:
-            import easy_music_process
-            from music2picture_v2 import analyze_audio_file
-
-            analysis = analyze_audio_file(source)
-            noise = easy_music_process.normalize_music_file.detect_stationary_noise(source)
+            analysis, noise = self._sound_analysis_cache.analyze(source, self.cancel_event,
+                progress=lambda stage, data: self.log_queue.put(('__AUDIO_PROGRESS__', stage, data)))
             self.log_queue.put(("__AUDIO_ANALYSIS__", analysis, noise))
         except Exception as exc:
-            self.log_queue.put(("__ERROR__", str(exc)))
+            if not self.cancel_event.is_set():
+                self.log_queue.put(("__ERROR__", str(exc)))
         finally:
             self.log_queue.put(("__DONE__", None))
 
-    def create_audio_preview(self):
+    def create_audio_preview(self, _prepared_source=None):
+        if self.editor_pipeline_var.get() and _prepared_source is None:
+            return self._prepare_editor_source(self.create_audio_preview)
         if self.worker and self.worker.is_alive():
             return
-        source = self._single_audio_source()
+        source = _prepared_source or self._single_audio_source()
         if source is None:
             return
         values = self._audio_processing_values()
         self.view.set_audio_task_busy(True)
         self.view.set_audio_preview_ready(False)
+        if self.editor_pipeline_var.get():
+            self.cancel_event.clear()
+            self.view.set_busy(True)
         self.worker = threading.Thread(target=self._audio_preview_worker, args=(source, values), daemon=True)
         self.worker.start()
 
@@ -998,10 +1054,76 @@ class SonicForgeApp(TkinterDnD.Tk):
         return kwargs
 
     def _paths_ready(self):
-        if self.source_var.get().strip() and self.output_var.get().strip():
+        if (self.editor_pipeline_var.get() or self.source_var.get().strip()) and self.output_var.get().strip():
             return True
         messagebox.showerror(self.app_name(), self.t("missing_paths"))
         return False
+
+    def toggle_editor_pipeline(self):
+        if (self.worker and self.worker.is_alive()) or self.view.editor.is_busy:
+            return
+        self.editor_pipeline_var.set(not self.editor_pipeline_var.get())
+        if self.editor_pipeline_var.get() and not self.output_var.get().strip():
+            clips = self.view.editor.project.clips
+            if clips:
+                self.output_var.set(str(default_output_path(clips[0].source)))
+        self._editor_project_changed(force=True)
+
+    def _editor_project_changed(self, force=False):
+        if not hasattr(self, 'view'):
+            return
+        if force or self.editor_pipeline_var.get():
+            self.stop_audio_preview()
+            self.audio_preview_paths = None
+            self.audio_analysis_data = None
+            self.audio_recommended_profile = None
+            self.audio_analysis_var.set(self.t('audio_analysis_empty'))
+            self.view.set_audio_preview_ready(False)
+            self.view.set_audio_recommendation_ready(False)
+            self.view.reset_cover_preview()
+            self.last_cover_path = None
+            self.lyrics_result = None
+            self.view.set_lyrics_text('')
+            self._set_lyrics_status('lyrics_status_empty')
+        self._sync_lyrics_format()
+        self.view.update_editor_pipeline()
+
+    def _prepare_editor_source(self, callback):
+        """Capture Tk-owned state on the UI thread, render outside it, then resume."""
+        if self.worker and self.worker.is_alive():
+            return False
+        editor = self.view.editor
+        if editor.is_busy:
+            messagebox.showinfo(self.app_name(), self.t('editor_wait'))
+            return False
+        if not any(clip.lane not in editor.project.muted for clip in editor.project.clips):
+            messagebox.showerror(self.app_name(), self.t('editor_empty'))
+            return False
+        project = copy.deepcopy(editor.project)
+        extension = '.' + self.editor_output_format_var.get().lower()
+        try:
+            current = self._editor_source.current(project, extension)
+        except Exception as exc:
+            messagebox.showerror(self.app_name(), str(exc))
+            return False
+        if current is not None:
+            callback(current)
+            return True
+        self.cancel_event.clear()
+        editor.stop()
+        self.view.set_busy(True)
+        self.write_log('\n' + self.t('editor_preparing') + '\n')
+        def work():
+            try:
+                source = self._editor_source.prepare(project, extension, self.cancel_event)
+                self.log_queue.put(('__EDITOR_SOURCE__', source, callback))
+            except Exception as exc:
+                if not self.cancel_event.is_set():
+                    self.log_queue.put(('__ERROR__', str(exc)))
+                self.log_queue.put(('__DONE__', None))
+        self.worker = threading.Thread(target=work, daemon=True)
+        self.worker.start()
+        return True
 
     def run_selected_steps(self):
         steps = {
@@ -1019,17 +1141,36 @@ class SonicForgeApp(TkinterDnD.Tk):
             return
         self._run_process(steps)
 
-    def _run_process(self, steps, metadata_mode=None):
+    def _run_process(self, steps, metadata_mode=None, _prepared_source=None):
         if self.worker and self.worker.is_alive():
             return
         if not self._paths_ready():
             return
+        if self.editor_pipeline_var.get() and _prepared_source is None:
+            return self._prepare_editor_source(lambda source: self._run_process(steps, metadata_mode, source))
         try:
             kwargs = self._process_kwargs()
         except (ValueError, tk.TclError):
             messagebox.showerror(self.app_name(), self.t("bad_seed"))
             return
         kwargs["process_steps"] = set(steps)
+        if _prepared_source is not None:
+            output = Path(kwargs['output']).expanduser().resolve()
+            originals = {Path(clip.source).resolve() for clip in self.view.editor.project.clips}
+            candidates = {output / _prepared_source.name,
+                          output / (_prepared_source.stem + '.mp3')}
+            if any(candidate.resolve() in originals for candidate in candidates):
+                messagebox.showerror(self.app_name(), self.t('editor_output_original'))
+                return
+            kwargs['source'] = str(_prepared_source)
+            # Old output lyrics belong to an earlier edit, not this snapshot.
+            kwargs['overwrite_lyrics'] = True
+            text = self.view.get_lyrics_text().strip()
+            if 'lyrics' in steps and text:
+                if (self.lyrics_result is not None and self.lyrics_result.review_reason
+                        and not messagebox.askyesno(self.app_name(), self.t('editor_lyrics_review_confirm'))):
+                    return
+                kwargs['edited_lyrics_result'] = self._edited_lyrics_result(text)
         kwargs["metadata_mode"] = metadata_mode or (
             "replace" if self.overwrite_all_metadata_var.get() else "update"
         )
@@ -1043,7 +1184,7 @@ class SonicForgeApp(TkinterDnD.Tk):
 
     def _process_worker(self, kwargs):
         kwargs = dict(kwargs)
-        if 'lyrics' in kwargs.get('process_steps', ()):
+        if 'lyrics' in kwargs.get('process_steps', ()) and kwargs.get('edited_lyrics_result') is None:
             kwargs['lyrics_service'] = self._get_lyrics_service()
         kwargs["lyrics_progress"] = lambda stage, data: self.log_queue.put(("__LYRICS_BATCH_PROGRESS__", stage, data))
         result_key = "run_failed"
@@ -1067,10 +1208,12 @@ class SonicForgeApp(TkinterDnD.Tk):
             self.log_queue.put(("__LYRICS_BATCH_FINISH__", result_key))
             self.log_queue.put(("__DONE__", None))
 
-    def load_existing_lyrics(self):
+    def load_existing_lyrics(self, _prepared_source=None):
+        if self.editor_pipeline_var.get() and _prepared_source is None:
+            return self._prepare_editor_source(self.load_existing_lyrics)
         import music_metadata
 
-        source = self._single_audio_source()
+        source = _prepared_source or self._single_audio_source()
         if source is None:
             return
         try:
@@ -1083,10 +1226,12 @@ class SonicForgeApp(TkinterDnD.Tk):
             return
         self._apply_lyrics_result(result)
 
-    def recognize_lyrics(self):
+    def recognize_lyrics(self, _prepared_source=None):
+        if self.editor_pipeline_var.get() and _prepared_source is None:
+            return self._prepare_editor_source(self.recognize_lyrics)
         if self.worker and self.worker.is_alive():
             return
-        source = self._single_audio_source()
+        source = _prepared_source or self._single_audio_source()
         if source is None:
             return
         self.cancel_event.clear()
@@ -1104,7 +1249,7 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.worker.start()
         self._lyrics_after_id = self.after(100, self._poll_lyrics)
 
-    def preview_cover(self):
+    def preview_cover(self, _prepared_source=None):
         if self.worker and self.worker.is_alive():
             return
         custom_cover = self.custom_cover_path_var.get().strip()
@@ -1118,7 +1263,9 @@ class SonicForgeApp(TkinterDnD.Tk):
             except Exception as exc:
                 messagebox.showerror(self.app_name(), self.t("unsafe_file").format(error=exc))
             return
-        source = self._single_audio_source()
+        if self.editor_pipeline_var.get() and _prepared_source is None:
+            return self._prepare_editor_source(self.preview_cover)
+        source = _prepared_source or self._single_audio_source()
         if source is None:
             return
         style = self.cover_choice("style", self.cover_style_var.get())
@@ -1290,8 +1437,10 @@ class SonicForgeApp(TkinterDnD.Tk):
             if not done:
                 self._lyrics_after_id = self.after(100, self._poll_lyrics)
 
-    def save_lyrics_file(self):
-        source = self._single_audio_source()
+    def save_lyrics_file(self, _prepared_source=None):
+        if self.editor_pipeline_var.get() and _prepared_source is None:
+            return self._prepare_editor_source(self.save_lyrics_file)
+        source = _prepared_source or self._single_audio_source()
         if source is None:
             return
         text = self.view.get_lyrics_text().strip()
@@ -1307,11 +1456,19 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.lyrics_result = result
         key = "lyrics_saved_unsynced" if source.suffix.lower() == ".mp3" and not result.segments else "lyrics_saved"
         self.write_log("\n" + self.t(key).format(path=path) + "\n")
-        messagebox.showinfo(self.app_name(), self.t(key).format(path=path))
+        messagebox.showinfo(self.app_name(), self.t('editor_lyrics_staged') if self.editor_pipeline_var.get()
+                            else self.t(key).format(path=path))
 
     def _single_audio_source(self):
         import music_metadata
 
+        if self.editor_pipeline_var.get():
+            try:
+                return self._editor_source.current(self.view.editor.project,
+                    '.' + self.editor_output_format_var.get().lower())
+            except (OSError, ValueError) as exc:
+                messagebox.showerror(self.app_name(), str(exc))
+                return None
         source = Path(self.source_var.get().strip())
         if source.is_file() and source.suffix.lower() in music_metadata.AUDIO_EXTENSIONS:
             return source
@@ -1427,7 +1584,24 @@ class SonicForgeApp(TkinterDnD.Tk):
             # Bound each UI tick so large batch logs cannot starve navigation.
             for _ in range(80):
                 item = self.log_queue.get_nowait()
-                if isinstance(item, tuple) and item[0] == "__DONE__":
+                if isinstance(item, tuple) and item[0] == '__EDITOR_SOURCE__':
+                    if self.worker and self.worker.is_alive():
+                        self.log_queue.put(item)
+                        break
+                    self.view.set_busy(False)
+                    if not self.cancel_event.is_set():
+                        item[2](item[1])
+                    elif self._audio_analysis_active:
+                        self._audio_analysis_active = False
+                        self.view.finish_audio_activity(cancelled=True)
+                        self.audio_analysis_var.set(self.t('audio_analysis_cancelled'))
+                elif isinstance(item, tuple) and item[0] == "__DONE__":
+                    if self._audio_analysis_active:
+                        self._audio_analysis_active = False
+                        self.view.finish_audio_activity(self.cancel_event.is_set())
+                        if self.audio_analysis_data is None:
+                            self.audio_analysis_var.set(self.t('audio_analysis_cancelled' if self.cancel_event.is_set()
+                                                               else 'audio_analysis_failed'))
                     self.view.set_busy(False)
                     self.view.set_audio_task_busy(False)
                     self.view.set_lyrics_busy(False)
@@ -1448,6 +1622,8 @@ class SonicForgeApp(TkinterDnD.Tk):
                     messagebox.showerror(self.app_name(), item[1])
                 elif isinstance(item, tuple) and item[0] == "__ERROR__":
                     messagebox.showerror(self.app_name(), item[1])
+                elif isinstance(item, tuple) and item[0] == '__AUDIO_PROGRESS__':
+                    self.view.set_audio_activity_stage(item[1], item[2])
                 elif isinstance(item, tuple) and item[0] == "__AUDIO_ANALYSIS__":
                     self.audio_analysis_data = (item[1], item[2])
                     if item[2]["apply"]:
@@ -1457,6 +1633,9 @@ class SonicForgeApp(TkinterDnD.Tk):
                     else:
                         self.audio_recommended_profile = "preserve"
                     summary = self._format_audio_analysis(item[1], item[2])
+                    if hasattr(item[1], 'analyzed_seconds'):
+                        summary += '\n' + self.t('audio_analysis_sampled').format(
+                            seconds=item[1].analyzed_seconds, duration=item[1].duration)
                     self.audio_analysis_var.set(summary)
                     self.view.set_audio_recommendation_ready(True)
                     self.write_log("\n" + summary + "\n")
@@ -1499,6 +1678,12 @@ class SonicForgeApp(TkinterDnD.Tk):
             self.cancel_event.set()
         if self._lyrics_service is not None:
             threading.Thread(target=self._lyrics_service.close, daemon=True).start()
+        worker, editor_source = self.worker, self._editor_source
+        def cleanup_editor_source():
+            if worker and worker.is_alive():
+                worker.join()
+            editor_source.close()
+        threading.Thread(target=cleanup_editor_source, daemon=True).start()
         self._cancel_scheduled_callbacks()
         if hasattr(self, "view"):
             self.view._cancel_tab_transition()
@@ -1608,6 +1793,9 @@ class SonicForgeApp(TkinterDnD.Tk):
         widget = self._editable_widget(_event)
         if widget is None:
             return None
+        if event_name == "<<Copy>>":
+            self._copy_widget_text(widget)
+            return "break"
         if event_name in {"<<Cut>>", "<<Paste>>"} and not isinstance(widget, tk.Text):
             self._record_undo(widget)
         try:
@@ -1615,6 +1803,31 @@ class SonicForgeApp(TkinterDnD.Tk):
         except tk.TclError:
             return None
         return "break"
+
+    def _copy_widget_text(self, widget, all_text=False):
+        """Read this widget, never Tk's global selection or another entry."""
+        try:
+            if isinstance(widget, tk.Text):
+                if not all_text and widget.tag_ranges(tk.SEL):
+                    text = widget.get(tk.SEL_FIRST, tk.SEL_LAST)
+                elif all_text or widget is self.view.lyrics_editor:
+                    text = widget.get("1.0", "end-1c")
+                else:
+                    return False
+            elif widget.selection_present():
+                text = widget.get()[int(widget.index(tk.SEL_FIRST)):int(widget.index(tk.SEL_LAST))]
+            else:
+                return False
+            if not text:
+                return False
+            self.clipboard_clear()
+            self.clipboard_append(text)
+            return True
+        except tk.TclError:
+            return False
+
+    def copy_lyrics_text(self):
+        return self._copy_widget_text(self.view.lyrics_editor, all_text=True)
 
     def _before_edit(self, event):
         if event.state & 0x4:

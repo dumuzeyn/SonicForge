@@ -571,7 +571,7 @@ def energy_to_rgb(energy):
     return np.stack(channels, axis=-1).reshape(energy.shape + (3,)).astype(np.float32)
 
 
-def local_contrast_edge_rgb(base_rgb, edge_strength):
+def local_contrast_edge_rgb(base_rgb, edge_strength, smooth_contrast=False):
     base_rgb = np.clip(np.asarray(base_rgb, dtype=np.float32), 0, 1)
     edge_strength = np.clip(np.asarray(edge_strength, dtype=np.float32), 0, 1)
     luminance = base_rgb[..., 0] * 0.2126 + base_rgb[..., 1] * 0.7152 + base_rgb[..., 2] * 0.0722
@@ -579,10 +579,17 @@ def local_contrast_edge_rgb(base_rgb, edge_strength):
     saturated = np.clip(gray + (base_rgb - gray) * (1.30 + edge_strength[..., None] * 0.55), 0, 1)
     darker = np.clip(saturated * (0.30 - edge_strength[..., None] * 0.08), 0, 1)
     lighter = np.clip(1.0 - (1.0 - saturated) * (0.42 - edge_strength[..., None] * 0.10), 0, 1)
+    if smooth_contrast:
+        # A binary light/dark switch amplifies tiny audio/color fluctuations into
+        # black-white speckles. Blend the rim tone, not its spatial geometry.
+        dark_mix = np.clip((luminance - .34) / .16, 0, 1)
+        dark_mix = dark_mix * dark_mix * (3 - 2 * dark_mix)
+        return (lighter * (1 - dark_mix[..., None]) + darker * dark_mix[..., None]).astype(np.float32)
     return np.where((luminance > 0.42)[..., None], darker, lighter).astype(np.float32)
 
 
-def apply_local_pattern_edges(rgb, pattern_edge, high_map, spectrum_value, sharp_mix):
+def apply_local_pattern_edges(rgb, pattern_edge, high_map, spectrum_value, sharp_mix, edge_gain=1.0, smooth_contrast=False):
+    pattern_edge = pattern_edge * edge_gain
     neighbor_rgb = (
         np.roll(rgb, 3, axis=0)
         + np.roll(rgb, -3, axis=0)
@@ -590,7 +597,7 @@ def apply_local_pattern_edges(rgb, pattern_edge, high_map, spectrum_value, sharp
         + np.roll(rgb, -3, axis=1)
     ) * 0.25
     rim_edge = np.clip(pattern_edge * (0.38 + high_map * 0.30 + spectrum_value * 0.12), 0, 0.62)
-    rim_color = local_contrast_edge_rgb(neighbor_rgb, pattern_edge)
+    rim_color = local_contrast_edge_rgb(neighbor_rgb, pattern_edge, smooth_contrast)
     shadow_edge = np.clip(pattern_edge * (0.38 + sharp_mix * 0.34), 0, 0.58)
     rgb = rgb * (1.0 - shadow_edge[..., None] * (1.0 - rim_edge[..., None] * 0.35))
     return rgb * (1.0 - rim_edge[..., None]) + rim_color * rim_edge[..., None]
@@ -634,6 +641,22 @@ def smooth_random_field(size, cells, rng, detail=0.0):
     return field.astype(np.float32)
 
 
+def smooth_artwork_field(field, passes=2):
+    """Remove single-pixel chatter before warping, without changing broad forms."""
+    field = np.asarray(field, dtype=np.float32)
+    for _ in range(passes):
+        padded = np.pad(field, ((0, 0), (1, 1)), mode='edge')
+        field = (padded[:, :-2] + padded[:, 1:-1] * 2 + padded[:, 2:]) * .25
+        padded = np.pad(field, ((1, 1), (0, 0)), mode='edge')
+        field = (padded[:-2] + padded[1:-1] * 2 + padded[2:]) * .25
+    return field
+
+
+def remove_classic_pixel_grain(rgb):
+    """Reject isolated pixel outliers without averaging across contour edges."""
+    return np.asarray(Image.fromarray(rgb, 'RGB').filter(ImageFilter.MedianFilter(3)))
+
+
 def render_random_cover(
     spec,
     rms,
@@ -649,11 +672,23 @@ def render_random_cover(
     energy_curve=None,
     global_energy=0.5,
     rng=None,
+    detail=None,
 ):
+    # None keeps the archived reference renderer available unchanged. SonicForge
+    # supplies a continuous 0..100 detail value for its cleaned classic artwork.
+    clean = detail is not None
+    detail_level = float(np.clip(float(detail) / 100, 0, 1)) if clean else 1.0
+    if clean and not np.isfinite(detail_level):
+        raise ValueError('Classic detail must be finite')
+    edge_gain = .70 + detail_level * .25 if clean else 1.0
     if rng is None:
         rng = np.random.default_rng()
     song_map = resize_spectrum(spec, freq_bins=size, time_bins=size)
     song_map = np.flipud(song_map)
+    if clean:
+        # Filter only the audio magnitude map before warping. The historical
+        # fields, angular boundaries and decorative contours remain untouched.
+        song_map = smooth_artwork_field(song_map, passes=2)
     if bpm_curve is None:
         bpm_curve = np.full(size, bpm, dtype=np.float32)
     if motion_curve is None:
@@ -677,8 +712,10 @@ def render_random_cover(
     field_a = smooth_random_field(size, cells=calm_cells, rng=rng, detail=detail_amount * 0.55)
     field_b = smooth_random_field(size, cells=sharp_cells, rng=rng, detail=detail_amount)
     field_c = smooth_random_field(size, cells=max(7, calm_cells - 2), rng=rng, detail=detail_amount * 0.70)
-    field_d = smooth_random_field(size, cells=max(24, sharp_cells + 8), rng=rng, detail=min(0.42, detail_amount + 0.10))
-    micro_field = smooth_random_field(size, cells=max(36, sharp_cells * 2), rng=rng, detail=0.36)
+    field_d = smooth_random_field(size, cells=max(24, sharp_cells + 8),
+                                  rng=rng, detail=min(0.42, detail_amount + 0.10))
+    micro_field = smooth_random_field(size, cells=max(36, sharp_cells * 2),
+                                      rng=rng, detail=.36)
 
     initial_part = np.clip(base_part + (field_a - 0.5) * 46 + (field_d - 0.5) * 28, 0, size - 1)
     peak_rows = sample_curve(peaks, initial_part)
@@ -748,7 +785,11 @@ def render_random_cover(
         color_energy = np.clip(global_energy + brightness_bias + bass_bias, 0, 1)
         base_energy = np.clip(0.56 * color_energy + 0.44 * local_energy, 0, 1)
         energy_sigma = 0.012 + 0.026 * sharp_mix
-        pixel_energy = rng.normal(base_energy, energy_sigma).astype(np.float32)
+        if clean:
+            # Coherent color variation, not an independent random value per pixel.
+            pixel_energy = base_energy + (field_c - .5) * energy_sigma * (.3 + detail_level * .4)
+        else:
+            pixel_energy = rng.normal(base_energy, energy_sigma).astype(np.float32)
         pixel_energy = np.clip(
             pixel_energy
             + (spectrum_value - 0.50) * 0.050
@@ -798,9 +839,11 @@ def render_random_cover(
         + pattern_edge * 2.15
     )
     edge_pattern = np.clip(edge_pattern * (11 + 28 * sharp_mix), 0, 1)
+    if clean:
+        edge_pattern *= edge_gain
     if color_mode == "ocean":
         rgb = hsv_to_rgb_array(hue, saturation, value)
-        rgb = apply_local_pattern_edges(rgb, pattern_edge, high_map, spectrum_value, sharp_mix)
+        rgb = apply_local_pattern_edges(rgb, pattern_edge, high_map, spectrum_value, sharp_mix, edge_gain, clean)
     elif color_mode in {"plasma", "fusion", "aurora"}:
         accent_mask = np.clip((high_map - 0.82) * 1.65 + edge_pattern * 0.045, 0, 1)
         accent_mask *= np.clip(pixel_energy - 0.58, 0, 0.42) / 0.42
@@ -817,9 +860,10 @@ def render_random_cover(
         green = np.asarray((0.04, 0.78, 0.34), dtype=np.float32)
         green_strength = 0.28 if color_mode == "plasma" else (0.34 if color_mode == "aurora" else 0.52)
         rgb = rgb * (1.0 - green_mask[..., None] * green_strength) + green * (green_mask[..., None] * green_strength)
-        rgb = apply_local_pattern_edges(rgb, pattern_edge, high_map, spectrum_value, sharp_mix)
+        rgb = apply_local_pattern_edges(rgb, pattern_edge, high_map, spectrum_value, sharp_mix, edge_gain, clean)
     rgb *= np.clip(0.90 + edge_pattern[..., None] * (0.14 + sharp_mix[..., None] * 0.78), 0.70, 1.30)
-    return np.clip(rgb * 255, 0, 255).astype(np.uint8)
+    pixels = np.clip(rgb * 255, 0, 255).astype(np.uint8)
+    return remove_classic_pixel_grain(pixels) if clean else pixels
 
 
 def title_font(size):

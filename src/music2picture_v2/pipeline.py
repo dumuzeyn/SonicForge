@@ -53,7 +53,7 @@ class Music2PicturePipeline:
                 "lyrics_hash": hashlib.sha256(lyrics.encode("utf-8", errors="replace")).hexdigest(),
                 "mood": mood_override,
                 "variation": int(variation),
-                "version": 3,
+                "version": 5,
             },
             ensure_ascii=False,
             sort_keys=True,

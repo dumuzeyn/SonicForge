@@ -134,6 +134,10 @@ TEXT = {
 }
 
 
+TEXT['ru']['export_tip'] = 'Смешивает включённые дорожки в новый WAV, MP3 или M4A. Экспорт доступен в обоих режимах; при связанной обработке вручную экспортировать не нужно.'
+TEXT['en']['export_tip'] = 'Mixes unmuted lanes into a new WAV, MP3 or M4A. Export works in either mode; linked processing needs no manual export.'
+
+
 def clock(seconds):
     return f"{int(seconds) // 60:02d}:{seconds % 60:05.2f}"
 
@@ -154,6 +158,7 @@ class AudioEditor(ttk.Frame):
         self.cancel = threading.Event()
         self.worker = None
         self._task_active = False
+        self._pipeline_busy = False
         self._after = None
         self._draw_after = None
         self._play_after = None
@@ -360,7 +365,7 @@ class AudioEditor(ttk.Frame):
         self.stop_button = self.button(transport, "stop", self.stop)
         self.stop_button.pack(side=tk.LEFT)
         self.button(transport, "export", self.export, True).pack(side=tk.RIGHT)
-        self.cancel_button = RoundedButton(transport, text=self.tr("cancel"), command=self.cancel.set, state="disabled")
+        self.cancel_button = RoundedButton(transport, text=self.tr("cancel"), command=self.cancel_task, state="disabled")
         self.localized.append((self.cancel_button, "cancel"))
         self.cancel_button.pack(side=tk.RIGHT, padx=8)
         self.tip(self.cancel_button, "cancel_tip")
@@ -392,7 +397,7 @@ class AudioEditor(ttk.Frame):
                 return None
         if not control and letter == 'escape':
             self.stop()
-            self.cancel.set()
+            self.cancel_task()
             self._cursor_selection = None
             self.range = None
             self._range_clip_id = None
@@ -434,10 +439,21 @@ class AudioEditor(ttk.Frame):
 
     @property
     def is_busy(self):
-        return self._task_active
+        return self._task_active or self._pipeline_busy
+
+    def set_pipeline_busy(self, value):
+        self._pipeline_busy = value
+        self._set_busy(self._task_active)
+
+    def cancel_task(self):
+        if self._pipeline_busy:
+            self.app.stop_processing()
+        else:
+            self.cancel.set()
 
     def _set_busy(self, value):
         self._task_active = value
+        value = self.is_busy
         for widget in self.controls:
             widget.configure(state="disabled" if value else "normal")
         self.cancel_button.configure(state="normal" if value else "disabled")
@@ -445,6 +461,8 @@ class AudioEditor(ttk.Frame):
         self.progress.start(15) if value else self.progress.stop()
         if not value:
             self.refresh()
+        if hasattr(self.app, 'view'):
+            self.app.view.update_editor_pipeline()
 
     def _task(self, operation, work):
         if self.is_busy:
@@ -639,6 +657,7 @@ class AudioEditor(ttk.Frame):
         self._cursor_selection = None
         self._drag_preview = None
         self.refresh()
+        self.app._editor_project_changed()
 
     def refresh(self):
         if self.selected and not any(c.id == self.selected for c in self.project.clips):

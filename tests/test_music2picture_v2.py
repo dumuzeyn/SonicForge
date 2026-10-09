@@ -161,8 +161,10 @@ class Music2PictureV2Tests(unittest.TestCase):
             schemes.add(plan.palette_scheme)
             compositions.add(params.composition)
             palettes.add(plan.palette)
-        self.assertGreaterEqual(len(schemes), 4)
-        self.assertGreaterEqual(len(compositions), len(COMPOSITIONS) - 1)
+        # Character-led families intentionally recur for similarly calm signals;
+        # fingerprint randomness must no longer force unrelated preset families.
+        self.assertGreaterEqual(len(schemes), 3)
+        self.assertGreaterEqual(len(compositions), 3)
         self.assertEqual(len(palettes), len(signals))
 
     def test_text_first_stage_order(self):

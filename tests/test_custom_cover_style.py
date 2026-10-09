@@ -48,6 +48,25 @@ class CustomCoverTests(unittest.TestCase):
         self.assertEqual(settings.colors, ("#112233", "#ddeeff"))
         self.assertEqual(settings.detail, 75)
         self.assertNotIn("color_low", settings.to_dict())
+        self.assertEqual(settings.positions, (0, 1))
+
+    def test_positions_validate_round_trip_and_change_rendered_gradient(self):
+        for positions in ("bad", [0], [0, .8, .5], [0, False, 1], [0, float("nan"), 1],
+                          [0, float("inf"), 1], [-.1, .5, 1], [0, .5, 1.1], [0, "0.5", 1]):
+            with self.subTest(positions=positions), self.assertRaises(ValueError):
+                CustomCoverSettings.parse(dict(colors=["#ff0000", "#00ff00", "#0000ff"], positions=positions))
+        settings = CustomCoverSettings.parse(dict(colors=["#ff0000", "#00ff00", "#0000ff"], positions=[0, .25, 1]))
+        self.assertEqual(CustomCoverSettings.parse(json.loads(json.dumps(settings.to_dict()))), settings)
+        np.testing.assert_equal(palette_rgb(settings.colors, [0, .25, 1], settings.positions),
+                                [[255, 0, 0], [0, 255, 0], [0, 0, 255]])
+        np.testing.assert_equal(palette_rgb(settings.colors, [.125], settings.positions), [[127, 127, 0]])
+        base = Image.fromarray(np.tile(np.arange(256, dtype=np.uint8), (10, 1)), "L").convert("RGB")
+        shifted = finish_custom_background(base, settings)
+        even = finish_custom_background(base, dict(colors=settings.colors))
+        self.assertIsNotNone(ImageChops.difference(shifted, even).getbbox())
+        for positions in ([.2, .2, .8], [0, 0, 0], [1, 1, 1]):
+            duplicate = CustomCoverSettings.parse(dict(colors=settings.colors, positions=positions))
+            self.assertEqual(finish_custom_background(base, duplicate).size, base.size)
 
     def test_single_color_keeps_texture_and_many_color_order_changes_output(self):
         gradient = np.tile(np.arange(256, dtype=np.uint8), (256, 1))
@@ -94,7 +113,8 @@ class CustomCoverTests(unittest.TestCase):
                     self.assertEqual(modern.call_args.kwargs["detail"], 100)
                 else:
                     modern.assert_not_called()
-                    self.assertEqual(legacy.call_args.kwargs["patterns"], 5)
+                    self.assertEqual(legacy.call_args.kwargs["patterns"], 2)
+                    self.assertEqual(legacy.call_args.kwargs["detail"], 100)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_real_generation_saves_reproducible_settings_and_changes_detail(self):

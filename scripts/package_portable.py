@@ -12,8 +12,8 @@ def main():
     parser.add_argument('--folder', type=Path, default=dist / 'SonicForge',
                         help='Clean, verified folder build to include in the release')
     folder = parser.parse_args().folder.resolve(strict=True)
-    installer = dist / 'SonicForge-Setup-2.1.0.exe'
-    archive = dist / 'SonicForge-2.1.0-windows-x64.zip'
+    installer = dist / 'SonicForge-Setup-2.2.0.exe'
+    archive = dist / 'SonicForge-2.2.0-windows-x64.zip'
     if not (folder / 'SonicForge.exe').is_file() or not installer.is_file():
         raise RuntimeError('Build the application and installer before packaging')
     import pefile
@@ -23,7 +23,7 @@ def main():
             info = image.VS_FIXEDFILEINFO[0]
             version = (info.FileVersionMS >> 16, info.FileVersionMS & 65535,
                        info.FileVersionLS >> 16, info.FileVersionLS & 65535)
-            if version != (2, 1, 0, 0):
+            if version != (2, 2, 0, 0):
                 raise ValueError(f'Wrong executable version in release: {executable}: {version}')
     if archive.exists():
         raise FileExistsError('Refusing to overwrite an existing portable archive')

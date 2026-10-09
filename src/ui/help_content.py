@@ -42,7 +42,7 @@ EXTRA = {
     "tip_choose": ("Меняет папку для готовых копий пакетной обработки. Редактор выбирает выходной файл отдельно.", "Changes the batch output folder. The editor selects its export file separately."),
     "tip_metadata_actions": ("Прочитать теги исходного файла, открыть дополнительные поля или создать копию без метаданных.", "Read source tags, open additional fields or produce a copy without metadata."),
     "tip_additional_metadata": ("Номер диска, издатель, авторские права и дополнительный текстовый тег.", "Disc number, publisher, copyright and an additional text tag."),
-    "tip_cover_show_title": ("Печатает название по центру обложки. Название берётся из метаданных или имени файла.", "Prints the title in the center, from metadata or the filename."),
+    "tip_cover_show_title": ("Оформляет название с учётом звучания песни и композиции обложки. Название берётся из метаданных или имени файла.", "Styles the title to match the music and cover composition, using metadata or the filename."),
     "tip_cover_show_artist": ("Добавляет исполнителя к надписи на обложке, если включено название.", "Adds the artist to the cover lettering when title is enabled."),
     "tip_embed_cover_short": ("В «Выполнении» записывает готовую картинку в аудиофайл. Предпросмотр показывает картинку, но не меняет песню.", "Processing embeds the completed image in audio. Preview displays an image without changing the song."),
     "tip_cover_preview": ("Создаёт и показывает обложку в этом окне. Не запускает выполнение и не встраивает её в исходную песню.", "Generates and displays artwork here. Does not start Processing or embed into the source."),
@@ -68,10 +68,32 @@ PAGES = {
         "5. Listen and export a new WAV, MP3 or M4A. Drafts save paths and edits. The editor is independent of Processing; originals remain intact."),
     "metadata": ("Поля записываются в готовые копии при этапе «Метаданные». «Прочитать» заполняет их из выбранного файла. При обычном обновлении пустые поля сохраняют существующие значения; перезапись всех метаданных удаляет прежние теги. Комментарий — тег, а не ручное описание обложки.", "Fields are written to completed copies in the Metadata stage. Read fills them from the selected file. Normal updates retain existing values for empty fields; replacing all metadata removes old tags. Comment is a tag, not a manual cover prompt."),
     "audio": ("1. Выберите желаемый результат и интенсивность. Ползунки меняют громкость, высокие частоты, бас и ширину стерео. Блок «Что именно изменится» показывает реальные значения.\n2. «Анализировать» измеряет запись; рекомендация применяется отдельно.\n3. «Создать сравнение» подготавливает оригинал и результат с одинаковой воспринимаемой громкостью.\n4. Готовые копии создаёт только этап «Звук» во вкладке «Выполнение». Эти настройки не влияют на редактор.\n\n0% не означает обход всей обработки: остаётся нормализация; дополнительные эффекты и фильтры управляются отдельно.", "1. Choose a profile and strength. Sliders adjust loudness, treble, bass and stereo width. Exactly what changes shows actual values.\n2. Analyze measures the recording; apply recommendations separately.\n3. Create comparison prepares loudness-matched original and processed versions.\n4. Final copies are made by the Sound stage in Processing only. These settings do not affect the editor.\n\n0% is not full bypass: normalization remains; advanced effects and filters are independent."),
-    "cover": ("Создайте обложку автоматически или выберите свой PNG, JPEG либо WebP. Предпросмотр показывает готовую картинку здесь, не меняя исходный файл. Генерация опирается на звук; название и исполнитель управляют центральной надписью. Встраивание происходит при выполнении этапа обложки.", "Generate artwork automatically or choose your own PNG, JPEG or WebP. Preview shows it here without modifying the source. Generation uses the audio; title and artist control the lettering. Embedding happens during the Cover stage."),
+    "cover": ("Создайте обложку автоматически или выберите свой PNG, JPEG либо WebP. Современный узор следует ритму, тембру и активности песни. В «Своём стиле» слева на палитре — спокойствие, справа — драйв; контрастные участки песни дают небольшие акценты. Перетаскивайте маркеры; для перекрывающихся выберите цвет в списке. ←/→ меняют позицию на 1%, с Shift — на 0,1%. «Применить» запоминает настройки между запусками. Предпросмотр не меняет исходник; встраивание происходит при выполнении этапа обложки.", "Generate artwork automatically or choose your own PNG, JPEG or WebP. Modern patterns follow rhythm, timbre and musical activity. In Custom style the left palette means calm and the right means driven; contrasting sections create small accents. Drag stops; select overlapping ones in the list. ←/→ adjust by 1%, or 0.1% with Shift. Apply remembers settings between launches. Preview leaves the source unchanged; artwork is embedded during the Cover stage."),
     "lyrics": ("«Открыть готовый» читает текст из песни или соседнего TXT/LRC. «Распознать» выводит услышанные строки. Русский и английский сохраняются как есть; для остальных языков по умолчанию используется русская транскрипция звуков, не перевод. MP3 сохраняет строки с таймкодами в USLT; пользователь видит слова без таймкодов. «Записать в песню» записывает текущий текст в выбранный MP3. Ненадёжный результат требует проверки.", "Load existing reads song tags or a nearby TXT/LRC. Recognize displays detected lines. Russian and English stay native; other languages default to Russian sound spelling, not translation. MP3 stores timed lines in USLT while the editor shows words without timestamps. Save writes current text to the selected MP3. Uncertain results need review."),
     "processing": ("Выберите этапы и источник. Для папки обрабатываются её песни; результат сохраняется в соседнюю SonicForgeProgect. Оригиналы сохраняются. Отдельный индикатор текста показывает распознавание, запись и сомнительные результаты. Редактор сюда не входит: он экспортирует отдельно. «Стоп» прерывает выполнение; готовые результаты и незавершённые файлы обрабатываются согласно журналу.", "Choose stages and a source. Folder processing writes into a sibling SonicForgeProgect. Originals are preserved. Separate lyric progress reports recognition, saving and review. The editor is not a stage and exports separately. Stop cancels processing; see the log for completed/incomplete outputs."),
 }
+
+
+EXTRA['tip_stage_audio'] = (
+    'Включите явно, только если хотите дополнительно изменить звук. В связанном режиме этап применяется к монтажу, в отдельном — к выбранному исходнику. Без этого этапа звук рабочей версии сохраняется без дополнительной обработки.',
+    'Enable only to apply additional sound processing. Linked mode processes the editor mix; separate mode processes the selected original. Without this stage the working audio is copied without further processing.',
+)
+EXTRA['audio_intro'] = (
+    'Настройки применяются к сравнению и этапу «Звук» в «Выполнении». При включённой связи с редактором используется текущий монтаж, иначе — выбранный исходник.',
+    'Settings apply to comparison and the Sound stage in Processing. When linked, the current editor mix is used; otherwise the selected original is used.',
+)
+PAGES['editor'] = (
+    PAGES['editor'][0].replace('Редактор независим от «Выполнения»; исходники не меняются.',
+        'Связь с редактором: выкл. — отдельный экспорт и обработка исходника; вкл. — остальные разделы и «Выполнение» используют монтаж без ручного экспорта. Исходники не меняются.'),
+    PAGES['editor'][1].replace('The editor is independent of Processing; originals remain intact.',
+        'Link editor off: separate export and original processing. On: other sections and Processing use the current mix without manual export. Originals stay intact.'),
+)
+PAGES['processing'] = (
+    PAGES['processing'][0].replace('Редактор сюда не входит: он экспортирует отдельно.',
+        'При включённой связи с редактором источником становится текущий монтаж всех включённых дорожек. После изменения монтажа предпросмотры и распознанный текст нужно обновить.'),
+    PAGES['processing'][1].replace('The editor is not a stage and exports separately.',
+        'When linked, the current mix of all unmuted editor lanes is the source. After editing, refresh previews and recognize lyrics again.'),
+)
 
 
 def add_help_strings(translations):

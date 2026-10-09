@@ -147,6 +147,7 @@ def build_visual_dna(
         intro_energy=analysis.intro_energy,
         ending_energy=analysis.ending_energy,
         fingerprint=analysis.fingerprint,
+        activity_curve=analysis.activity_curve,
     )
 
 

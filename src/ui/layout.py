@@ -1,4 +1,5 @@
 import tkinter as tk
+import time
 import re
 import webbrowser
 from tkinter import ttk, messagebox
@@ -37,6 +38,9 @@ class SonicForgeView(ttk.Frame):
         self._summary_after = None
         self._help_window = None
         self.busy = False
+        self.editor_link_controls = []
+        self.source_picker_buttons = []
+        self._audio_activity_after = None
         self.active_tab = "editor"
         self.tab_buttons = {}
         self.tab_pages = {}
@@ -46,7 +50,14 @@ class SonicForgeView(ttk.Frame):
     def _cancel_tab_transition(self, event=None):
         if event is not None and event.widget is not self:
             return
-        for attribute in ("_summary_after",):
+        for name in ('audio_activity_progress', 'progress'):
+            progress = getattr(self, name, None)
+            if progress is not None:
+                try:
+                    progress.stop()
+                except tk.TclError:
+                    pass
+        for attribute in ("_summary_after", '_audio_activity_after'):
             after_id = getattr(self, attribute, None)
             if after_id is not None:
                 try:
@@ -104,6 +115,45 @@ class SonicForgeView(ttk.Frame):
         frame.columnconfigure(1, weight=1)
         self._path_row(frame, 0, "source", self.app.source_var, "tip_source", True)
         self._path_row(frame, 1, "output", self.app.output_var, "tip_output", False)
+        self._build_editor_link_controls(frame, row=2, columnspan=3)
+
+    def _build_editor_link_controls(self, parent, row, columnspan=1):
+        frame = ttk.Frame(parent, style='Surface.TFrame')
+        frame.grid(row=row, column=0, columnspan=columnspan, sticky='ew', pady=(4, 0))
+        frame.columnconfigure(3, weight=1)
+        button = RoundedButton(frame, command=self.app.toggle_editor_pipeline, width=27)
+        button.grid(row=0, column=0, sticky='w', padx=(0, 10))
+        self._tip(button, 'tip_editor_pipeline')
+        self.editor_link_controls.append((button, 'mode'))
+        label = self._localize(ttk.Label(frame, style='Surface.TLabel'), 'editor_output_format')
+        label.grid(row=0, column=1, padx=(0, 6))
+        combo = ttk.Combobox(frame, textvariable=self.app.editor_output_format_var,
+                             values=('MP3', 'WAV', 'M4A'), state='disabled', width=6)
+        combo.grid(row=0, column=2, sticky='w')
+        self._tip(combo, 'tip_editor_output_format')
+        self.editor_link_controls.append((combo, 'format'))
+        hint = ttk.Label(frame, style='SurfaceSecondary.TLabel', wraplength=840)
+        hint.grid(row=1, column=0, columnspan=4, sticky='w', pady=(2, 0))
+        self.editor_link_controls.append((hint, 'hint'))
+
+    def update_editor_pipeline(self):
+        linked = self.app.editor_pipeline_var.get()
+        busy = self.busy or (hasattr(self, 'editor') and self.editor.is_busy)
+        for widget, kind in self.editor_link_controls:
+            if kind == 'mode':
+                widget.configure(text=self.app.t('editor_link_on' if linked else 'editor_link_off'),
+                                 style='Primary.TButton' if linked else 'Editor.TButton',
+                                 state='disabled' if busy else 'normal')
+            elif kind == 'format':
+                widget.configure(state='readonly' if linked and not busy else 'disabled')
+            else:
+                widget.configure(text=self.app.t('editor_link_hint' if linked else 'editor_separate_hint'))
+        if hasattr(self, 'source_entry'):
+            self.source_entry.configure(textvariable=self.app.editor_source_label_var if linked else self.app.source_var,
+                                        state='disabled' if linked or busy else 'normal')
+            self.app.editor_source_label_var.set(self.app.t('editor_mix_source'))
+            for widget in self.source_picker_buttons:
+                widget.configure(state='disabled' if linked or busy else 'normal')
 
     def _path_row(self, parent, row, key, variable, tip_key, source):
         label = self._localize(ttk.Label(parent, style="Surface.TLabel"), key)
@@ -126,6 +176,7 @@ class SonicForgeView(ttk.Frame):
             )
             file_button.grid(row=0, column=0, padx=(0, SPACING["sm"]))
             folder_button.grid(row=0, column=1)
+            self.source_picker_buttons.extend((file_button, folder_button))
         else:
             choose_button = self._localize(
                 RoundedButton(buttons, width=SIZES["button_width"], command=self.app.choose_output_folder),
@@ -204,6 +255,7 @@ class SonicForgeView(ttk.Frame):
 
         self.editor = AudioEditor(self.tab_pages["editor"], self.app, header_parent=self.editor_header)
         self.editor.grid(row=0, column=0, sticky="nsew")
+        self._build_editor_link_controls(self.editor_header, row=3)
         self._build_metadata(self.tab_pages["metadata"])
         self._build_audio(self.tab_pages["audio"])
         self._build_cover(self.tab_pages["cover"])
@@ -216,6 +268,7 @@ class SonicForgeView(ttk.Frame):
         self._build_settings(self.tab_pages["settings"])
         self.help_panel = HelpPanel(self.tab_pages["help"], self.app, self._help_content)
         self.help_panel.grid(row=0, column=0, sticky="nsew")
+        self.update_editor_pipeline()
         self.show_tab(self.active_tab)
 
     def _reserve_context_height(self):
@@ -467,11 +520,26 @@ class SonicForgeView(ttk.Frame):
         for button in (self.audio_apply_button, self.audio_original_button, self.audio_processed_button, self.audio_stop_button):
             button.configure(state="disabled")
 
+        analysis_frame = ttk.Frame(frame, style='Surface.TFrame')
+        analysis_frame.grid(row=6, column=0, columnspan=4, sticky='ew', pady=(SPACING['sm'], 0))
+        analysis_frame.columnconfigure(0, weight=1)
+        activity = ttk.Frame(analysis_frame, style='Surface.TFrame')
+        activity.grid(row=0, column=0, sticky='ew')
+        activity.columnconfigure(0, weight=1)
+        self.audio_activity_progress = ttk.Progressbar(activity, mode='indeterminate',
+                                                       style='Thin.Horizontal.TProgressbar')
+        self.audio_activity_progress.grid(row=0, column=0, sticky='ew', padx=(0, 10))
+        self.audio_activity_var = tk.StringVar()
+        ttk.Label(activity, textvariable=self.audio_activity_var, style='SurfaceSecondary.TLabel',
+                  width=42).grid(row=0, column=1, sticky='w')
+        self.audio_cancel_button = self._localize(RoundedButton(activity, command=self.app.cancel_audio_analysis,
+                                                               width=9, state='disabled'), 'audio_cancel_analysis')
+        self.audio_cancel_button.grid(row=0, column=2, padx=(8, 0))
         analysis = ttk.Label(
-            frame, textvariable=self.app.audio_analysis_var, style="SurfaceSecondary.TLabel",
+            analysis_frame, textvariable=self.app.audio_analysis_var, style="SurfaceSecondary.TLabel",
             wraplength=760, justify=tk.LEFT,
         )
-        analysis.grid(row=6, column=0, columnspan=4, sticky="ew", pady=(SPACING["md"], 0))
+        analysis.grid(row=1, column=0, sticky="ew", pady=(2, 0))
         warning = ttk.Label(
             frame, textvariable=self.app.audio_warning_var, style="SurfaceSecondary.TLabel",
             foreground=COLORS["danger"], wraplength=760, justify=tk.LEFT,
@@ -738,6 +806,10 @@ class SonicForgeView(ttk.Frame):
         self.load_lyrics_button.pack(side=tk.LEFT, padx=(0, SPACING["sm"]))
         self.recognize_lyrics_button.pack(side=tk.LEFT, padx=(0, SPACING["sm"]))
         self.save_lyrics_button.pack(side=tk.LEFT)
+        self.copy_lyrics_button = self._localize(
+            RoundedButton(toolbar, command=self.app.copy_lyrics_text), "lyrics_copy_all"
+        )
+        self.copy_lyrics_button.pack(side=tk.LEFT, padx=(SPACING["sm"], 0))
 
         options = ttk.Frame(frame, style="Surface.TFrame")
         options.grid(row=1, column=0, sticky="ew", pady=(0, SPACING["sm"]))
@@ -819,6 +891,13 @@ class SonicForgeView(ttk.Frame):
         self.lyrics_editor.configure(yscrollcommand=scrollbar.set)
         self.lyrics_editor.grid(row=0, column=0, sticky="nsew")
         self.lyrics_editor.bind("<Double-Button-1>", self._select_lyrics_word)
+        self.lyrics_menu = ThemedMenu(self.lyrics_editor, tearoff=False)
+        self.lyrics_menu.add_command(label=self.app.t("copy"),
+                                    command=lambda: self.app._copy_widget_text(self.lyrics_editor))
+        self.lyrics_menu.add_command(label=self.app.t("lyrics_copy_all"), command=self.app.copy_lyrics_text)
+        self.lyrics_menu.add_command(label=self.app.t("select_all"),
+                                    command=self._select_all_lyrics)
+        self.lyrics_editor.bind("<Button-3>", self._show_lyrics_menu)
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.lyrics_controls = [
             self.load_lyrics_button,
@@ -828,6 +907,20 @@ class SonicForgeView(ttk.Frame):
             self.lyrics_language,
             self.overwrite_lyrics_check,
         ]
+
+    def _select_all_lyrics(self):
+        self.lyrics_editor.tag_add(tk.SEL, "1.0", "end-1c")
+        self.lyrics_editor.mark_set(tk.INSERT, "1.0")
+        self.lyrics_editor.focus_set()
+
+    def _show_lyrics_menu(self, event):
+        # Keep the existing lyric selection when the menu takes focus.
+        self.lyrics_editor.focus_set()
+        try:
+            self.lyrics_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.lyrics_menu.grab_release()
+        return "break"
 
     def _select_lyrics_word(self, event):
         """Select a whole Unicode lyric word, including apostrophe compounds."""
@@ -1056,8 +1149,12 @@ class SonicForgeView(ttk.Frame):
         self.audio_profile_combo.configure(values=self.app.audio_profile_values())
         self.log_menu.entryconfigure(0, label=self.app.t("copy"))
         self.log_menu.entryconfigure(1, label=self.app.t("select_all"))
+        self.lyrics_menu.entryconfigure(0, label=self.app.t("copy"))
+        self.lyrics_menu.entryconfigure(1, label=self.app.t("lyrics_copy_all"))
+        self.lyrics_menu.entryconfigure(2, label=self.app.t("select_all"))
         self._refresh_lyrics_execution()
         self.editor.apply_language()
+        self.update_editor_pipeline()
         self.interface_language_var.set("Русский" if self.app.language == "ru" else "English")
         self.help_panel.refresh_language()
         if self.busy:
@@ -1133,6 +1230,37 @@ class SonicForgeView(ttk.Frame):
         self.audio_analyze_button.configure(state=state)
         self.audio_preview_button.configure(state=state)
 
+    def start_audio_activity(self):
+        self._audio_activity_started = time.monotonic()
+        self._audio_activity_stage = ('opening', {})
+        self.audio_activity_progress.start(14)
+        self.audio_cancel_button.configure(state='normal')
+        self._tick_audio_activity()
+
+    def set_audio_activity_stage(self, stage, data):
+        self._audio_activity_stage = (stage, data)
+        self._tick_audio_activity()
+
+    def _tick_audio_activity(self):
+        if self._audio_activity_after:
+            self.after_cancel(self._audio_activity_after)
+        elapsed = int(time.monotonic() - self._audio_activity_started)
+        stage, data = self._audio_activity_stage
+        self.audio_activity_var.set(self.app.t('audio_analysis_activity').format(
+            stage=self.app.t('audio_analysis_stage_' + stage).format(**data), seconds=elapsed))
+        self._audio_activity_after = self.after(250, self._tick_audio_activity)
+
+    def finish_audio_activity(self, cancelled=False):
+        if self._audio_activity_after:
+            self.after_cancel(self._audio_activity_after)
+            self._audio_activity_after = None
+        elapsed = time.monotonic() - self._audio_activity_started
+        self.audio_activity_progress.stop()
+        self.audio_activity_progress.configure(value=0)
+        self.audio_cancel_button.configure(state='disabled')
+        self.audio_activity_var.set(self.app.t('audio_analysis_cancelled' if cancelled else 'audio_analysis_finished')
+                                   .format(seconds=elapsed))
+
     def update_engine_dependencies(self):
         self.cover_preview_button.configure(state=tk.DISABLED if self.busy else tk.NORMAL)
         self.cover_style_combo.configure(
@@ -1165,6 +1293,9 @@ class SonicForgeView(ttk.Frame):
 
     def set_busy(self, busy):
         self.busy = busy
+        if self.app.editor_pipeline_var.get():
+            self.editor.set_pipeline_busy(busy)
+        self.update_editor_pipeline()
         self.run_button.configure(
             state=tk.DISABLED if busy else tk.NORMAL,
             text=self.app.t("processing_busy") if busy else self.app.t("run"),

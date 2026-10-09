@@ -202,13 +202,68 @@ class GuiAcceptanceTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        cls.preferences_directory = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.preferences_directory.cleanup)
+        cls.preference_path = Path(cls.preferences_directory.name) / 'custom_cover.json'
+        cls.preferences_patch = patch('cover_preferences.preference_path', return_value=cls.preference_path)
+        cls.preferences_patch.start()
+        cls.addClassCleanup(cls.preferences_patch.stop)
         cls.app = music_polisher_gui.SonicForgeApp()
         # Process native Map/Configure events before checking mapped widgets.
         cls.app.update()
+        from .clipboard_guard import ClipboardGuard
+        cls.clipboard_guard = ClipboardGuard(cls.app)
 
     @classmethod
     def tearDownClass(cls):
-        cls.app.destroy()
+        try:
+            cls.clipboard_guard.restore()
+        finally:
+            cls.app.destroy()
+
+    def test_lyrics_copy_shortcut_menu_and_button_never_use_path_selection(self):
+        editor = self.app.view.lyrics_editor
+        original_text = self.app.view.get_lyrics_text()
+        source = self.app.source_var.get()
+        text = "Первая строка песни\nВторая строка песни"
+        try:
+            self.app.view.show_tab('lyrics')
+            self.app.view.set_lyrics_text(text)
+            self.app.source_var.set('C:/TestMusic/Проверка test.mp3')
+            self.app.view.source_entry.selection_range(0, tk.END)
+            for busy in (False, True):
+                self.app.view.set_lyrics_busy(busy)
+                editor.tag_remove(tk.SEL, '1.0', tk.END)
+                editor.focus_force()
+                self.app.update()
+                self.app.clipboard_clear()
+                self.app.clipboard_append('C:/TestMusic/Проверка test.mp3')
+                self._send_control_key(editor, 'c')
+                self.assertEqual(self.app.clipboard_get(), text)
+                self.assertEqual(self.clipboard_guard.unicode_text().replace('\r\n', '\n'), text)
+                editor.tag_add(tk.SEL, '2.0', '2.end')
+                self._send_control_key(editor, 'c')
+                self.assertEqual(self.app.clipboard_get(), 'Вторая строка песни')
+                # Invoke the actual popup commands; opening must retain selection.
+                with patch.object(self.app.view.lyrics_menu, 'tk_popup') as popup:
+                    editor.event_generate('<Button-3>', x=15, y=15, rootx=200, rooty=200)
+                    self.app.update()
+                    popup.assert_called_once()
+                self.app.view.lyrics_menu.invoke(0)
+                self.assertEqual(self.app.clipboard_get(), 'Вторая строка песни')
+                self.app.view.lyrics_menu.invoke(1)
+                self.assertEqual(self.app.clipboard_get(), text)
+                self.app.view.copy_lyrics_button.invoke()
+                self.assertEqual(self.app.clipboard_get(), text)
+                self.app.view.lyrics_menu.invoke(2)
+                self.assertEqual(editor.get(tk.SEL_FIRST, tk.SEL_LAST), text)
+            self.app.toggle_language()
+            self.assertEqual(self.app.view.lyrics_menu.entrycget(1, 'label'), 'Copy lyrics')
+            self.assertEqual(self.app.view.copy_lyrics_button.cget('text'), 'Copy lyrics')
+        finally:
+            self.app.view.set_lyrics_busy(False)
+            self.app.view.set_lyrics_text(original_text)
+            self.app.source_var.set(source)
 
     def setUp(self):
         if self.app.language != "ru":
@@ -470,6 +525,54 @@ class GuiAcceptanceTests(unittest.TestCase):
             self.app.cover_style_var.set(initial_style)
             self.app._cover_preview_ready.clear()
 
+    def test_custom_style_is_restored_after_restart_and_cancel_never_saves(self):
+        from ui.dialogs import CustomCoverDialog
+        from cover_preferences import load_custom_cover_settings
+        initial, initial_style = dict(self.app.custom_cover_settings), self.app.cover_style_var.get()
+        dialog = CustomCoverDialog(self.app)
+        restarted = None
+        try:
+            dialog.colors = ['#ff0000', '#00ff00', '#0000ff']
+            dialog.positions = [.08, .35, .9]
+            dialog.pattern.set(self.app.t('custom_pattern_legacy'))
+            for key, value in dict(detail=83, contrast=128, saturation=74, softness=16).items():
+                dialog.variables[key].set(value)
+            dialog.apply()
+            expected = dict(self.app.custom_cover_settings)
+            self.assertEqual(load_custom_cover_settings(), expected)
+            restarted = music_polisher_gui.SonicForgeApp()
+            self.assertEqual(restarted.custom_cover_settings, expected)
+            self.assertEqual(restarted.cover_choice('style', restarted.cover_style_var.get()), 'custom')
+            dialog = CustomCoverDialog(restarted)
+            self.assertEqual(dialog.positions, [.08, .35, .9])
+            dialog.reset()
+            dialog.close()
+            self.assertEqual(load_custom_cover_settings(), expected)
+            self.assertEqual(restarted.custom_cover_settings, expected)
+        finally:
+            if dialog.winfo_exists():
+                dialog.close()
+            if restarted is not None:
+                restarted._close()
+            self.app.custom_cover_settings = initial
+            self.app.cover_style_var.set(initial_style)
+
+    def test_custom_style_save_error_retains_previous_settings_and_open_dialog(self):
+        from ui.dialogs import CustomCoverDialog
+        initial, style = dict(self.app.custom_cover_settings), self.app.cover_style_var.get()
+        dialog = CustomCoverDialog(self.app)
+        try:
+            dialog.variables['detail'].set(83)
+            with patch('music_polisher_gui.save_custom_cover_settings', side_effect=OSError('Disk full')), \
+                 patch('music_polisher_gui.messagebox.showerror') as error:
+                dialog.apply()
+            error.assert_called_once()
+            self.assertTrue(dialog.winfo_exists())
+            self.assertEqual(self.app.custom_cover_settings, initial)
+            self.assertEqual(self.app.cover_style_var.get(), style)
+        finally:
+            dialog.close()
+
     def test_palette_has_no_count_limit_and_can_reorder_edit_remove(self):
         from ui.dialogs import CustomCoverDialog
         from music2picture_v2.custom_style import CustomCoverSettings
@@ -511,6 +614,75 @@ class GuiAcceptanceTests(unittest.TestCase):
                 dialog.close()
             self.app.custom_cover_settings = initial
             self.app.cover_style_var.set(initial_style)
+
+    def test_palette_drag_reorders_stops_clamps_and_persists(self):
+        from ui.dialogs import CustomCoverDialog
+        from types import SimpleNamespace
+        initial = dict(self.app.custom_cover_settings)
+        initial_style = self.app.cover_style_var.get()
+        dialog = CustomCoverDialog(self.app)
+        try:
+            self.app.update()
+            dialog.colors = ["#ff0000", "#00ff00", "#0000ff"]
+            dialog.positions = [0, .4, 1]
+            dialog._refresh_palette(1)
+            x = round(dialog._palette_x(.4))
+            dialog.gradient.event_generate("<Button-1>", x=x, y=38)
+            dialog.gradient.event_generate("<B1-Motion>", x=round(dialog._palette_x(.7)), y=38)
+            self.app.update()
+            dialog.gradient.event_generate("<ButtonRelease-1>", x=round(dialog._palette_x(.7)), y=38)
+            self.app.update()
+            self.assertAlmostEqual(dialog.positions[1], .7, delta=.002)
+            self.assertEqual(dialog.colors[1], "#00ff00")
+            self.assertEqual(self.app.custom_cover_settings, initial)
+            saved_positions = list(dialog.positions)
+            dialog.add_color("#abcdef")
+            self.assertEqual(dialog.positions[:-1], saved_positions)
+            dialog.remove_color()
+            dialog._refresh_palette(1)
+            # Drag across the endpoint, maintaining the moved color's identity.
+            dialog._start_palette_drag(SimpleNamespace(x=dialog._palette_x(.7)))
+            dialog._drag_palette_color(SimpleNamespace(x=dialog.gradient.winfo_width() + 100))
+            dialog._end_palette_drag(SimpleNamespace(x=dialog.gradient.winfo_width() + 100))
+            self.assertEqual(dialog.colors, ["#ff0000", "#0000ff", "#00ff00"])
+            self.assertEqual(dialog.positions[-1], 1)
+            dialog._start_palette_drag(SimpleNamespace(x=dialog._palette_x(1)))
+            dialog._end_palette_drag(SimpleNamespace(x=-100))
+            self.assertEqual(dialog.colors, ["#ff0000", "#00ff00", "#0000ff"])
+            self.assertEqual(dialog.positions, [0, 0, 1])
+            dialog._nudge_palette_color(1, SimpleNamespace(state=1))
+            self.assertEqual(dialog.positions[1], .001)
+            expected = list(dialog.positions)
+            dialog.apply()
+            self.assertEqual(self.app._process_kwargs()["custom_cover_settings"]["positions"], expected)
+            dialog = CustomCoverDialog(self.app)
+            self.assertEqual(dialog.positions, expected)
+            self.assertIsNotNone(dialog._gradient_image)
+            dialog._start_palette_drag(SimpleNamespace(x=dialog._palette_x(.001)))
+            dialog._drag_palette_color(SimpleNamespace(x=dialog._palette_x(.6)))
+            dialog.close()  # Also cancel a pending idle redraw safely.
+            self.assertEqual(self.app.custom_cover_settings["positions"], expected)
+        finally:
+            if dialog.winfo_exists():
+                dialog.close()
+            self.app.custom_cover_settings = initial
+            self.app.cover_style_var.set(initial_style)
+
+    def test_new_palette_colors_keep_automatic_spacing_until_customized(self):
+        from ui.dialogs import CustomCoverDialog
+        dialog = CustomCoverDialog(self.app)
+        try:
+            dialog.colors = ["#ff0000", "#00ff00"]
+            dialog.positions = [0, 1]
+            dialog._refresh_palette()
+            dialog.add_color("#0000ff")
+            self.assertEqual(dialog.positions, [0, .5, 1])
+            dialog._nudge_palette_color(-1, SimpleNamespace(state=0))
+            positions = list(dialog.positions)
+            dialog.add_color("#ffffff")
+            self.assertEqual(dialog.positions, positions + [1])
+        finally:
+            dialog.close()
 
     def test_custom_cover_switches_off_generation_controls_and_reaches_processing(self):
         previous = self.app.custom_cover_path_var.get()
