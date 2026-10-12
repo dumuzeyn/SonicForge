@@ -21,6 +21,7 @@ from tkinterdnd2 import TkinterDnD
 from PIL import Image, ImageTk
 
 from lyrics_engine import LyricsResult, LyricsService, TranscriptSegment, save_lyrics
+from lyrics_engine.formats import result_from_text, render_lrc, format_timestamp, TIMESTAMP_RE
 from ui.dialogs import AdditionalMetadataDialog, AdvancedAudioDialog, CustomCoverDialog
 from ui.i18n import APP_NAMES, I18N
 from app_identity import set_windows_app_identity
@@ -305,6 +306,9 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.lyrics_format_var = tk.StringVar(value="В песню (MP3, USLT)")
         self.lyrics_language_var = tk.StringVar(value=next(iter(LYRICS_LANGUAGE_CHOICES["ru"])))
         self.overwrite_lyrics_var = tk.BooleanVar(value=False)
+        self.lyrics_timestamps_var = tk.BooleanVar(value=True)
+        self.lyrics_separate_vocals_var = tk.BooleanVar(value=True)
+        self.lyrics_timestamp_var = tk.StringVar(value='00:00.00')
         self.show_splash_var = tk.BooleanVar(value=not splash_preference_path().is_file())
         self.lyrics_status_key = "lyrics_status_empty"
         self.lyrics_status_args = {}
@@ -1051,6 +1055,7 @@ class SonicForgeApp(TkinterDnD.Tk):
             "lyrics_format": self.lyrics_format_key(),
             "lyrics_language": self.lyrics_language_key(),
             "overwrite_lyrics": bool(self.overwrite_lyrics_var.get()),
+            "lyrics_separate_vocals": bool(self.lyrics_separate_vocals_var.get()),
         }
         kwargs.update(self._audio_processing_values())
         return kwargs
@@ -1172,7 +1177,11 @@ class SonicForgeApp(TkinterDnD.Tk):
                 if (self.lyrics_result is not None and self.lyrics_result.review_reason
                         and not messagebox.askyesno(self.app_name(), self.t('editor_lyrics_review_confirm'))):
                     return
-                kwargs['edited_lyrics_result'] = self._edited_lyrics_result(text)
+                try:
+                    kwargs['edited_lyrics_result'] = self._edited_lyrics_result(text)
+                except ValueError as exc:
+                    messagebox.showerror(self.app_name(), str(exc))
+                    return
         kwargs["metadata_mode"] = metadata_mode or (
             "replace" if self.overwrite_all_metadata_var.get() else "update"
         )
@@ -1187,7 +1196,7 @@ class SonicForgeApp(TkinterDnD.Tk):
     def _process_worker(self, kwargs):
         kwargs = dict(kwargs)
         if 'lyrics' in kwargs.get('process_steps', ()) and kwargs.get('edited_lyrics_result') is None:
-            kwargs['lyrics_service'] = self._get_lyrics_service()
+            kwargs['lyrics_service'] = self._get_lyrics_service(kwargs.get('lyrics_separate_vocals'))
         kwargs["lyrics_progress"] = lambda stage, data: self.log_queue.put(("__LYRICS_BATCH_PROGRESS__", stage, data))
         kwargs["genre_progress"] = lambda path, result: self.log_queue.put(("__GENRE_RESULT__", path, result))
         result_key = "run_failed"
@@ -1246,7 +1255,8 @@ class SonicForgeApp(TkinterDnD.Tk):
         self._set_lyrics_status("lyrics_status_recognizing")
         self.worker = threading.Thread(
             target=self._lyrics_worker,
-            args=(source, self.lyrics_language_key()),
+            args=(source, self.lyrics_language_key(), bool(self.lyrics_separate_vocals_var.get()),
+                  bool(self.overwrite_lyrics_var.get())),
             daemon=True,
         )
         self.worker.start()
@@ -1369,15 +1379,17 @@ class SonicForgeApp(TkinterDnD.Tk):
         elif not self._cover_preview_displayed and not self.cancel_event.is_set():
             messagebox.showerror(self.app_name(), self.t("cover_preview_failed"))
 
-    def _get_lyrics_service(self):
+    def _get_lyrics_service(self, separate_vocals=None):
         import music_metadata
         if self._lyrics_service is None:
             self._lyrics_service = LyricsService(metadata_reader=music_metadata.read_all_metadata)
+        if separate_vocals is not None:
+            self._lyrics_service.separate_vocals = bool(separate_vocals)
         return self._lyrics_service
 
-    def _lyrics_worker(self, source, language):
+    def _lyrics_worker(self, source, language, separate_vocals=None, overwrite_lyrics=False):
         try:
-            service = self._get_lyrics_service()
+            service = self._get_lyrics_service(separate_vocals)
             result = service.recognize(
                 source,
                 cancel_event=self.cancel_event,
@@ -1389,8 +1401,12 @@ class SonicForgeApp(TkinterDnD.Tk):
             if (source.suffix.lower() == ".mp3" and result.segments and result.text.strip()
                     and not result.instrumental and not result.review_reason and not self.cancel_event.is_set()):
                 try:
-                    path = save_lyrics(source, result)
-                    self._lyrics_results.put(("saved", path))
+                    existing = service.load_existing(source) if not overwrite_lyrics else None
+                    if existing and existing.text.strip():
+                        self._lyrics_results.put(('preserved', source))
+                    else:
+                        path = save_lyrics(source, result)
+                        self._lyrics_results.put(("saved", path))
                 except Exception as exc:
                     self._lyrics_results.put(("save_error", str(exc)))
         except Exception as exc:
@@ -1408,10 +1424,12 @@ class SonicForgeApp(TkinterDnD.Tk):
             for _ in range(80):
                 event, value = self._lyrics_results.get_nowait()
                 if event == "line":
-                    self.view.append_lyrics_line(value.text)
+                    line = f'[{format_timestamp(value.start)}]{value.text}' if self.lyrics_timestamps_var.get() else value.text
+                    self.view.append_lyrics_line(line)
                 elif event == "progress":
                     key = {"loading_model": "lyrics_status_loading", "detecting_language": "lyrics_status_language",
-                           "verifying": "lyrics_status_verifying"}.get(
+                           "verifying": "lyrics_status_verifying", 'separating_vocals': 'lyrics_status_separating',
+                           'vocals_cached': 'lyrics_status_vocals_cached'}.get(
                         value, "lyrics_status_recognizing",
                     )
                     self._set_lyrics_status(key)
@@ -1422,6 +1440,8 @@ class SonicForgeApp(TkinterDnD.Tk):
                         self.write_log(self.t("lyrics_uncertain") + "\n")
                 elif event == "saved":
                     self.write_log(self.t("lyrics_saved").format(path=value) + "\n")
+                elif event == 'preserved':
+                    self.write_log(self.t('lyrics_auto_preserved') + '\n')
                 elif event == "save_error":
                     self.write_log(self.t("lyrics_save_failed").format(error=value) + "\n")
                     messagebox.showwarning(self.app_name(), self.t("lyrics_save_failed").format(error=value))
@@ -1450,8 +1470,8 @@ class SonicForgeApp(TkinterDnD.Tk):
         if not text:
             messagebox.showerror(self.app_name(), self.t("lyrics_empty"))
             return
-        result = self._edited_lyrics_result(text)
         try:
+            result = self._edited_lyrics_result(text)
             path = save_lyrics(source, result, self.lyrics_format_key())
         except Exception as exc:
             messagebox.showerror(self.app_name(), str(exc))
@@ -1479,33 +1499,62 @@ class SonicForgeApp(TkinterDnD.Tk):
         return None
 
     def _edited_lyrics_result(self, text):
-        previous = self.lyrics_result
-        if previous is None:
-            return LyricsResult(text=text, source="manual")
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-        segments = previous.segments
-        if segments and len(lines) == len(segments):
-            segments = tuple(
-                TranscriptSegment(segment.start, segment.end, line, segment.confidence)
-                for segment, line in zip(segments, lines)
-            )
-        elif segments:
-            segments = ()
-        return LyricsResult(
-            text=text,
-            segments=segments,
-            language=previous.language,
-            language_confidence=previous.language_confidence,
-            mixed_languages=previous.mixed_languages,
-            quality=previous.quality,
-            instrumental=previous.instrumental,
-            source="edited",
-            transcription_alphabet=previous.transcription_alphabet,
-        )
+        return result_from_text(text, self.lyrics_result)
+
+    def import_lyrics_file(self):
+        if self.worker and self.worker.is_alive():
+            return
+        path = filedialog.askopenfilename(parent=self, title=self.t('lyrics_import'),
+                                        filetypes=[('TXT / LRC', '*.txt *.lrc')])
+        if not path:
+            return
+        try:
+            result = result_from_text(Path(path).read_text(encoding='utf-8-sig'),
+                                      force_timed=Path(path).suffix.lower() == '.lrc')
+            self._apply_lyrics_result(result)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror(self.app_name(), str(exc))
+
+    def toggle_lyrics_timestamps(self):
+        text = self.view.get_lyrics_text()
+        cursor = self.view.lyrics_editor.index(tk.INSERT)
+        try:
+            result = self._edited_lyrics_result(text)
+            self.lyrics_result = result
+            self.view.set_lyrics_text(render_lrc(result).rstrip() if self.lyrics_timestamps_var.get()
+                                      and result.segments else result.text)
+            self.view.lyrics_editor.mark_set(tk.INSERT, cursor)
+        except ValueError as exc:
+            self.lyrics_timestamps_var.set(not self.lyrics_timestamps_var.get())
+            messagebox.showerror(self.app_name(), str(exc))
+
+    def insert_lyrics_timestamp(self, from_cursor=False):
+        if self.worker and self.worker.is_alive():
+            return
+        try:
+            stamp = (format_timestamp(self.view.editor.cursor) if from_cursor else
+                     format_timestamp(result_from_text(f'[{self.lyrics_timestamp_var.get()}]x', force_timed=True).segments[0].start))
+        except (ValueError, IndexError) as exc:
+            messagebox.showerror(self.app_name(), str(exc))
+            return
+        if not self.lyrics_timestamps_var.get():
+            self.lyrics_timestamps_var.set(True)
+            self.toggle_lyrics_timestamps()
+        editor = self.view.lyrics_editor
+        start = editor.index('insert linestart')
+        line = editor.get(start, 'insert lineend')
+        match = TIMESTAMP_RE.match(line)
+        editor.edit_separator()
+        if match:
+            editor.delete(start, f'{start}+{match.end()}c')
+        editor.insert(start, f'[{stamp}]')
+        editor.edit_separator()
+        self.lyrics_timestamp_var.set(stamp)
 
     def _apply_lyrics_result(self, result):
         self.lyrics_result = result
-        self.view.set_lyrics_text(result.text)
+        self.view.set_lyrics_text(render_lrc(result).rstrip() if self.lyrics_timestamps_var.get()
+                                  and result.segments else result.text)
         if result.review_reason == "language":
             self._set_lyrics_status("lyrics_status_language_uncertain")
             return

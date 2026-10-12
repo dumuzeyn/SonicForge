@@ -180,6 +180,7 @@ def process_music(
     custom_cover_settings=None,
     genre_progress=None,
     preserve_lyrics=False,
+    lyrics_separate_vocals=None,
 ):
     from security import validate_output_directory, validate_source
 
@@ -355,6 +356,7 @@ def process_music(
                 language=lyrics_language,
                 cancel_event=cancel_event,
                 progress=lyrics_progress,
+                separate_vocals=lyrics_separate_vocals,
             )
 
         check_cancelled(cancel_event)
@@ -425,6 +427,7 @@ def main():
     parser.add_argument("--change-cover", dest="change_cover", action="store_true", default=True, help="Generate and embed a new cover. Enabled by default.")
     parser.add_argument("--no-change-cover", dest="change_cover", action="store_false", help="Do not generate or embed a new cover.")
     parser.add_argument("--lyrics-format", choices=("txt", "lrc"), default="txt")
+    parser.add_argument("--no-vocal-separation", action="store_true", help="Recognize the original mix instead of separating vocals first.")
     parser.add_argument("--lyrics-language", default="auto", help="auto, ru, en, other_en, other_ru, or an ISO language code. Other modes approximate sounds in English/Russian letters for other detected languages.")
     parser.add_argument("--overwrite-lyrics", action="store_true")
     parser.add_argument("--steps", choices=["all", "audio", "metadata", "lyrics", "cover"], default="all", help="Choose one processing stage or run all stages.")
@@ -492,6 +495,7 @@ def main():
         lyrics_format=args.lyrics_format,
         lyrics_language=args.lyrics_language,
         overwrite_lyrics=args.overwrite_lyrics,
+        lyrics_separate_vocals=not args.no_vocal_separation,
     )
 
 

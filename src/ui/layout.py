@@ -795,7 +795,7 @@ class SonicForgeView(ttk.Frame):
     def _build_lyrics(self, parent):
         frame = self._section(parent, "lyrics_workspace", 0, 0, sticky="nsew")
         frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(4, weight=1)
+        frame.rowconfigure(5, weight=1)
 
         toolbar = ttk.Frame(frame, style="Surface.TFrame")
         toolbar.grid(row=0, column=0, sticky="ew", pady=(0, SPACING["sm"]))
@@ -816,6 +816,10 @@ class SonicForgeView(ttk.Frame):
             RoundedButton(toolbar, command=self.app.copy_lyrics_text), "lyrics_copy_all"
         )
         self.copy_lyrics_button.pack(side=tk.LEFT, padx=(SPACING["sm"], 0))
+        self.import_lyrics_button = self._localize(
+            RoundedButton(toolbar, command=self.app.import_lyrics_file), 'lyrics_import')
+        self.import_lyrics_button.pack(side=tk.LEFT, padx=(SPACING['sm'], 0))
+        self._tip(self.import_lyrics_button, 'tip_lyrics_import')
 
         options = ttk.Frame(frame, style="Surface.TFrame")
         options.grid(row=1, column=0, sticky="ew", pady=(0, SPACING["sm"]))
@@ -850,6 +854,29 @@ class SonicForgeView(ttk.Frame):
             "overwrite_lyrics",
         )
         self.overwrite_lyrics_check.pack(side=tk.LEFT, padx=(0, SPACING["sm"]))
+        self.lyrics_timestamps_check = self._localize(
+            SquareCheckbutton(extra_options, self.app.lyrics_timestamps_var, fixed_width=200,
+                              command=self.app.toggle_lyrics_timestamps), 'lyrics_timestamps')
+        self.lyrics_timestamps_check.pack(side=tk.LEFT, padx=(0, SPACING['sm']))
+        self.lyrics_vocals_check = self._localize(
+            SquareCheckbutton(extra_options, self.app.lyrics_separate_vocals_var, fixed_width=310),
+            'lyrics_separate_vocals')
+        self.lyrics_vocals_check.pack(side=tk.LEFT)
+        self._tip(self.lyrics_vocals_check, 'tip_lyrics_separate_vocals')
+        self._tip(self.lyrics_timestamps_check, 'tip_lyrics_timestamps')
+        timing = ttk.Frame(frame, style='Surface.TFrame')
+        timing.grid(row=3, column=0, sticky='ew', pady=(0, SPACING['sm']))
+        self._localize(ttk.Label(timing, style='SurfaceSecondary.TLabel'), 'lyrics_timestamp').pack(side=tk.LEFT)
+        self.lyrics_timestamp_entry = ttk.Entry(timing, textvariable=self.app.lyrics_timestamp_var, width=12)
+        self.lyrics_timestamp_entry.pack(side=tk.LEFT, padx=SPACING['sm'])
+        self.lyrics_timestamp_button = self._localize(
+            RoundedButton(timing, command=self.app.insert_lyrics_timestamp), 'lyrics_insert_timestamp')
+        self.lyrics_timestamp_button.pack(side=tk.LEFT)
+        self.lyrics_cursor_button = self._localize(
+            RoundedButton(timing, command=lambda: self.app.insert_lyrics_timestamp(True)), 'lyrics_cursor_timestamp')
+        self.lyrics_cursor_button.pack(side=tk.LEFT, padx=SPACING['sm'])
+        self._tip(self.lyrics_timestamp_button, 'tip_lyrics_timestamp')
+        self._tip(self.lyrics_cursor_button, 'tip_lyrics_cursor_timestamp')
         self._tip(self.load_lyrics_button, "tip_lyrics_load")
         self._tip(self.save_lyrics_button, "tip_lyrics_save")
         self._tip(self.recognize_lyrics_button, "tip_lyrics_recognize")
@@ -862,7 +889,7 @@ class SonicForgeView(ttk.Frame):
             style="SurfaceSecondary.TLabel",
             anchor="w",
         )
-        status.grid(row=3, column=0, sticky="ew", pady=(0, SPACING["sm"]))
+        status.grid(row=4, column=0, sticky="ew", pady=(0, SPACING["sm"]))
 
         editor_wrap = tk.Frame(
             frame,
@@ -870,7 +897,7 @@ class SonicForgeView(ttk.Frame):
             highlightthickness=1,
             highlightbackground=COLORS["border"],
         )
-        editor_wrap.grid(row=4, column=0, sticky="nsew")
+        editor_wrap.grid(row=5, column=0, sticky="nsew")
         editor_wrap.columnconfigure(0, weight=1)
         editor_wrap.rowconfigure(0, weight=1)
         self.lyrics_editor = tk.Text(
@@ -912,6 +939,8 @@ class SonicForgeView(ttk.Frame):
             self.lyrics_format,
             self.lyrics_language,
             self.overwrite_lyrics_check,
+            self.import_lyrics_button, self.lyrics_timestamps_check, self.lyrics_vocals_check,
+            self.lyrics_timestamp_entry, self.lyrics_timestamp_button, self.lyrics_cursor_button,
         ]
 
     def _select_all_lyrics(self):
@@ -1194,6 +1223,9 @@ class SonicForgeView(ttk.Frame):
         self.lyrics_format.configure(state="disabled" if busy else "readonly")
         self.lyrics_language.configure(state="disabled" if busy else "readonly")
         self.overwrite_lyrics_check.configure(state=state)
+        for control in (self.import_lyrics_button, self.lyrics_timestamps_check, self.lyrics_vocals_check,
+                        self.lyrics_timestamp_entry, self.lyrics_timestamp_button, self.lyrics_cursor_button):
+            control.configure(state=state)
 
     def reset_cover_preview(self):
         self._cover_preview_photo = None

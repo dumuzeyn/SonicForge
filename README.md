@@ -7,8 +7,8 @@
 <p align="center">Настольный аудиоредактор: дорожки, звук, метаданные, текст песни и обложки.</p>
 
 <p align="center">
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.0/SonicForge-Setup-2.3.0.exe"><img src="https://img.shields.io/badge/Скачать_EXE-Версия_2.3-6750bd?style=for-the-badge" alt="Скачать установщик SonicForge 2.3"></a>
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.0/SonicForge-2.3.0-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Скачать портативную версию"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.1/SonicForge-Setup-2.3.1.exe"><img src="https://img.shields.io/badge/Скачать_EXE-Версия_2.3-6750bd?style=for-the-badge" alt="Скачать установщик SonicForge 2.3"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.1/SonicForge-2.3.1-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Скачать портативную версию"></a>
   <a href="#english"><img src="https://img.shields.io/badge/English-Open-ffd12f?style=for-the-badge&labelColor=17151d" alt="Open English guide"></a>
 </p>
 
@@ -20,7 +20,7 @@
 
 ## Установка и первый запуск
 
-1. На странице релиза скачайте **SonicForge-Setup-2.3.0.exe** и запустите установщик. Это полноценный установщик, а не одинокий EXE без библиотек.
+1. На странице релиза скачайте **SonicForge-Setup-2.3.1.exe** и запустите установщик. Это полноценный установщик, а не одинокий EXE без библиотек.
 2. Выберите папку установки; ярлык рабочего стола можно включить отдельно. Права администратора обычно не нужны: установка выполняется для текущего пользователя.
 3. Запустите SonicForge. Для обработки звука и создания обложек отдельно устанавливать Python и FFmpeg не требуется.
 4. Для смены языка откройте «Настройки». Справка доступна в верхней полосе и по F1.
@@ -254,6 +254,8 @@ Music2Picture анализирует звук и строит процедурн
 
 ## Текст песни
 
+В 2.3.1 можно импортировать TXT/LRC и вводить `[00:20.62]строка`. Флажок «Показывать таймкоды» переключает отображение; время вставляется в текущую строку из поля или с курсора редактора. Перед распознаванием включено отделение вокала HTDemucs, затем работает Whisper; флажок позволяет распознавать исходный микс. Сначала проверьте слова: отделение не гарантирует точность. [Таймкоды, ограничения и проверка на реальном аудио](docs/LYRICS_TIMING_AND_VOCALS.md).
+
 ![Редактор текста: учебные строки введены вручную, это не результат распознавания](docs/images/lyrics-ru.png)
 
 1. Выберите один файл в блоке источника.
@@ -350,7 +352,7 @@ python -m unittest discover -s tests -t .
 .\scripts\build_windows.ps1
 ~~~
 
-Результаты: dist\SonicForge\SonicForge.exe вместе с _internal и **dist\SonicForge-Setup-2.3.0.exe**. Скрипт не закрывает насильно открытый портативный проект. Служебные сборки, локальные проверки, кэши и бинарные релизы не коммитятся в исходный репозиторий.
+Результаты: dist\SonicForge\SonicForge.exe вместе с _internal и **dist\SonicForge-Setup-2.3.1.exe**. Скрипт не закрывает насильно открытый портативный проект. Служебные сборки, локальные проверки, кэши и бинарные релизы не коммитятся в исходный репозиторий.
 
 Командные инструменты: `python src/easy_music_process.py` — полная обработка; `python src/music2picture.py covers` / `describe` — обложки и описания; `python src/music_metadata.py` — метаданные. Для параметров используйте --help. Ключи, меняющие файлы, применяйте сначала на копиях.
 
@@ -397,8 +399,8 @@ python -m unittest discover -s tests -t .
 <p align="center">A desktop audio editor: tracks, sound, metadata, lyrics and cover art.</p>
 
 <p align="center">
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.0/SonicForge-Setup-2.3.0.exe"><img src="https://img.shields.io/badge/Download_EXE-Version_2.3-6750bd?style=for-the-badge" alt="Download SonicForge 2.3 installer"></a>
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.0/SonicForge-2.3.0-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Download portable edition"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.1/SonicForge-Setup-2.3.1.exe"><img src="https://img.shields.io/badge/Download_EXE-Version_2.3-6750bd?style=for-the-badge" alt="Download SonicForge 2.3 installer"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.1/SonicForge-2.3.1-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Download portable edition"></a>
   <a href="#russian"><img src="https://img.shields.io/badge/Русский-Открыть-ffd12f?style=for-the-badge&labelColor=17151d" alt="Открыть русское руководство"></a>
 </p>
 
@@ -410,7 +412,7 @@ python -m unittest discover -s tests -t .
 
 ## Install and start
 
-1. Download **SonicForge-Setup-2.3.0.exe** from the release page and run it. This is the complete installer, not a standalone launcher missing its libraries.
+1. Download **SonicForge-Setup-2.3.1.exe** from the release page and run it. This is the complete installer, not a standalone launcher missing its libraries.
 2. Select an installation folder. The desktop shortcut is optional. Installation normally requires no administrator rights and is scoped to the current user.
 3. Start SonicForge. The packaged application does not require a separate Python or FFmpeg installation for audio processing or artwork.
 4. Open Settings to choose the interface language. Use the Help tab or F1 for instructions.
@@ -644,6 +646,8 @@ Replacing only MP3 artwork updates the APIC picture frames only: existing USLT/S
 
 ## Lyrics
 
+Version 2.3.1 imports TXT/LRC and accepts `[00:20.62]line`. Show timestamps toggles the display; insert a time into the current line from the field or audio editor cursor. Recognition first separates vocals using HTDemucs, then runs Whisper; disable separation to recognize the original mix. Review the words: separation does not guarantee accuracy. [Timing, limitations and real-audio verification](docs/LYRICS_TIMING_AND_VOCALS.md).
+
 ![Practice lyrics entered manually, not a recognition result](docs/images/lyrics-en.png)
 
 1. Select one file in Source.
@@ -740,7 +744,7 @@ Windows packaging also requires Inno Setup 6. The current profile expects FFmpeg
 .\scripts\build_windows.ps1
 ~~~
 
-Outputs: dist\SonicForge\SonicForge.exe with _internal, and **dist\SonicForge-Setup-2.3.0.exe**. The build script does not forcibly close an open portable project. Build directories, local validation, caches and binary releases are excluded from source commits.
+Outputs: dist\SonicForge\SonicForge.exe with _internal, and **dist\SonicForge-Setup-2.3.1.exe**. The build script does not forcibly close an open portable project. Build directories, local validation, caches and binary releases are excluded from source commits.
 
 Command-line tools: `python src/easy_music_process.py` for full processing; `python src/music2picture.py covers` / `describe` for artwork/descriptions; `python src/music_metadata.py` for tags. Use --help for arguments and test file-changing operations on copies.
 

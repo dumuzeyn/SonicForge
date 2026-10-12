@@ -55,6 +55,73 @@ class EditorUiTests(unittest.TestCase):
         finally:
             self.app.preserve_lyrics_var.set(True)
 
+    def test_lyrics_import_display_edit_and_cursor_timestamp(self):
+        from lyrics_engine.formats import result_from_text
+        app = self.app
+        previous = app.lyrics_result
+        previous_text = app.view.get_lyrics_text()
+        try:
+            app.lyrics_timestamps_var.set(True)
+            with tempfile.TemporaryDirectory() as directory:
+                lrc = Path(directory) / 'manual.lrc'
+                lrc.write_text('[00:01.25]First line\n[00:03.50]Second line', encoding='utf-8-sig')
+                with patch('music_polisher_gui.filedialog.askopenfilename', return_value=str(lrc)):
+                    app.import_lyrics_file()
+            self.assertIn('[00:01.25]First line', app.view.get_lyrics_text())
+            app.lyrics_timestamps_var.set(False)
+            app.toggle_lyrics_timestamps()
+            self.assertEqual(app.view.get_lyrics_text().strip(), 'First line\nSecond line')
+            app.view.set_lyrics_text('Edited first\nEdited second')
+            app.lyrics_timestamps_var.set(True)
+            app.toggle_lyrics_timestamps()
+            self.assertIn('[00:03.50]Edited second', app.view.get_lyrics_text())
+            app.view.lyrics_editor.mark_set(tk.INSERT, '2.0')
+            self.editor.cursor = 9.75
+            app.insert_lyrics_timestamp(True)
+            result = app._edited_lyrics_result(app.view.get_lyrics_text())
+            self.assertEqual([s.start for s in result.segments], [1.25, 9.75])
+            self.assertEqual(result.text, 'Edited first\nEdited second')
+            with patch('music_polisher_gui.messagebox.showerror') as error:
+                app.lyrics_timestamp_var.set('bad time')
+                app.insert_lyrics_timestamp()
+                error.assert_called_once()
+            self.assertEqual(result_from_text(app.view.get_lyrics_text()).text, result.text)
+        finally:
+            app.lyrics_result = previous
+            app.view.set_lyrics_text(previous_text)
+            app.lyrics_timestamps_var.set(True)
+            app.lyrics_timestamp_var.set('00:00.00')
+
+    def test_lyrics_controls_disable_during_processing_and_vocal_flag_is_forwarded(self):
+        app = self.app
+        self.assertTrue(app._process_kwargs()['lyrics_separate_vocals'])
+        try:
+            app.lyrics_separate_vocals_var.set(False)
+            self.assertFalse(app._process_kwargs()['lyrics_separate_vocals'])
+            app.view.set_lyrics_busy(True)
+            for control in (app.view.import_lyrics_button, app.view.lyrics_timestamp_entry,
+                            app.view.lyrics_timestamp_button, app.view.lyrics_cursor_button):
+                self.assertEqual(str(control.cget('state')), 'disabled')
+        finally:
+            app.lyrics_separate_vocals_var.set(True)
+            app.view.set_lyrics_busy(False)
+
+    def test_automatic_recognition_preserves_existing_lyrics_until_overwrite_is_enabled(self):
+        from lyrics_engine.models import LyricsResult, TranscriptSegment
+        from unittest.mock import Mock
+        service = Mock()
+        service.recognize.return_value = LyricsResult(text='New checked practice line',
+            segments=(TranscriptSegment(1, 3, 'New checked practice line'),))
+        service.load_existing.return_value = LyricsResult(text='Existing user text')
+        self.app.cancel_event.clear()
+        with patch.object(self.app, '_get_lyrics_service', return_value=service), \
+             patch('music_polisher_gui.save_lyrics') as save, \
+             patch.object(self.app, '_lyrics_results'):
+            self.app._lyrics_worker(Path('fixture.mp3'), 'en', True)
+            save.assert_not_called()
+            self.app._lyrics_worker(Path('fixture.mp3'), 'en', True, overwrite_lyrics=True)
+            save.assert_called_once()
+
     def test_explicit_track_toggle_stops_playback_updates_caption_and_undo(self):
         first = self.editor.project.add(AudioSource('first.wav', 10), lane=0)
         self.editor.project.add(AudioSource('second.wav', 10), lane=1)

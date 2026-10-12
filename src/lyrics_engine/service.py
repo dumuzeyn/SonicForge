@@ -11,14 +11,19 @@ LATIN_RE = re.compile(r"[A-Za-z]")
 
 
 class LyricsService:
-    def __init__(self, provider=None, metadata_reader=None):
+    def __init__(self, provider=None, metadata_reader=None, separate_vocals=None):
+        self.separate_vocals = (provider is None) if separate_vocals is None else bool(separate_vocals)
         self.provider = provider or IsolatedLyricsProvider()
         self.metadata_reader = metadata_reader
+        self._vocal_cache = None
 
     def close(self):
         close = getattr(self.provider, 'close', None)
         if close is not None:
             close()
+        if self._vocal_cache is not None:
+            self._vocal_cache.close()
+            self._vocal_cache = None
 
     def load_existing(self, audio_path):
         result = None if Path(audio_path).suffix.lower() == ".mp3" else load_sidecar(audio_path)
@@ -44,7 +49,13 @@ class LyricsService:
         options = dict(cancel_event=cancel_event, progress=progress, language=language)
         if on_segment is not None:
             options["on_segment"] = on_segment
-        result = self.provider.transcribe(audio_path, **options)
+        prepared = audio_path
+        if self.separate_vocals:
+            from .vocals import VocalCache
+            if self._vocal_cache is None:
+                self._vocal_cache = VocalCache()
+            prepared = self._vocal_cache.prepare(audio_path, cancel_event, progress)
+        result = self.provider.transcribe(prepared, **options)
         result = self._with_language(result)
         if not self.is_usable(result):
             return LyricsResult(

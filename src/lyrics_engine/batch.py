@@ -5,10 +5,12 @@ from .service import LyricsService
 
 
 def recognize_batch(source, staging, output=None, service=None, export_format="txt",
-                    overwrite=False, language="auto", cancel_event=None, progress=None):
+                    overwrite=False, language="auto", cancel_event=None, progress=None, separate_vocals=None):
     import music_metadata
     owned = service is None
-    service = service or LyricsService(metadata_reader=music_metadata.read_all_metadata)
+    service = service or LyricsService(metadata_reader=music_metadata.read_all_metadata, separate_vocals=separate_vocals)
+    if separate_vocals is not None and isinstance(service, LyricsService):
+        service.separate_vocals = bool(separate_vocals)
     try:
         return _recognize_batch(source, staging, output, service, export_format, overwrite,
                                 language, cancel_event, progress)
@@ -68,7 +70,7 @@ def _recognize_batch(
                 continue
             if not overwrite and is_mp3 and output_audio and output_audio.is_file():
                 existing = service.load_existing(output_audio)
-                if existing and existing.segments:
+                if existing and existing.text.strip():
                     save_lyrics(staged_audio, existing)
                     lyrics_lookup[_relative_key(staged_audio, staging)] = existing.text
                     print(f"[{index}/{len(staged_files)}] Embedded lyrics preserved: {staged_audio.name}")
@@ -77,7 +79,7 @@ def _recognize_batch(
                     continue
             if not overwrite and original is not None:
                 existing = service.load_existing(original)
-                if existing and existing.text.strip() and (not is_mp3 or existing.segments):
+                if existing and existing.text.strip():
                     sidecar = find_sidecar(original)
                     existing_format = sidecar.suffix.lstrip(".") if sidecar else export_format
                     save_lyrics(staged_audio, existing, existing_format)
@@ -88,7 +90,7 @@ def _recognize_batch(
                     continue
             if not overwrite and is_mp3:
                 loaded = service.load_existing(staged_audio)
-                if loaded and loaded.segments:
+                if loaded and loaded.text.strip():
                     lyrics_lookup[_relative_key(staged_audio, staging)] = loaded.text
                     print(f"[{index}/{len(staged_files)}] Embedded lyrics preserved: {staged_audio.name}")
                     counts["preserved"] += 1

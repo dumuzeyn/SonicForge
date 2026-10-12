@@ -65,6 +65,8 @@ def main():
     layout_constants = set(constants(embedded.extract('ui.layout')))
     assert {'page_layers', '_current_layer', 'editor_context', 'batch_context'} <= layout_constants, 'Stable layouts missing'
     assert 'preserve_lyrics_check' in layout_constants, 'Keep lyrics metadata setting missing'
+    assert {'lyrics_timestamp_button', 'lyrics_vocals_check', 'import_lyrics_button'} <= layout_constants, 'Timed lyric UI missing'
+    assert {'separate_clip', 'vocals_cached'} <= set(constants(embedded.extract('lyrics_engine.vocals'))), 'Real vocal separation missing'
     metadata_constants = set(constants(embedded.extract('music_metadata')))
     assert {'lyrics_snapshot', 'restore_lyrics', 'SYLT', 'preserve_lyrics'} <= metadata_constants, 'Embedded lyric protection missing'
     assert 'settings_link_descriptions' in layout_constants and 'settings_link_addresses' not in layout_constants, 'Settings still shows raw URLs'
@@ -73,7 +75,7 @@ def main():
     splash_constants = set(constants(embedded.extract('startup_splash')))
     assert {'UpdateLayeredWindow', 'premultiply_bgra', 'sonic_forge_mark.ico', 'hide_splash.flag'} <= splash_constants, 'Per-pixel transparent splash missing'
     identity_constants = set(constants(embedded.extract('app_identity')))
-    assert {'SonicForge', '2.3.0', 'https://github.com/dumuzeyn/SonicForge',
+    assert {'SonicForge', '2.3.1', 'https://github.com/dumuzeyn/SonicForge',
             'https://pay.cloudtips.ru/p/53cc3806'} <= identity_constants, 'Current title or project links missing'
     assert not any(name == 'mutagen' or name.startswith('mutagen.') for name in embedded.toc), 'Test-only checker is included in the application'
     assert 'audio_tags' in embedded.toc, 'Current tag writer is missing'
@@ -113,6 +115,7 @@ def main():
     dialog_constants = set(constants(embedded.extract('ui.dialogs')))
     assert {'_start_palette_drag', '_drag_palette_color', '_end_palette_drag', 'positions'} <= dialog_constants, 'Draggable palette stops missing'
     app_constants = set(constants(marshal.loads(archive.extract('music_polisher_gui'))))
+    assert {'import_lyrics_file', 'insert_lyrics_timestamp', 'toggle_lyrics_timestamps', 'lyrics_separate_vocals_var'} <= app_constants, 'Timed lyric and vocal controls missing'
     assert {'_copy_widget_text', 'copy_lyrics_text'} <= app_constants, 'Direct lyric clipboard handling missing'
     assert {'lyrics_menu', 'copy_lyrics_button'} <= layout_constants, 'Lyric context menu or copy button missing'
     verification_constants = set(constants(embedded.extract('lyrics_engine.verification')))

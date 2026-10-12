@@ -93,6 +93,22 @@ class ProcessingPipelineTests(unittest.TestCase):
         service.recognize.assert_not_called()
         self.assertEqual(events[-1][1], dict(total=1, saved=0, preserved=1, uncertain=0, failed=0))
 
+    def test_plain_embedded_user_lyrics_are_preserved_without_overwrite(self):
+        from lyrics_engine import recognize_batch
+        service = mock.Mock()
+        service.load_existing.return_value = LyricsResult(text='Existing manual user lyrics')
+        events = []
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'song.mp3'
+            source.touch()
+            with mock.patch('lyrics_engine.batch.save_lyrics') as save:
+                recognize_batch(source, root, service=service,
+                                progress=lambda stage, data: events.append((stage, data)))
+                save.assert_called_once()
+        service.recognize.assert_not_called()
+        self.assertEqual(events[-1][1]['preserved'], 1)
+
     def test_uncertain_text_is_preserved_for_review_without_embedding(self):
         result = LyricsResult(text='A synthetic practice line', review_reason='language')
         service = LyricsService(provider=MockLyricsProvider(result))

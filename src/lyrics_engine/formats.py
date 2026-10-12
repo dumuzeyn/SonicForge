@@ -1,10 +1,14 @@
 import re
+import math
+from dataclasses import replace
 from pathlib import Path
 
 from .models import LyricsResult, TranscriptSegment
 
 
 TIMESTAMP_RE = re.compile(r"\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]")
+TIMESTAMP_HINT_RE = re.compile(r'\[\d{1,3}:')
+LRC_HEADER_RE = re.compile(r'^\[(?:ar|ti|al|by|re|ve|length):[^\]]*\]$', re.I)
 
 
 def sidecar_path(audio_path, export_format="txt", output_dir=None):
@@ -33,30 +37,66 @@ def load_sidecar(audio_path):
     return LyricsResult(text=plain, segments=segments, source="sidecar")
 
 
-def parse_lrc(text):
+def parse_lrc(text, strict=False):
     segments = []
-    for line in text.splitlines():
+    lines = text.splitlines()
+    offset = 0.0
+    for line in lines:
+        match = re.fullmatch(r'\[offset:([+-]?\d+)\]', line.strip(), re.I)
+        if match:
+            offset = int(match[1]) / 1000
+    for number, raw in enumerate(lines, 1):
+        line = raw.strip()
+        if not line or LRC_HEADER_RE.fullmatch(line) or re.fullmatch(r'\[offset:[+-]?\d+\]', line, re.I):
+            continue
         stamps = list(TIMESTAMP_RE.finditer(line))
-        if not stamps:
+        if strict and len(TIMESTAMP_HINT_RE.findall(line)) != len(stamps):
+            raise ValueError(f'Line {number}: invalid timestamp; use [mm:ss.xx].')
+        if not stamps or (strict and stamps[0].start() != 0):
+            if strict:
+                raise ValueError(f'Line {number}: use [mm:ss.xx] before each lyric line.')
             continue
         lyric = TIMESTAMP_RE.sub("", line).strip()
         if not lyric:
             continue
         for stamp in stamps:
             minutes, seconds, fraction = stamp.groups()
-            fraction_value = 0.0
-            if fraction:
-                fraction_value = int(fraction) / (1000 if len(fraction) == 3 else 100)
-            start = int(minutes) * 60 + int(seconds) + fraction_value
+            if int(seconds) >= 60:
+                if strict:
+                    raise ValueError(f'Line {number}: seconds must be between 00 and 59.')
+                continue
+            fraction_value = int(fraction) / 10 ** len(fraction) if fraction else 0.0
+            start = int(minutes) * 60 + int(seconds) + fraction_value + offset
+            if strict and start < 0:
+                raise ValueError(f'Line {number}: offset produces negative time.')
+            start = max(0, start)
             segments.append(TranscriptSegment(start=start, end=start, text=lyric))
-    return sorted(segments, key=lambda segment: segment.start)
+    segments.sort(key=lambda segment: segment.start)
+    if strict and not segments:
+        raise ValueError('No timed lyric lines found.')
+    return [replace(segment, end=segments[i + 1].start if i + 1 < len(segments) else segment.start)
+            for i, segment in enumerate(segments)]
+
+
+def result_from_text(text, previous=None, force_timed=False):
+    """Parse explicit user timestamps; retain existing times for plain line edits."""
+    if force_timed or TIMESTAMP_HINT_RE.search(text):
+        segments = tuple(parse_lrc(text, strict=True))
+        plain = '\n'.join(s.text for s in segments)
+    else:
+        plain = text.strip()
+        lines = [line.strip() for line in plain.splitlines() if line.strip()]
+        segments = previous.segments if previous else ()
+        segments = tuple(replace(s, text=line) for s, line in zip(segments, lines)) if len(segments) == len(lines) else ()
+    base = previous or LyricsResult(text='')
+    return replace(base, text=plain, segments=segments, source='edited' if previous else 'manual',
+                   instrumental=False, review_reason='')
 
 
 def render_lrc(result):
     if result.segments:
         return "\n".join(f"[{_timestamp(segment.start)}]{segment.text.strip()}" for segment in result.segments if segment.text.strip()) + "\n"
-    lines = [line.strip() for line in result.text.splitlines() if line.strip()]
-    return "\n".join(f"[00:00.00]{line}" for line in lines) + ("\n" if lines else "")
+    raise ValueError('LRC requires real line timestamps. Use TXT for untimed lyrics.')
 
 
 def embed_lyrics(audio_path, result):
@@ -96,7 +136,14 @@ def save_lyrics(audio_path, result, export_format="txt", output_dir=None):
 
 
 def _timestamp(seconds):
-    total = max(0.0, float(seconds))
-    minutes = int(total // 60)
-    remaining = total - minutes * 60
-    return f"{minutes:02d}:{remaining:05.2f}"
+    return format_timestamp(seconds)
+
+
+def format_timestamp(seconds):
+    total = float(seconds)
+    if not math.isfinite(total) or total < 0:
+        raise ValueError('Timestamp must be a nonnegative finite time.')
+    ticks = round(total * 100)
+    minutes, remainder = divmod(ticks, 6000)
+    second, fraction = divmod(remainder, 100)
+    return f'{minutes:02d}:{second:02d}.{fraction:02d}'
