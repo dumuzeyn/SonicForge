@@ -178,6 +178,8 @@ def process_music(
     lyrics_progress=None,
     custom_cover_path=None,
     custom_cover_settings=None,
+    genre_progress=None,
+    preserve_lyrics=False,
 ):
     from security import validate_output_directory, validate_source
 
@@ -290,6 +292,7 @@ def process_music(
             music_metadata.require_ffmpeg()
             music_metadata.clear_music_metadata(
                 staging_path,
+                preserve_lyrics=preserve_lyrics,
                 cancel_event=cancel_event,
             )
         elif "metadata" in steps:
@@ -298,6 +301,8 @@ def process_music(
             music_metadata.update_music_metadata(
                 staging_path,
                 genre_override=genre,
+                preserve_lyrics=preserve_lyrics,
+                genre_progress=genre_progress,
                 overwrite_genre=overwrite_genre,
                 overwrite_all_metadata=(
                     overwrite_all_metadata or metadata_mode == "replace"

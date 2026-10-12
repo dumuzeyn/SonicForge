@@ -1,0 +1,9 @@
+# Development-only; install in an isolated Python 3.12 environment.
+# Application inference uses existing requirements/runtime.txt, not TensorFlow.
+tensorflow-cpu==2.16.2
+tf-keras==2.16.0
+tf2onnx==1.16.1
+onnx==1.17.0
+numpy==1.26.4
+scipy==1.13.1
+librosa==0.10.2.post1

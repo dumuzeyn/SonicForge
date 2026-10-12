@@ -136,6 +136,12 @@ TEXT = {
 
 TEXT['ru']['export_tip'] = 'Смешивает включённые дорожки в новый WAV, MP3 или M4A. Экспорт доступен в обоих режимах; при связанной обработке вручную экспортировать не нужно.'
 TEXT['en']['export_tip'] = 'Mixes unmuted lanes into a new WAV, MP3 or M4A. Export works in either mode; linked processing needs no manual export.'
+TEXT['ru'].update(track_on='Выключить дорожку', track_off='Включить дорожку',
+                  track_on_state='Включена', track_off_state='Выключена',
+                  track_toggle_tip='Включает или выключает всю дорожку выбранного клипа для прослушивания, экспорта и связанной обработки. Ctrl+M. Отмена: Ctrl+Z.')
+TEXT['en'].update(track_on='Disable track', track_off='Enable track',
+                  track_on_state='Enabled', track_off_state='Disabled',
+                  track_toggle_tip='Enable or disable the selected clip’s whole lane for playback, export and linked processing. Ctrl+M. Undo: Ctrl+Z.')
 
 
 def clock(seconds):
@@ -358,6 +364,10 @@ class AudioEditor(ttk.Frame):
         apply_button = self.button(self.inspector_groups[1], "apply", self.apply, primary=True)
         apply_button.grid(row=3, column=0, columnspan=2, sticky='e', pady=2)
         self.inspector_controls.append(apply_button)
+        self.track_toggle_button = self.button(self.inspector_groups[1], 'track_on', self.toggle_track,
+                                               tip='track_toggle_tip')
+        self.track_toggle_button.grid(row=4, column=0, columnspan=2, sticky='e', pady=2)
+        self.inspector_controls.append(self.track_toggle_button)
 
         transport = ttk.Frame(self, style="Surface.TFrame")
         transport.grid(row=8, column=0, sticky="ew", pady=(8, 0))
@@ -383,12 +393,12 @@ class AudioEditor(ttk.Frame):
         letter = str(event.keysym).lower()
         if sys.platform == 'win32':
             letter = {73: 'i', 75: 'k', 88: 'x', 68: 'd', 90: 'z', 89: 'y',
-                      83: 's', 79: 'o', 69: 'e', 86: 'v', 66: 'b',
+                      83: 's', 79: 'o', 69: 'e', 86: 'v', 66: 'b', 77: 'm',
                       32: 'space', 27: 'escape', 46: 'delete'}.get(event.keycode, letter)
         letter = {'cyrillic_sha': 'i', 'cyrillic_el': 'k', 'cyrillic_che': 'x',
                   'cyrillic_ve': 'd', 'cyrillic_ya': 'z', 'cyrillic_en': 'y',
                   'cyrillic_yeru': 's', 'cyrillic_shcha': 'o', 'cyrillic_u': 'e',
-                  'cyrillic_em': 'v', 'cyrillic_i': 'b'}.get(letter, letter)
+                  'cyrillic_em': 'v', 'cyrillic_i': 'b', 'cyrillic_softsign': 'm'}.get(letter, letter)
         if isinstance(widget, (tk.Entry, tk.Text, ttk.Entry, ttk.Spinbox, ttk.Combobox)):
             # Undo/redo in the editor's numeric inspector is project history,
             # including after Apply. Other text shortcuts remain native.
@@ -415,6 +425,7 @@ class AudioEditor(ttk.Frame):
             (True, False, 's'): self.save_draft,
             (True, False, 'o'): self.open_draft,
             (True, False, 'e'): self.export,
+            (True, False, 'm'): self.toggle_track,
             (True, True, 'v'): lambda: self.separate_stems('two'),
             (True, True, 'b'): lambda: self.separate_stems('four'),
         }
@@ -678,6 +689,8 @@ class AudioEditor(ttk.Frame):
             self.inspector.configure(text=self.tr("selection"))
             self.clip_length.set('—')
         field_state = 'normal' if self.selected and not self.is_busy else 'disabled'
+        muted = self.selected and self.project.get(self.selected).lane in self.project.muted
+        self.track_toggle_button.configure(text=self.tr('track_off' if muted else 'track_on'))
         for widget in self.inspector_controls:
             widget.configure(state=field_state)
         for widget in self.selection_controls:
@@ -746,7 +759,8 @@ class AudioEditor(ttk.Frame):
             muted = lane in self.project.muted
             canvas.create_rectangle(0, top, 78, top + 68, fill=COLORS["surface_alt"], outline="")
             canvas.create_text(39, top + 24, text=f"{self.tr('lane')} {lane + 1}", font=FONTS["small"], fill=COLORS["text"])
-            canvas.create_text(39, top + 45, text=self.tr("mute") if muted else "♫", fill=COLORS["danger"] if muted else COLORS["accent"])
+            canvas.create_text(39, top + 45, text=self.tr('track_off_state' if muted else 'track_on_state'),
+                               font=FONTS['small'], fill=COLORS["danger"] if muted else COLORS["accent"])
         if canvas.canvasy(canvas.winfo_height()) + 80 >= 35 + lanes * 76:
             top = 35 + lanes * 76
             canvas.create_rectangle(4, top + 6, width - 4, top + 56, outline=COLORS['border_active'], dash=(5, 4))
@@ -837,8 +851,7 @@ class AudioEditor(ttk.Frame):
         self._range_clip_id = None
         self._drag_preview = None
         if x < 80 and 35 <= y < 35 + self._lane_count() * 76:
-            self.project.toggle_mute(max(0, int((y - 35) / 76)))
-            self.changed()
+            self.toggle_track(max(0, int((y - 35) / 76)))
             return
         selecting = bool(event.state & 1)
         # The cursor and clips have distinct drag targets. Grabbing the red line
@@ -917,6 +930,13 @@ class AudioEditor(ttk.Frame):
             self.status.set(self.tr("ready"))
         except (ValueError, tk.TclError) as exc:
             self.status.set(self.tr("error").format(error=exc))
+
+    def toggle_track(self, lane=None):
+        if self.is_busy or (lane is None and not self.selected):
+            return
+        lane = self.project.get(self.selected).lane if lane is None else lane
+        self.project.toggle_mute(lane)
+        self.changed()
 
     def edit(self, operation):
         if not self.selected or self.is_busy:

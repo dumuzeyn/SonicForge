@@ -2,13 +2,13 @@
 
 <a id="russian"></a>
 
-<h1 align="center">SonicForge 2.2 · Кузница Звука</h1>
+<h1 align="center">SonicForge 2.3 · Кузница Звука</h1>
 
 <p align="center">Настольный аудиоредактор: дорожки, звук, метаданные, текст песни и обложки.</p>
 
 <p align="center">
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.2.0/SonicForge-Setup-2.2.0.exe"><img src="https://img.shields.io/badge/Скачать_EXE-Версия_2.2-6750bd?style=for-the-badge" alt="Скачать установщик SonicForge 2.2"></a>
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.2.0/SonicForge-2.2.0-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Скачать портативную версию"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.0/SonicForge-Setup-2.3.0.exe"><img src="https://img.shields.io/badge/Скачать_EXE-Версия_2.3-6750bd?style=for-the-badge" alt="Скачать установщик SonicForge 2.3"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.0/SonicForge-2.3.0-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Скачать портативную версию"></a>
   <a href="#english"><img src="https://img.shields.io/badge/English-Open-ffd12f?style=for-the-badge&labelColor=17151d" alt="Open English guide"></a>
 </p>
 
@@ -20,7 +20,7 @@
 
 ## Установка и первый запуск
 
-1. На странице релиза скачайте **SonicForge-Setup-2.2.0.exe** и запустите установщик. Это полноценный установщик, а не одинокий EXE без библиотек.
+1. На странице релиза скачайте **SonicForge-Setup-2.3.0.exe** и запустите установщик. Это полноценный установщик, а не одинокий EXE без библиотек.
 2. Выберите папку установки; ярлык рабочего стола можно включить отдельно. Права администратора обычно не нужны: установка выполняется для текущего пользователя.
 3. Запустите SonicForge. Для обработки звука и создания обложек отдельно устанавливать Python и FFmpeg не требуется.
 4. Для смены языка откройте «Настройки». Справка доступна в верхней полосе и по F1.
@@ -99,6 +99,7 @@ Windows x64. Сборка рассчитана на Windows 10/11. Устано�
 | Ctrl+D / Delete | Дублировать / удалить фрагмент |
 | Ctrl+Z / Ctrl+Y или Ctrl+Shift+Z | Отменить / повторить |
 | Ctrl+S / Ctrl+O / Ctrl+E | Сохранить черновик / открыть / экспортировать |
+| Ctrl+M | Включить / выключить всю дорожку выбранного клипа |
 | Ctrl+Shift+V / Ctrl+Shift+B | Разделить на 2 / 4 составляющие |
 | Пробел на шкале / Esc | Воспроизведение / остановка и отмена незавершённого выделения или задачи |
 
@@ -118,6 +119,8 @@ Windows x64. Сборка рассчитана на Windows 10/11. Устано�
 
 ## Метаданные
 
+Пустое поле жанра включает локальный MSD musicnn: анализ нескольких участков песни, несколько жанров, альтернативы и оценки в журнале. При слабом результате жанр остаётся неопределённым. Anime, OST, Edit, Nightcore и Slowed — отдельный контекст из имени. Существующие теги сохраняются без разрешённой перезаписи. Возможности, измерения и ограничения: [отчёт](docs/GENRE_CLASSIFICATION.md).
+
 ![Заполнение основных метаданных учебной записи](docs/images/metadata-ru.png)
 
 «Метаданные» — информация в файле, а не имя файла и не правки звуковой дорожки. Заполните нужные поля и включите этап «Метаданные» во «Выполнении».
@@ -129,11 +132,13 @@ Windows x64. Сборка рассчитана на Windows 10/11. Устано�
 | Альбом | Название альбома |
 | Исполнитель альбома | Общий исполнитель релиза; может отличаться от исполнителя песни |
 | Композитор | Автор музыки |
-| Жанр | Жанровая метка; автоматическое предложение — эвристика, не экспертная классификация |
+| Жанр | Жанровые метки локальной нейросети musicnn; оценки не являются калиброванными вероятностями |
 | Год / дата | Например, 2026 |
 | Номер трека | Например, 3 или 3/12 |
 | Комментарий | Произвольный текстовый тег; не инструкция генератору обложек |
 | Дополнительные поля | Номер диска, издатель, авторские права, дополнительный текстовый тег |
+
+Флажок **«Не трогать текст песни»** включён по умолчанию: сохраняет встроенный текст, таймкоды и языковые метки при обновлении и очистке остальных метаданных. При включённом флажке дополнительное поле текста не записывается. Отдельные действия раздела «Текст песни» управляются независимо.
 
 Меню «Действия» позволяет прочитать теги выбранного файла, открыть дополнительные поля или создать копию без метаданных. При обычном обновлении пустые дополнительные поля сохраняют прежние значения. «Перезаписать жанр» разрешает заменить существующую жанровую метку. «Перезаписать все метаданные» удаляет прежние теги и оставляет только заполняемые значения — проверьте этот флажок перед запуском. Для синхронизированного текста используйте отдельный раздел «Текст песни».
 
@@ -345,7 +350,7 @@ python -m unittest discover -s tests -t .
 .\scripts\build_windows.ps1
 ~~~
 
-Результаты: dist\SonicForge\SonicForge.exe вместе с _internal и **dist\SonicForge-Setup-2.2.0.exe**. Скрипт не закрывает насильно открытый портативный проект. Служебные сборки, локальные проверки, кэши и бинарные релизы не коммитятся в исходный репозиторий.
+Результаты: dist\SonicForge\SonicForge.exe вместе с _internal и **dist\SonicForge-Setup-2.3.0.exe**. Скрипт не закрывает насильно открытый портативный проект. Служебные сборки, локальные проверки, кэши и бинарные релизы не коммитятся в исходный репозиторий.
 
 Командные инструменты: `python src/easy_music_process.py` — полная обработка; `python src/music2picture.py covers` / `describe` — обложки и описания; `python src/music_metadata.py` — метаданные. Для параметров используйте --help. Ключи, меняющие файлы, применяйте сначала на копиях.
 
@@ -387,13 +392,13 @@ python -m unittest discover -s tests -t .
 
 <p align="center"><img src="assets/sonic_forge_mark.png" width="120" alt="SonicForge application icon"></p>
 
-<h1 align="center">SonicForge 2.2 · Sound Forge</h1>
+<h1 align="center">SonicForge 2.3 · Sound Forge</h1>
 
 <p align="center">A desktop audio editor: tracks, sound, metadata, lyrics and cover art.</p>
 
 <p align="center">
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.2.0/SonicForge-Setup-2.2.0.exe"><img src="https://img.shields.io/badge/Download_EXE-Version_2.2-6750bd?style=for-the-badge" alt="Download SonicForge 2.2 installer"></a>
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.2.0/SonicForge-2.2.0-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Download portable edition"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.0/SonicForge-Setup-2.3.0.exe"><img src="https://img.shields.io/badge/Download_EXE-Version_2.3-6750bd?style=for-the-badge" alt="Download SonicForge 2.3 installer"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.0/SonicForge-2.3.0-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Download portable edition"></a>
   <a href="#russian"><img src="https://img.shields.io/badge/Русский-Открыть-ffd12f?style=for-the-badge&labelColor=17151d" alt="Открыть русское руководство"></a>
 </p>
 
@@ -405,7 +410,7 @@ python -m unittest discover -s tests -t .
 
 ## Install and start
 
-1. Download **SonicForge-Setup-2.2.0.exe** from the release page and run it. This is the complete installer, not a standalone launcher missing its libraries.
+1. Download **SonicForge-Setup-2.3.0.exe** from the release page and run it. This is the complete installer, not a standalone launcher missing its libraries.
 2. Select an installation folder. The desktop shortcut is optional. Installation normally requires no administrator rights and is scoped to the current user.
 3. Start SonicForge. The packaged application does not require a separate Python or FFmpeg installation for audio processing or artwork.
 4. Open Settings to choose the interface language. Use the Help tab or F1 for instructions.
@@ -484,6 +489,7 @@ The Draft menu saves/opens **.sfproject** files containing source paths and edit
 | Ctrl+D / Delete | Duplicate / remove clip |
 | Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z | Undo / redo |
 | Ctrl+S / Ctrl+O / Ctrl+E | Save draft / open draft / export |
+| Ctrl+M | Enable / disable the selected clip’s whole lane |
 | Ctrl+Shift+V / Ctrl+Shift+B | Separate into 2 / 4 components |
 | Space on timeline / Esc | Play toggle / stop and cancel unfinished selection or task |
 
@@ -503,6 +509,8 @@ An intentional exception is Save into song in the Lyrics workspace: it changes l
 
 ## Metadata
 
+Leave Genre empty for local MSD musicnn analysis of several song excerpts. Multiple genres, alternatives and scores appear in the log; weak results leave the genre undefined. Anime, OST, Edit, Nightcore and Slowed are separate filename context. Existing tags are retained unless overwrite is enabled. See the [model report](docs/GENRE_CLASSIFICATION.md) for measured results and limitations.
+
 ![Main metadata fields filled for a practice recording](docs/images/metadata-en.png)
 
 Tags describe a file; they are not its filename and do not modify its waveform. Fill fields, then enable Metadata in Processing.
@@ -514,11 +522,13 @@ Tags describe a file; they are not its filename and do not modify its waveform. 
 | Album | Release title |
 | Album artist | Overall release performer, which can differ from track artist |
 | Composer | Music composer |
-| Genre | Genre tag; automatic suggestions are heuristic, not authoritative |
+| Genre | Local musicnn genre tags; scores are not calibrated probabilities |
 | Year / date | For example 2026 |
 | Track number | For example 3 or 3/12 |
 | Comment | Plain tag, not an artwork-generation instruction |
 | Additional fields | Disc number, publisher, copyright and an additional lyric text tag |
+
+**Keep lyrics unchanged** is enabled by default: preserves embedded lyrics, timestamps and language tags when other metadata is updated or cleared. The additional lyric field is not written while enabled. Separate Lyrics-tab actions remain independent.
 
 Actions can read the selected file's tags, open additional fields or create a copy without metadata. Normal updates retain old values for empty additional fields. Overwrite genre permits replacing an existing genre. Overwrite all metadata removes old tags and retains only values being written: check this carefully. Use Lyrics for synchronized lines.
 
@@ -730,7 +740,7 @@ Windows packaging also requires Inno Setup 6. The current profile expects FFmpeg
 .\scripts\build_windows.ps1
 ~~~
 
-Outputs: dist\SonicForge\SonicForge.exe with _internal, and **dist\SonicForge-Setup-2.2.0.exe**. The build script does not forcibly close an open portable project. Build directories, local validation, caches and binary releases are excluded from source commits.
+Outputs: dist\SonicForge\SonicForge.exe with _internal, and **dist\SonicForge-Setup-2.3.0.exe**. The build script does not forcibly close an open portable project. Build directories, local validation, caches and binary releases are excluded from source commits.
 
 Command-line tools: `python src/easy_music_process.py` for full processing; `python src/music2picture.py covers` / `describe` for artwork/descriptions; `python src/music_metadata.py` for tags. Use --help for arguments and test file-changing operations on copies.
 

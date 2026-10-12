@@ -45,6 +45,52 @@ class EditorUiTests(unittest.TestCase):
         self.assertIsNone(self.app._lyrics_service)
         self.assertIsNone(self.app.worker)
 
+    def test_metadata_keep_lyrics_setting_defaults_on_and_is_forwarded(self):
+        self.assertTrue(self.app.preserve_lyrics_var.get())
+        self.assertTrue(self.app._process_kwargs()['preserve_lyrics'])
+        self.assertTrue(self.app.view.preserve_lyrics_check.winfo_exists())
+        self.app.preserve_lyrics_var.set(False)
+        try:
+            self.assertFalse(self.app._process_kwargs()['preserve_lyrics'])
+        finally:
+            self.app.preserve_lyrics_var.set(True)
+
+    def test_explicit_track_toggle_stops_playback_updates_caption_and_undo(self):
+        first = self.editor.project.add(AudioSource('first.wav', 10), lane=0)
+        self.editor.project.add(AudioSource('second.wav', 10), lane=1)
+        self.editor.selected = first.id
+        self.editor.refresh()
+        self.assertEqual(self.editor.track_toggle_button.cget('text'), self.editor.tr('track_on'))
+        with patch.object(self.editor, 'stop') as stop:
+            self.editor.toggle_track()
+        stop.assert_called_once()
+        self.assertEqual(self.editor.project.muted, {0})
+        self.assertIsNone(self.editor._preview_cache)
+        self.assertEqual(self.editor.track_toggle_button.cget('text'), self.editor.tr('track_off'))
+        self.editor.history(False)
+        self.assertEqual(self.editor.project.muted, set())
+        self.editor.history(True)
+        self.assertEqual(self.editor.project.muted, {0})
+        self.editor.toggle_track()
+        self.assertEqual(self.editor.project.muted, set())
+
+    def test_track_toggle_shortcut_works_in_russian_layout_and_respects_busy_state(self):
+        clip = self.editor.project.add(AudioSource('song.wav', 10))
+        self.editor.selected = clip.id
+        event = SimpleNamespace(widget=self.editor.canvas, state=4, keycode=77, keysym='Cyrillic_softsign')
+        self.assertEqual(self.editor._shortcut(event), 'break')
+        self.assertEqual(self.editor.project.muted, {0})
+        with patch.object(type(self.editor), 'is_busy', new_callable=PropertyMock) as busy:
+            busy.return_value = True
+            self.editor._shortcut(event)
+        self.assertEqual(self.editor.project.muted, {0})
+
+    def test_track_toggle_without_selection_is_disabled(self):
+        self.editor.refresh()
+        self.editor.toggle_track()
+        self.assertEqual(self.editor.project.muted, set())
+        self.assertEqual(str(self.editor.track_toggle_button.cget('state')), 'disabled')
+
     def test_tool_shortcuts_work_in_russian_layout_and_show_in_stem_menu(self):
         def key(code, symbol, state=4):
             return SimpleNamespace(widget=self.editor.canvas, keycode=code, keysym=symbol, state=state)

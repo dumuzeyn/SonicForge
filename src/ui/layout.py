@@ -395,6 +395,12 @@ class SonicForgeView(ttk.Frame):
         )
         self.overwrite_all_check.pack(side=tk.LEFT)
         self._tip(self.overwrite_all_check, "tip_overwrite_all_metadata")
+        preserve_row = ttk.Frame(frame, style='Surface.TFrame')
+        preserve_row.grid(row=11, column=0, columnspan=2, sticky='ew', pady=(4, 0))
+        self.preserve_lyrics_check = self._localize(
+            SquareCheckbutton(preserve_row, self.app.preserve_lyrics_var, fixed_width=270), 'preserve_lyrics')
+        self.preserve_lyrics_check.pack(side=tk.LEFT)
+        self._tip(self.preserve_lyrics_check, 'tip_preserve_lyrics')
         self.metadata_actions = self._localize(
             RoundedMenuButton(checks, width=SIZES["button_width"]), "metadata_actions"
         )

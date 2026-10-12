@@ -1,6 +1,7 @@
 """Read-only verification of the packaged icon and editor toggle in a Windows EXE."""
 import argparse
 import hashlib
+import json
 import marshal
 from pathlib import Path
 import struct
@@ -49,18 +50,30 @@ def main():
     embedded = archive.open_embedded_archive('PYZ.pyz')
     editor_constants = set(constants(embedded.extract('ui.editor')))
     assert {'toggle_cursor_selection', 'Завершить выделение', 'Начать выделение'} <= editor_constants, 'Editor toggle missing from EXE'
+    assert {'toggle_track', 'track_toggle_button', 'Включить дорожку', 'Выключить дорожку'} <= editor_constants, 'Track enable/disable missing from EXE'
+    genre_constants = set(constants(embedded.extract('genre_classifier')))
+    assert {'InferenceSession', 'CPUExecutionProvider', 'classify_genre', 'sample_regions',
+            'low_confidence_or_unsupported'} <= genre_constants, 'Local neural genre classifier missing'
+    model_root = args.exe.parent / '_internal/assets/models/genre'
+    genre_manifest = json.loads((model_root / 'manifest.json').read_text(encoding='utf-8'))
+    assert genre_manifest['license'] == 'ISC', 'Wrong genre-model license'
+    assert hashlib.sha256((model_root / 'msd_musicnn.onnx').read_bytes()).hexdigest() == genre_manifest['sha256'], 'Genre weights checksum mismatch'
+    assert (model_root / 'LICENSE.musicnn.txt').is_file(), 'Original model notice missing'
     window_constants = set(constants(embedded.extract('ui.windowing')))
     assert 'set_native_window_icon' in window_constants, 'Native window icons missing'
     assert 'atomic_layout' not in window_constants, 'Flickering forced repaint still included'
     layout_constants = set(constants(embedded.extract('ui.layout')))
     assert {'page_layers', '_current_layer', 'editor_context', 'batch_context'} <= layout_constants, 'Stable layouts missing'
+    assert 'preserve_lyrics_check' in layout_constants, 'Keep lyrics metadata setting missing'
+    metadata_constants = set(constants(embedded.extract('music_metadata')))
+    assert {'lyrics_snapshot', 'restore_lyrics', 'SYLT', 'preserve_lyrics'} <= metadata_constants, 'Embedded lyric protection missing'
     assert 'settings_link_descriptions' in layout_constants and 'settings_link_addresses' not in layout_constants, 'Settings still shows raw URLs'
     assert not any(entry[-1] == 'l' for entry in archive.toc.values()), 'Old rectangular bootloader splash still included'
     assert 'splash_runtime' in archive.toc, 'Early transparent splash hook missing'
     splash_constants = set(constants(embedded.extract('startup_splash')))
     assert {'UpdateLayeredWindow', 'premultiply_bgra', 'sonic_forge_mark.ico', 'hide_splash.flag'} <= splash_constants, 'Per-pixel transparent splash missing'
     identity_constants = set(constants(embedded.extract('app_identity')))
-    assert {'SonicForge', '2.2.0', 'https://github.com/dumuzeyn/SonicForge',
+    assert {'SonicForge', '2.3.0', 'https://github.com/dumuzeyn/SonicForge',
             'https://pay.cloudtips.ru/p/53cc3806'} <= identity_constants, 'Current title or project links missing'
     assert not any(name == 'mutagen' or name.startswith('mutagen.') for name in embedded.toc), 'Test-only checker is included in the application'
     assert 'audio_tags' in embedded.toc, 'Current tag writer is missing'

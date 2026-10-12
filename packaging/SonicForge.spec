@@ -48,6 +48,7 @@ a = Analysis(
         (project_file('assets/sonic_forge_mark.ico'), 'assets'),
         (project_file('assets/sonic_forge_mark.png'), 'assets'),
         (project_file('assets/fonts'), 'assets/fonts'),
+        (project_file('assets/models/genre'), 'assets/models/genre'),
         (project_file('packaging/LANGUAGE_MODELS.txt'), 'licenses'),
         (project_file('packaging/Apache-2.0.txt'), 'licenses'),
         (project_file('packaging/SEPARATION_ENGINE.txt'), 'licenses'),

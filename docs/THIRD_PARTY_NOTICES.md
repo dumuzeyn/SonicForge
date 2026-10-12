@@ -13,7 +13,8 @@ notices are next to the font files. This inventory does not replace those texts.
 | Pillow | Image decoding and artwork | MIT-CMU; [source](https://github.com/python-pillow/Pillow) |
 | PyAV | Container metadata and audio decoding | BSD-3-Clause; linked FFmpeg libraries keep their LGPL terms; [source](https://github.com/PyAV-Org/PyAV) |
 | faster-whisper, CTranslate2 | Local speech transcription | MIT; [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [CTranslate2](https://github.com/OpenNMT/CTranslate2) |
-| ONNX Runtime | Local language identification | MIT; [source](https://github.com/microsoft/onnxruntime) |
+| ONNX Runtime | Local language and music genre classification | MIT; [source](https://github.com/microsoft/onnxruntime) |
+| Original MSD musicnn checkpoint / local ONNX conversion | Offline music tagging | ISC, Music Technology Group / Jordi Pons; original weights from the [pinned repository](https://github.com/jordipons/musicnn/tree/516acb2a0ff5ef73f64547898e018e793152c506/musicnn/MSD_musicnn), under its [ISC notice](https://github.com/jordipons/musicnn/blob/516acb2a0ff5ef73f64547898e018e793152c506/LICENSE.md). Bundled notice and hashes in `assets/models/genre`; this is an independent export from upstream, not the Essentia distribution. |
 | VoxLingua107 classifier / ONNX export | Acoustic language classifier | Apache-2.0; [pinned model details](../packaging/LANGUAGE_MODELS.txt) |
 | Specialized Georgian transcription weights | Optional downloaded speech model | Publisher-declared MIT; [revision and source](../packaging/LANGUAGE_MODELS.txt); not redistributed in the installer |
 | AnyAscii | Transliterating text | ISC; [source](https://github.com/anyascii/anyascii) |

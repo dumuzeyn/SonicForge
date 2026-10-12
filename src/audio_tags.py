@@ -121,13 +121,17 @@ def read_id3(path):
     return header[3], 10 + size, tuple(frames)
 
 
-def update_id3(path, added, remove_names=(), remove_custom=()):
+def update_id3(path, added, remove_names=(), remove_custom=(), target_version=None):
     """Replace selected frames only, using a unique temporary and atomic rename."""
     path = Path(path)
     if path.suffix.lower() != '.mp3' or path.is_symlink() or not path.is_file():
         raise ValueError('ID3 updates require a regular local MP3 file')
     original_stamp = path.stat()
     version, offset, frames = read_id3(path)
+    if target_version is not None:
+        if target_version not in (3, 4):
+            raise ValueError('Use ID3v2.3 or ID3v2.4')
+        version = target_version
     kept = [frame for frame in frames if frame.name not in remove_names
             and not (frame.name == 'TXXX' and frame.description in remove_custom)]
     encoded = []

@@ -1,0 +1,41 @@
+{
+  "real_music_fragments": 8,
+  "inputs": [
+    {
+      "clip_id": "18443",
+      "sha256": "8313cceee7eec291ed1583bfdd31253663385525c0f6992f64d72c77dc821092"
+    },
+    {
+      "clip_id": "38977",
+      "sha256": "acb3a2e83192ecee1dca7601948997fd5a7125978b7e5321af412583c05962d9"
+    },
+    {
+      "clip_id": "8196",
+      "sha256": "5eafbacb408e68662566842a06770c68e669c6d05644474d83bc93a0d1f38522"
+    },
+    {
+      "clip_id": "20286",
+      "sha256": "c0e581a564545c9169f478b05ba1e326e510afe403f459e0ebac55ee893c6705"
+    },
+    {
+      "clip_id": "13367",
+      "sha256": "0f6f9520ece35b0de64f5c09075cf8d0f41a10dce75fb99c785c79b2b1857180"
+    },
+    {
+      "clip_id": "25230",
+      "sha256": "245d6c7a38cc05f4a24d1d33d03d57dc6e031ba6a4187ee77bbe76b6a52133c0"
+    },
+    {
+      "clip_id": "20069",
+      "sha256": "8c0a8ba16551c166221fb5716c43af4359ac47bd81d6e92dc29089909c420392"
+    },
+    {
+      "clip_id": "12348",
+      "sha256": "0c3602eca03a3755dd6aa3cd0fef71242227b9b0569e3bbbe589a6befafac361"
+    }
+  ],
+  "frontend_max_abs_error": 2.473592758178711e-06,
+  "onnx_vs_tensorflow_max_abs_error": 2.980232238769531e-07,
+  "random_input_onnx_max_abs_error": 2.384185791015625e-07,
+  "model_sha256": "2254aa7a38ecd427785bf52ad38c97c8a655d28c8c8df4adf4e56d25704e5473"
+}

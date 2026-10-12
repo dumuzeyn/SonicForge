@@ -1,12 +1,11 @@
 import argparse
-import json
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-import numpy as np
-from audio_tags import read_metadata
+from audio_tags import read_metadata, read_id3, update_id3, probe_audio
+from genre_classifier import GENRE_LABELS
 
 
 AUDIO_EXTENSIONS = {".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".wma"}
@@ -32,27 +31,7 @@ DEFAULT_GENRES = [
     "Anime",
     "Edit",
 ]
-
-GENRE_KEYWORDS = {
-    "Pop": ["pop", "dance pop", "synthpop", "synth-pop"],
-    "Rock": ["rock", "indie rock", "alternative"],
-    "Hip-Hop": ["hip hop", "hip-hop", "rap", "trap"],
-    "Electronic": ["electronic", "electronica", "edm"],
-    "Dance": ["dance", "club"],
-    "House": ["house", "deep house", "tech house"],
-    "Techno": ["techno"],
-    "Drum and Bass": ["drum and bass", "drum & bass", "dnb", "d&b", "jungle"],
-    "Ambient": ["ambient", "atmospheric", "chill", "downtempo"],
-    "Classical": ["classical", "classic", "orchestra", "piano"],
-    "Jazz": ["jazz", "swing", "bebop"],
-    "Acoustic": ["acoustic", "unplugged"],
-    "Folk": ["folk"],
-    "R&B": ["r&b", "rnb", "soul"],
-    "Reggae": ["reggae", "dub"],
-    "Metal": ["metal", "metalcore", "deathcore"],
-    "Anime": ["anime", "opening", "ending", "ost", "op", "ed", "j-pop", "jrock", "j-rock"],
-    "Edit": ["edit", "edits", "amv", "velocity", "slowed", "reverb", "sped up", "nightcore"],
-}
+DEFAULT_GENRES = list(dict.fromkeys([*GENRE_LABELS.values(), *DEFAULT_GENRES, 'OST', 'Nightcore', 'Slowed']))
 
 
 def require_ffmpeg():
@@ -115,164 +94,31 @@ def load_genres(genres=None, genres_file=None):
     return unique
 
 
-def read_audio(audio_path, sample_rate=22050):
-    command = [
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        str(audio_path),
-        "-ac",
-        "1",
-        "-ar",
-        str(sample_rate),
-        "-f",
-        "f32le",
-        "pipe:1",
-    ]
-    raw = subprocess.check_output(command, **SUBPROCESS_STARTUP_KWARGS)
-    data = np.frombuffer(raw, dtype=np.float32)
-    if data.size == 0:
-        raise RuntimeError(f"No audio data decoded from {audio_path}")
-    peak = np.max(np.abs(data))
-    return data / peak if peak > 0 else data
-
-
-def stft_features(audio, n_fft=2048, hop=512):
-    if audio.size < n_fft:
-        audio = np.pad(audio, (0, n_fft - audio.size))
-    frame_count = max(1, 1 + (audio.size - n_fft) // hop)
-    usable = audio[: n_fft + hop * (frame_count - 1)]
-    frames = np.lib.stride_tricks.sliding_window_view(usable, n_fft)[::hop]
-    window = np.hanning(n_fft).astype(np.float32)
-    spectrum = np.abs(np.fft.rfft(frames * window, axis=1)).T
-    spectrum = np.log1p(spectrum)[:512]
-    spectrum -= spectrum.min()
-    if spectrum.max() > 0:
-        spectrum /= spectrum.max()
-
-    rms = np.sqrt(np.mean(frames * frames, axis=1))
-    if rms.max() > 0:
-        rms /= rms.max()
-
-    bass = spectrum[:24].mean(axis=0)
-    mids = spectrum[24:160].mean(axis=0)
-    highs = spectrum[160:].mean(axis=0)
-    centroid = (spectrum * np.arange(spectrum.shape[0])[:, None]).sum(axis=0) / (spectrum.sum(axis=0) + 1e-6)
-    centroid /= max(1, spectrum.shape[0] - 1)
-    return rms, bass, mids, highs, centroid
-
-
-def estimate_bpm(rms, sample_rate=22050, hop=512):
-    if rms.size < 16:
-        return 120.0
-
-    envelope = np.maximum(0, np.diff(rms, prepend=rms[0]))
-    envelope -= envelope.mean()
-    if np.max(np.abs(envelope)) > 0:
-        envelope /= np.max(np.abs(envelope))
-
-    frame_rate = sample_rate / hop
-    min_lag = max(1, int(frame_rate * 60 / 240))
-    max_lag = min(len(envelope) - 1, int(frame_rate * 60 / 30))
-    if max_lag <= min_lag:
-        return 120.0
-
-    scores = [float(np.dot(envelope[:-lag], envelope[lag:])) for lag in range(min_lag, max_lag + 1)]
-    best_lag = min_lag + int(np.argmax(scores))
-    bpm = 60 * frame_rate / best_lag
-    while bpm < 30:
-        bpm *= 2
-    while bpm > 240:
-        bpm /= 2
-    return float(np.clip(bpm, 30, 240))
+def read_audio(audio_path, sample_rate=22050, start=0, seconds=9, cancel_event=None):
+    """Decode only a bounded fragment; preserve its physical amplitude."""
+    from genre_classifier import decode_fragment
+    return decode_fragment(audio_path, start, seconds, sample_rate, cancel_event)
 
 
 def keyword_genre_from_name(audio_path, allowed_genres):
-    text = normalize_label(clean_stem(audio_path))
-    best_genre = None
-    best_score = 0
-    for genre in allowed_genres:
-        candidates = [genre]
-        for canonical, keywords in GENRE_KEYWORDS.items():
-            if normalize_label(canonical) == normalize_label(genre):
-                candidates.extend(keywords)
-
-        score = 0
-        for candidate in candidates:
-            candidate_key = normalize_label(candidate)
-            if candidate_key and candidate_key in text:
-                score = max(score, len(candidate_key))
-        if score > best_score:
-            best_genre = genre
-            best_score = score
-    return best_genre
+    """Compatibility shim: filenames cannot establish a musical genre."""
+    return None
 
 
 def choose_allowed_genre(canonical_genre, allowed_genres):
-    canonical_key = normalize_label(canonical_genre)
-    for genre in allowed_genres:
-        if normalize_label(genre) == canonical_key:
-            return genre
-
-    canonical_keywords = [canonical_genre] + GENRE_KEYWORDS.get(canonical_genre, [])
-    canonical_tokens = set()
-    for keyword in canonical_keywords:
-        canonical_tokens.update(normalize_label(keyword).split())
-
-    best_genre = allowed_genres[0]
-    best_score = -1
-    for genre in allowed_genres:
-        genre_tokens = set(normalize_label(genre).split())
-        score = len(canonical_tokens & genre_tokens)
-        for keyword in canonical_keywords:
-            if normalize_label(keyword) in normalize_label(genre):
-                score += 2
-        if score > best_score:
-            best_genre = genre
-            best_score = score
-    return best_genre
+    if not canonical_genre:
+        return None
+    aliases = {"rnb": "r&b", "hip hop": "hip hop"}
+    def key(value):
+        normalized = normalize_label(value)
+        return aliases.get(normalized, normalized)
+    return next((genre for genre in allowed_genres if key(genre) == key(canonical_genre)), None)
 
 
-def estimate_genre(audio_path, allowed_genres):
-    name_match = keyword_genre_from_name(audio_path, allowed_genres)
-    if name_match:
-        return name_match
-
-    audio = read_audio(audio_path)
-    rms, bass, mids, highs, centroid = stft_features(audio)
-    bpm = estimate_bpm(rms)
-    energy = float(np.mean(rms))
-    low = float(np.mean(bass))
-    mid = float(np.mean(mids))
-    high = float(np.mean(highs))
-    brightness = float(np.mean(centroid))
-    bass_ratio = low / (mid + high + 1e-6)
-    high_ratio = high / (low + mid + 1e-6)
-
-    scores = {genre: 0.0 for genre in DEFAULT_GENRES}
-    scores["Ambient"] += (1.0 - energy) * 2.0 + (1.0 - min(bpm, 140) / 140.0)
-    scores["Classical"] += (1.0 - energy) * 1.2 + high_ratio * 0.7 + (1.0 if bpm < 105 else 0.0)
-    scores["Acoustic"] += mid * 1.4 + (1.0 - bass_ratio) * 0.8 + (1.0 if bpm < 135 else 0.0)
-    scores["Folk"] += mid * 1.2 + (1.0 if 75 <= bpm <= 135 else 0.0)
-    scores["Jazz"] += mid * 1.1 + high_ratio * 0.8 + (1.0 if 80 <= bpm <= 160 else 0.0)
-    scores["R&B"] += bass_ratio * 1.0 + mid * 0.9 + (1.0 if 65 <= bpm <= 120 else 0.0)
-    scores["Reggae"] += bass_ratio * 1.1 + (1.0 if 65 <= bpm <= 100 else 0.0)
-    scores["Hip-Hop"] += bass_ratio * 1.4 + (1.0 if 70 <= bpm <= 115 else 0.0)
-    scores["Pop"] += energy * 1.0 + mid * 0.8 + (1.0 if 90 <= bpm <= 145 else 0.0)
-    scores["Rock"] += energy * 1.1 + mid * 1.1 + brightness * 0.7 + (1.0 if 95 <= bpm <= 170 else 0.0)
-    scores["Metal"] += energy * 1.4 + brightness * 1.0 + (1.0 if bpm >= 130 else 0.0)
-    scores["Electronic"] += bass_ratio * 1.0 + brightness * 0.8 + (1.0 if 95 <= bpm <= 155 else 0.0)
-    scores["Dance"] += energy * 1.1 + bass_ratio * 1.1 + (1.3 if 115 <= bpm <= 135 else 0.0)
-    scores["House"] += bass_ratio * 1.0 + (1.4 if 118 <= bpm <= 130 else 0.0)
-    scores["Techno"] += energy * 1.0 + brightness * 0.8 + (1.4 if 125 <= bpm <= 150 else 0.0)
-    scores["Drum and Bass"] += bass_ratio * 1.0 + brightness * 0.8 + (1.8 if 155 <= bpm <= 190 else 0.0)
-    scores["Anime"] += high_ratio * 0.7 + mid * 0.8 + (1.0 if 120 <= bpm <= 180 else 0.0)
-    scores["Edit"] += bass_ratio * 1.0 + energy * 0.8 + (1.0 if 80 <= bpm <= 170 else 0.0)
-
-    canonical = max(scores, key=scores.get)
-    return choose_allowed_genre(canonical, allowed_genres)
+def estimate_genre(audio_path, allowed_genres, cancel_event=None):
+    """Legacy string API backed by the actual local neural tagger."""
+    from genre_classifier import classify_genre
+    return classify_genre(audio_path, allowed_genres, cancel_event).tag
 
 
 def read_existing_genre(audio_path):
@@ -293,6 +139,37 @@ def normalized_extra_metadata(extra_metadata=None):
     }
 
 
+def is_lyrics_key(key):
+    key = str(key).casefold().replace(' ', '').replace('_', '').replace('-', '')
+    return key in {'uslt', 'sylt'} or key.startswith(('lyrics', 'unsyncedlyrics', 'syncedlyrics', 'sonicforgelyrics'))
+
+
+def lyrics_snapshot(path):
+    """Keep exact MP3 lyric frames, including timing/language and custom tags."""
+    if Path(path).suffix.lower() == '.mp3':
+        version, _, frames = read_id3(path)
+        protected = [f for f in frames if f.name in ('USLT', 'SYLT')
+                     or (f.name == 'TXXX' and is_lyrics_key(f.description))]
+        return version, protected, {}
+    tags = probe_audio(path)['metadata']
+    return None, [], {key: value for key, value in tags.items() if is_lyrics_key(key)}
+
+
+def restore_lyrics(path, snapshot):
+    version, frames, _ = snapshot
+    if version is None:
+        actual = lyrics_snapshot(path)[2]
+        expected = {key.casefold(): value for key, value in snapshot[2].items()}
+        found = {key.casefold(): value for key, value in actual.items()}
+        if expected != found:
+            raise RuntimeError('Container could not preserve embedded lyrics; original file retained.')
+        return
+    _, _, current = read_id3(path)
+    custom = tuple(f.description for f in current if f.name == 'TXXX' and is_lyrics_key(f.description))
+    if frames or any(f.name in ('USLT', 'SYLT') for f in current) or custom:
+        update_id3(path, frames, remove_names=('USLT', 'SYLT'), remove_custom=custom, target_version=version)
+
+
 def write_metadata(
     audio_path,
     title,
@@ -300,16 +177,21 @@ def write_metadata(
     dry_run=False,
     extra_metadata=None,
     overwrite_all_metadata=False,
+    preserve_lyrics=False,
 ):
     audio_path = Path(audio_path)
     temp_path = audio_path.with_name(f"{audio_path.stem}.metadata_tmp{audio_path.suffix}")
     extra_metadata = normalized_extra_metadata(extra_metadata)
+    if preserve_lyrics:
+        extra_metadata = {key: value for key, value in extra_metadata.items() if not is_lyrics_key(key)}
     if dry_run:
         extras = ", ".join(f"{key}={value!r}" for key, value in extra_metadata.items())
         extras_text = f", {extras}" if extras else ""
         mode = "replace all metadata" if overwrite_all_metadata else "preserve other metadata"
         print(f"Dry run: {audio_path.name} -> title={title!r}, genre={genre!r}{extras_text} ({mode})")
         return
+
+    snapshot = lyrics_snapshot(audio_path) if preserve_lyrics else None
 
     command = [
         "ffmpeg",
@@ -325,29 +207,40 @@ def write_metadata(
         "-1" if overwrite_all_metadata else "0",
         "-metadata",
         f"title={title}",
-        "-metadata",
-        f"genre={genre}",
     ]
+    # None means do not touch a genre field; empty string is explicit removal.
+    if genre is not None:
+        command.extend(["-metadata", f"genre={genre}"])
     if overwrite_all_metadata:
         command.extend(
             ["-map_metadata:s", "-1", "-map_chapters", "-1", "-fflags", "+bitexact"]
         )
     for key, value in extra_metadata.items():
         command.extend(["-metadata", f"{key}={value}"])
+    if snapshot:
+        for key, value in snapshot[2].items():
+            command.extend(['-metadata', f'{key}={value}'])
     if audio_path.suffix.lower() == ".mp3":
-        command.extend(["-id3v2_version", "3"])
+        command.extend(["-id3v2_version", str(snapshot[0] if snapshot else 3)])
     command.append(str(temp_path))
-    run(command)
-    temp_path.replace(audio_path)
+    try:
+        run(command)
+        if snapshot:
+            restore_lyrics(temp_path, snapshot)
+        temp_path.replace(audio_path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
 
-def clear_metadata(audio_path, dry_run=False):
+def clear_metadata(audio_path, dry_run=False, preserve_lyrics=False):
     audio_path = Path(audio_path)
     if dry_run:
         print(f"Dry run: clear all metadata from {audio_path.name}")
         return
 
     temp_path = audio_path.with_name(f"{audio_path.stem}.metadata_tmp{audio_path.suffix}")
+    snapshot = lyrics_snapshot(audio_path) if preserve_lyrics else None
     command = [
         "ffmpeg",
         "-hide_banner",
@@ -368,13 +261,22 @@ def clear_metadata(audio_path, dry_run=False):
         "+bitexact",
     ]
     if audio_path.suffix.lower() == ".mp3":
-        command.extend(["-id3v2_version", "3"])
+        command.extend(["-id3v2_version", str(snapshot[0] if snapshot else 3)])
+    if snapshot:
+        for key, value in snapshot[2].items():
+            command.extend(['-metadata', f'{key}={value}'])
     command.append(str(temp_path))
-    run(command)
-    temp_path.replace(audio_path)
+    try:
+        run(command)
+        if snapshot:
+            restore_lyrics(temp_path, snapshot)
+        temp_path.replace(audio_path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
 
-def clear_music_metadata(source, dry_run=False, cancel_event=None):
+def clear_music_metadata(source, dry_run=False, cancel_event=None, preserve_lyrics=False):
     source_path = Path(source).resolve()
     files = audio_files(source_path)
     if not files:
@@ -382,7 +284,7 @@ def clear_music_metadata(source, dry_run=False, cancel_event=None):
     for index, audio_path in enumerate(files, start=1):
         check_cancelled(cancel_event)
         print(f"[{index}/{len(files)}] Clear metadata: {audio_path.name}")
-        clear_metadata(audio_path, dry_run=dry_run)
+        clear_metadata(audio_path, dry_run=dry_run, preserve_lyrics=preserve_lyrics)
     check_cancelled(cancel_event)
     print("Metadata cleanup finished.")
 
@@ -449,6 +351,8 @@ def update_music_metadata(
     overwrite_all_metadata=False,
     title_override=None,
     cancel_event=None,
+    genre_progress=None,
+    preserve_lyrics=False,
 ):
     source_path = Path(source).resolve()
     files = audio_files(source_path)
@@ -476,32 +380,51 @@ def update_music_metadata(
             title = existing_tags["title"]
         else:
             title = clean_stem(audio_path)
-        existing_genre = read_existing_genre(audio_path)
+        existing_genre = existing_tags.get("genre", "")
         if existing_genre and not overwrite_genre and not overwrite_all_metadata:
             genre = existing_genre
             action = "keep existing genre"
         else:
-            suggested_genre = estimate_genre(audio_path, allowed_genres)
             if genre_override:
                 genre = genre_override
-            elif manual:
-                genre = choose_genre_interactively(audio_path, allowed_genres, suggested_genre)
             else:
-                genre = suggested_genre
+                from genre_classifier import classify_genre
+                result = classify_genre(audio_path, allowed_genres, cancel_event)
+                if genre_progress:
+                    genre_progress(audio_path, result)
+                else:
+                    alternatives = ', '.join(f'{c.genre}: {c.score:.3f} (support {c.support:.0%})'
+                                             for c in result.alternatives)
+                    print(f'Genre analysis: {audio_path.name}: {result.tag or "undefined"}; '
+                          f'scores (uncalibrated): {alternatives}; context: {", ".join(result.context)}; '
+                          f'{result.reason}')
+                if manual:
+                    genre = choose_genre_interactively(audio_path, allowed_genres, result.tag)
+                else:
+                    # Abstention does not erase an existing tag even when an
+                    # overwrite was requested: there is no reliable replacement.
+                    genre = result.tag or existing_genre or None
             action = "write genre" if not existing_genre else "overwrite genre"
 
         extra_metadata = normalized_extra_metadata(extra_metadata)
         extras = ", ".join(f"{key}={value!r}" for key, value in extra_metadata.items())
         extras_text = f", {extras}" if extras else ""
         print(f"[{index}/{len(files)}] Metadata: {audio_path.name} -> title={title!r}, genre={genre!r}{extras_text} ({action})")
-        write_metadata(
-            audio_path,
-            title,
-            genre,
-            dry_run=dry_run,
-            extra_metadata=extra_metadata,
-            overwrite_all_metadata=overwrite_all_metadata,
-        )
+        check_cancelled(cancel_event)
+        try:
+            write_metadata(
+                audio_path,
+                title,
+                genre,
+                dry_run=dry_run,
+                extra_metadata=extra_metadata,
+                overwrite_all_metadata=overwrite_all_metadata,
+                preserve_lyrics=preserve_lyrics,
+            )
+        except subprocess.CalledProcessError as exc:
+            # A malformed container cannot be retagged; keep its original and
+            # continue the folder instead of abandoning subsequent songs.
+            print(f'Metadata skipped: {audio_path.name}: decoder/remux error {exc.returncode}')
 
     check_cancelled(cancel_event)
     print("Metadata update finished.")

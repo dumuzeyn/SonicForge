@@ -239,6 +239,7 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.lyrics_var = tk.StringVar()
         self.overwrite_genre_var = tk.BooleanVar(value=False)
         self.overwrite_all_metadata_var = tk.BooleanVar(value=False)
+        self.preserve_lyrics_var = tk.BooleanVar(value=True)
 
         self.integrated_lufs_var = tk.DoubleVar(value=-14.0)
         self.true_peak_var = tk.DoubleVar(value=-1.5)
@@ -1034,6 +1035,7 @@ class SonicForgeApp(TkinterDnD.Tk):
             "genre": self.genre_var.get().strip() or None,
             "overwrite_genre": bool(self.overwrite_genre_var.get()),
             "overwrite_all_metadata": bool(self.overwrite_all_metadata_var.get()),
+            "preserve_lyrics": bool(self.preserve_lyrics_var.get()),
             "extra_metadata": self._metadata_values(),
             "cover_seed": self._parse_seed(),
             "cover_style": self.cover_choice("style", self.cover_style_var.get()),
@@ -1187,6 +1189,7 @@ class SonicForgeApp(TkinterDnD.Tk):
         if 'lyrics' in kwargs.get('process_steps', ()) and kwargs.get('edited_lyrics_result') is None:
             kwargs['lyrics_service'] = self._get_lyrics_service()
         kwargs["lyrics_progress"] = lambda stage, data: self.log_queue.put(("__LYRICS_BATCH_PROGRESS__", stage, data))
+        kwargs["genre_progress"] = lambda path, result: self.log_queue.put(("__GENRE_RESULT__", path, result))
         result_key = "run_failed"
         old_stdout, old_stderr = sys.stdout, sys.stderr
         sys.stdout = QueueWriter(self.log_queue)
@@ -1610,6 +1613,14 @@ class SonicForgeApp(TkinterDnD.Tk):
                     self.write_log("\n" + self.t(item[1]) + "\n")
                 elif isinstance(item, tuple) and item[0] == "__LYRICS_BATCH_PROGRESS__":
                     self.view.update_lyrics_execution(item[1], item[2])
+                elif isinstance(item, tuple) and item[0] == "__GENRE_RESULT__":
+                    result = item[2]
+                    candidates = ', '.join(f'{c.genre}: {c.score:.3f} ({c.support:.0%})'
+                                           for c in result.alternatives)
+                    self.write_log(self.t('genre_analysis_result').format(
+                        name=item[1].name, genres=result.tag or self.t('genre_undefined'),
+                        candidates=candidates or '—', context=', '.join(result.context) or '—',
+                        reason=result.reason or '—') + '\n')
                 elif isinstance(item, tuple) and item[0] == "__LYRICS_BATCH_FINISH__":
                     self.view.finish_lyrics_execution(item[1])
                 elif isinstance(item, tuple) and item[0] == "__LYRICS_RESULT__":

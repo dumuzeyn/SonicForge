@@ -1,0 +1,709 @@
+{
+  "dataset": "MagnaTagATune crowdsourced tags",
+  "revision": "042e24c2c26a71168dd35edc3bc0cb47b2f3c3cd",
+  "source": "https://huggingface.co/datasets/confit/magnatagatune/resolve/042e24c2c26a71168dd35edc3bc0cb47b2f3c3cd/",
+  "genres": [
+    "House",
+    "Metal",
+    "Rock",
+    "Pop",
+    "Electronic",
+    "Jazz",
+    "Ambient",
+    "Folk"
+  ],
+  "protocol": "Fixed operating threshold; no local training. One clip per artist, selection independent of predictions.",
+  "limitations": "Small selected diagnostic set; incomplete subjective labels; overlap with MSD pretraining cannot be ruled out.",
+  "tracks": [
+    {
+      "clip_id": "18443",
+      "artist": "DJ Markitos",
+      "track_id": "dj markitos/Inside Your Dreams/04",
+      "title": "Love Peace and Ecstasy",
+      "source_path": "c/dj_markitos-inside_your_dreams-04-love_peace_and_ecstasy-30-59.mp3",
+      "genres": [
+        "House"
+      ],
+      "split": "validation",
+      "selection_label": "House",
+      "path": ".sonicforge/genre-eval/clip_18443.mp3",
+      "sha256": "8313cceee7eec291ed1583bfdd31253663385525c0f6992f64d72c77dc821092"
+    },
+    {
+      "clip_id": "38977",
+      "artist": "Strojovna 07",
+      "track_id": "strojovna 07/Switch On - Switch Off/09",
+      "title": "Crystal",
+      "source_path": "f/strojovna_07-switch_on__switch_off-09-crystal-262-291.mp3",
+      "genres": [
+        "House",
+        "Electronic"
+      ],
+      "split": "validation",
+      "selection_label": "House",
+      "path": ".sonicforge/genre-eval/clip_38977.mp3",
+      "sha256": "acb3a2e83192ecee1dca7601948997fd5a7125978b7e5321af412583c05962d9"
+    },
+    {
+      "clip_id": "8196",
+      "artist": "Solar Cycle",
+      "track_id": "solar cycle/Sunlight/02",
+      "title": "Like it 2",
+      "source_path": "b/solar_cycle-sunlight-02-like_it_2-88-117.mp3",
+      "genres": [
+        "House",
+        "Electronic"
+      ],
+      "split": "test",
+      "selection_label": "House",
+      "path": ".sonicforge/genre-eval/clip_8196.mp3",
+      "sha256": "5eafbacb408e68662566842a06770c68e669c6d05644474d83bc93a0d1f38522"
+    },
+    {
+      "clip_id": "20286",
+      "artist": "iNTROSPEKT",
+      "track_id": "introspekt/iDEOLOGY/04",
+      "title": "TBD",
+      "source_path": "9/introspekt-ideology-04-tbd-204-233.mp3",
+      "genres": [
+        "House"
+      ],
+      "split": "test",
+      "selection_label": "House",
+      "path": ".sonicforge/genre-eval/clip_20286.mp3",
+      "sha256": "c0e581a564545c9169f478b05ba1e326e510afe403f459e0ebac55ee893c6705"
+    },
+    {
+      "clip_id": "13367",
+      "artist": "Kenji Williams",
+      "track_id": "kenji williams/Faces of Epiphany/03",
+      "title": "Illusion (Bedrock mix)",
+      "source_path": "f/kenji_williams-faces_of_epiphany-03-illusion_bedrock_mix-494-523.mp3",
+      "genres": [
+        "House",
+        "Pop",
+        "Electronic"
+      ],
+      "split": "test",
+      "selection_label": "House",
+      "path": ".sonicforge/genre-eval/clip_13367.mp3",
+      "sha256": "0f6f9520ece35b0de64f5c09075cf8d0f41a10dce75fb99c785c79b2b1857180"
+    },
+    {
+      "clip_id": "25230",
+      "artist": "Memories of Tomorrow",
+      "track_id": "memories of tomorrow/Waiting for Dawn/05",
+      "title": "Transcend (Fate of a DJ)",
+      "source_path": "f/memories_of_tomorrow-waiting_for_dawn-05-transcend_fate_of_a_dj-117-146.mp3",
+      "genres": [
+        "House",
+        "Electronic"
+      ],
+      "split": "test",
+      "selection_label": "House",
+      "path": ".sonicforge/genre-eval/clip_25230.mp3",
+      "sha256": "245d6c7a38cc05f4a24d1d33d03d57dc6e031ba6a4187ee77bbe76b6a52133c0"
+    },
+    {
+      "clip_id": "20069",
+      "artist": "Skitzo",
+      "track_id": "skitzo/Heavy Shit/04",
+      "title": "Stab Her Goodnight",
+      "source_path": "e/skitzo-heavy_shit-04-stab_her_goodnight-30-59.mp3",
+      "genres": [
+        "Metal",
+        "Rock"
+      ],
+      "split": "validation",
+      "selection_label": "Metal",
+      "path": ".sonicforge/genre-eval/clip_20069.mp3",
+      "sha256": "8c0a8ba16551c166221fb5716c43af4359ac47bd81d6e92dc29089909c420392"
+    },
+    {
+      "clip_id": "12348",
+      "artist": "Seismic Anamoly",
+      "track_id": "seismic anamoly/Ramifications/03",
+      "title": "Cum With Me",
+      "source_path": "c/seismic_anamoly-ramifications-03-cum_with_me-291-320.mp3",
+      "genres": [
+        "Metal",
+        "Rock"
+      ],
+      "split": "validation",
+      "selection_label": "Metal",
+      "path": ".sonicforge/genre-eval/clip_12348.mp3",
+      "sha256": "0c3602eca03a3755dd6aa3cd0fef71242227b9b0569e3bbbe589a6befafac361"
+    },
+    {
+      "clip_id": "1932",
+      "artist": "Spinecar",
+      "track_id": "spinecar/Autophile/01",
+      "title": "Home",
+      "source_path": "3/spinecar-autophile-01-home-0-29.mp3",
+      "genres": [
+        "Metal",
+        "Rock"
+      ],
+      "split": "test",
+      "selection_label": "Metal",
+      "path": ".sonicforge/genre-eval/clip_1932.mp3",
+      "sha256": "055ffdf7f8eff16d80c7bb4d32e9d0faa2cb2b37a0509338a31125512eb95b37"
+    },
+    {
+      "clip_id": "47345",
+      "artist": "Electric Frankenstein",
+      "track_id": "electric frankenstein/Dead and Back/11",
+      "title": "Who's Watching You",
+      "source_path": "b/electric_frankenstein-dead_and_back-11-whos_watching_you-146-175.mp3",
+      "genres": [
+        "Metal",
+        "Rock"
+      ],
+      "split": "test",
+      "selection_label": "Metal",
+      "path": ".sonicforge/genre-eval/clip_47345.mp3",
+      "sha256": "28b471ddc7c7f97b9ae019a198797e155c9b95b2b1a658674f768ae170341043"
+    },
+    {
+      "clip_id": "42628",
+      "artist": "Pizzle",
+      "track_id": "pizzle/Party Patrol/10",
+      "title": "Farrakorn",
+      "source_path": "1/pizzle-party_patrol-10-farrakorn-30-59.mp3",
+      "genres": [
+        "Metal",
+        "Rock"
+      ],
+      "split": "test",
+      "selection_label": "Metal",
+      "path": ".sonicforge/genre-eval/clip_42628.mp3",
+      "sha256": "e5feeee609bac62061fae8988a17f1be7385a41a55907c9c8c7c804875313c0f"
+    },
+    {
+      "clip_id": "22593",
+      "artist": "Atomic Opera",
+      "track_id": "atomic opera/Penguin Dust/05",
+      "title": "GodOfHate",
+      "source_path": "e/atomic_opera-penguin_dust-05-godofhate-117-146.mp3",
+      "genres": [
+        "Metal",
+        "Rock"
+      ],
+      "split": "test",
+      "selection_label": "Metal",
+      "path": ".sonicforge/genre-eval/clip_22593.mp3",
+      "sha256": "b591ce89c234d2c3ebc8cd92b81a8e52d5d51d9ee627ff12fddf9d65edff0ec4"
+    },
+    {
+      "clip_id": "21226",
+      "artist": "Norine Braun",
+      "track_id": "norine braun/Modern Anguish/05",
+      "title": "Another Kiss is Taken",
+      "source_path": "4/norine_braun-modern_anguish-05-another_kiss_is_taken-146-175.mp3",
+      "genres": [
+        "Rock"
+      ],
+      "split": "validation",
+      "selection_label": "Rock",
+      "path": ".sonicforge/genre-eval/clip_21226.mp3",
+      "sha256": "df54c8adaf160d165939a9851361e53066ce8cc5a20531597281b73de25ca0d1"
+    },
+    {
+      "clip_id": "54071",
+      "artist": "The Strap Ons",
+      "track_id": "the strap ons/Geeking Crime/16",
+      "title": "Strap-on sally",
+      "source_path": "9/the_strap_ons-geeking_crime-16-strapon_sally-0-29.mp3",
+      "genres": [
+        "Rock"
+      ],
+      "split": "validation",
+      "selection_label": "Rock",
+      "path": ".sonicforge/genre-eval/clip_54071.mp3",
+      "sha256": "ebeb1d86973bfb016ad825fc13730f18d1a21201feb78d7e10555233ff25280d"
+    },
+    {
+      "clip_id": "47127",
+      "artist": "The Marginal Prophets",
+      "track_id": "the marginal prophets/Bohemian Rap CD/11",
+      "title": "The Difficult Song",
+      "source_path": "4/the_marginal_prophets-bohemian_rap_cd-11-the_difficult_song-204-233.mp3",
+      "genres": [
+        "Rock"
+      ],
+      "split": "test",
+      "selection_label": "Rock",
+      "path": ".sonicforge/genre-eval/clip_47127.mp3",
+      "sha256": "5608839e42b74afefb51c9b59db619f8c1aecf78c4657cb5282bbe4389037aeb"
+    },
+    {
+      "clip_id": "22840",
+      "artist": "Rocket City Riot",
+      "track_id": "rocket city riot/Pop Killer/05",
+      "title": "I'm gonna make you bleed",
+      "source_path": "7/rocket_city_riot-pop_killer-05-im_gonna_make_you_bleed-117-146.mp3",
+      "genres": [
+        "Rock"
+      ],
+      "split": "test",
+      "selection_label": "Rock",
+      "path": ".sonicforge/genre-eval/clip_22840.mp3",
+      "sha256": "0625caba34976deecf3d5388d6b9fa57be0b0a73149811045bf1b169c909c60e"
+    },
+    {
+      "clip_id": "38436",
+      "artist": "William Brooks",
+      "track_id": "william brooks/Blue Ribbon - The Best of William Brooks/09",
+      "title": "A Misdemeanor or Two",
+      "source_path": "c/william_brooks-blue_ribbon__the_best_of_william_brooks-09-a_misdemeanor_or_two-117-146.mp3",
+      "genres": [
+        "Rock"
+      ],
+      "split": "test",
+      "selection_label": "Rock",
+      "path": ".sonicforge/genre-eval/clip_38436.mp3",
+      "sha256": "f4a9fbc35a6032f1f97857dc129c5c2e566e05011cf18f50dd917869250a0954"
+    },
+    {
+      "clip_id": "52587",
+      "artist": "Jackalopes",
+      "track_id": "jackalopes/Jacksploitation/15",
+      "title": "Drive-in saturday nite",
+      "source_path": "f/jackalopes-jacksploitation-15-drivein_saturday_nite-0-29.mp3",
+      "genres": [
+        "Rock"
+      ],
+      "split": "test",
+      "selection_label": "Rock",
+      "path": ".sonicforge/genre-eval/clip_52587.mp3",
+      "sha256": "9352d64a9633990cb3bc0bcd4cdfdd52062e0f98ee5c5c4f0efd4ee206fe2ef3"
+    },
+    {
+      "clip_id": "23452",
+      "artist": "Etherine",
+      "track_id": "etherine/Gleam/05",
+      "title": "Modulation",
+      "source_path": "9/etherine-gleam-05-modulation-233-262.mp3",
+      "genres": [
+        "Pop"
+      ],
+      "split": "validation",
+      "selection_label": "Pop",
+      "path": ".sonicforge/genre-eval/clip_23452.mp3",
+      "sha256": "11bea020e3250561b33f32114e204ff36bb82d9b66bc01ea55d8379db047d9dd"
+    },
+    {
+      "clip_id": "6150",
+      "artist": "The West Exit",
+      "track_id": "the west exit/Nocturne/02",
+      "title": "Artificial",
+      "source_path": "d/the_west_exit-nocturne-02-artificial-117-146.mp3",
+      "genres": [
+        "Pop",
+        "Jazz"
+      ],
+      "split": "validation",
+      "selection_label": "Pop",
+      "path": ".sonicforge/genre-eval/clip_6150.mp3",
+      "sha256": "ee4eb1ee2cfd342e4dceff240fda13545769587825b24c5590a0f88d7d3ac81c"
+    },
+    {
+      "clip_id": "19771",
+      "artist": "Curl",
+      "track_id": "curl/Inner/04",
+      "title": "Sincerely Sorry",
+      "source_path": "9/curl-inner-04-sincerely_sorry-88-117.mp3",
+      "genres": [
+        "Pop"
+      ],
+      "split": "test",
+      "selection_label": "Pop",
+      "path": ".sonicforge/genre-eval/clip_19771.mp3",
+      "sha256": "7378e40111c251cd2bad69f80bf8e02b770c9f1e3501e3a1fe043a4f425a92dd"
+    },
+    {
+      "clip_id": "32264",
+      "artist": "Sun Palace",
+      "track_id": "sun palace/Give Me a Perfect World/07",
+      "title": "Man of the Severn Wave",
+      "source_path": "8/sun_palace-give_me_a_perfect_world-07-man_of_the_severn_wave-30-59.mp3",
+      "genres": [
+        "Pop"
+      ],
+      "split": "test",
+      "selection_label": "Pop",
+      "path": ".sonicforge/genre-eval/clip_32264.mp3",
+      "sha256": "d3068151db92d52e7657187a742f3c2e0de3d37a3c4b9b7861fe961e2d0ab333"
+    },
+    {
+      "clip_id": "7824",
+      "artist": "Rhonda Lorence",
+      "track_id": "rhonda lorence/Winter Moon/02",
+      "title": "Imprints",
+      "source_path": "a/rhonda_lorence-winter_moon-02-imprints-233-262.mp3",
+      "genres": [
+        "Pop"
+      ],
+      "split": "test",
+      "selection_label": "Pop",
+      "path": ".sonicforge/genre-eval/clip_7824.mp3",
+      "sha256": "98e515cc772ec3947fb79368c44a90eeb864b604a5a45648d462d9b948706d9a"
+    },
+    {
+      "clip_id": "2120",
+      "artist": "Liquid Zen",
+      "track_id": "liquid zen/Seventythree/01",
+      "title": "Is That Called Love",
+      "source_path": "c/liquid_zen-seventythree-01-is_that_called_love-204-233.mp3",
+      "genres": [
+        "Pop"
+      ],
+      "split": "test",
+      "selection_label": "Pop",
+      "path": ".sonicforge/genre-eval/clip_2120.mp3",
+      "sha256": "4662b2173cafd7f7aebbf150d4fa1f48a35f11a1bce77290a6d942be67717141"
+    },
+    {
+      "clip_id": "28047",
+      "artist": "Domased",
+      "track_id": "domased/Selection/06",
+      "title": "Moonlight",
+      "source_path": "5/domased-selection-06-moonlight-117-146.mp3",
+      "genres": [
+        "Electronic"
+      ],
+      "split": "validation",
+      "selection_label": "Electronic",
+      "path": ".sonicforge/genre-eval/clip_28047.mp3",
+      "sha256": "c0082c39b6e2f966a594459a1731b0b47ca90cfebdd0d0992bf91d9c6b1a4123"
+    },
+    {
+      "clip_id": "34657",
+      "artist": "Dr Kuch",
+      "track_id": "dr kuch/Analog Disease/08",
+      "title": "Antonin vs Alberto",
+      "source_path": "6/dr_kuch-analog_disease-08-antonin_vs_alberto-30-59.mp3",
+      "genres": [
+        "Electronic"
+      ],
+      "split": "validation",
+      "selection_label": "Electronic",
+      "path": ".sonicforge/genre-eval/clip_34657.mp3",
+      "sha256": "643664aec21554dba3b4f340925e59d052e23bcf1489170297b8562e77748f0e"
+    },
+    {
+      "clip_id": "21491",
+      "artist": "Rapoon",
+      "track_id": "rapoon/Vernal Crossing/05",
+      "title": "Bol Baya",
+      "source_path": "d/rapoon-vernal_crossing-05-bol_baya-233-262.mp3",
+      "genres": [
+        "Electronic"
+      ],
+      "split": "test",
+      "selection_label": "Electronic",
+      "path": ".sonicforge/genre-eval/clip_21491.mp3",
+      "sha256": "7767b8881df4d0756864ddbeb0dbfeffb6f1e6da6a6bf54b56f7b264663592d9"
+    },
+    {
+      "clip_id": "26272",
+      "artist": "Indidginus",
+      "track_id": "indidginus/As Above So Below/06",
+      "title": "Champa",
+      "source_path": "2/indidginus-as_above_so_below-06-champa-262-291.mp3",
+      "genres": [
+        "Electronic",
+        "Ambient"
+      ],
+      "split": "test",
+      "selection_label": "Electronic",
+      "path": ".sonicforge/genre-eval/clip_26272.mp3",
+      "sha256": "2cdbb0a0f01534efaf3dcbe4abfcbdd6d792f592edf5638d935e2fa35684e84b"
+    },
+    {
+      "clip_id": "42083",
+      "artist": "TranceVision",
+      "track_id": "trancevision/Lemuria/10",
+      "title": "Atom (meditation mix)",
+      "source_path": "5/trancevision-lemuria-10-atom_meditation_mix-117-146.mp3",
+      "genres": [
+        "Electronic",
+        "Ambient"
+      ],
+      "split": "test",
+      "selection_label": "Electronic",
+      "path": ".sonicforge/genre-eval/clip_42083.mp3",
+      "sha256": "d6b4ca4f1cdf3a1ba87151774ef6e848f71a38243970f9d6033e89cb7eacd94d"
+    },
+    {
+      "clip_id": "30598",
+      "artist": "Lisa DeBenedictis",
+      "track_id": "lisa debenedictis/Mixter One/07",
+      "title": "Below and Beyond by shockshadow",
+      "source_path": "b/lisa_debenedictis-mixter_one-07-below_and_beyond_by_shockshadow-59-88.mp3",
+      "genres": [
+        "Electronic",
+        "Ambient"
+      ],
+      "split": "test",
+      "selection_label": "Electronic",
+      "path": ".sonicforge/genre-eval/clip_30598.mp3",
+      "sha256": "220b1dacc6aab1074587fa5acdacb36be80950fddaa02b35586c0f0da750e51a"
+    },
+    {
+      "clip_id": "19679",
+      "artist": "Chris Juergensen",
+      "track_id": "chris juergensen/Prospects/04",
+      "title": "Shepherd moon",
+      "source_path": "4/chris_juergensen-prospects-04-shepherd_moon-88-117.mp3",
+      "genres": [
+        "Jazz"
+      ],
+      "split": "validation",
+      "selection_label": "Jazz",
+      "path": ".sonicforge/genre-eval/clip_19679.mp3",
+      "sha256": "56bba2a7973bba52eab944464093a52f746b60df31a536ec70fa6403d8994654"
+    },
+    {
+      "clip_id": "29882",
+      "artist": "DJ Cary",
+      "track_id": "dj cary/Downtempo Chill 2/06",
+      "title": "Waterfall (Solar Cycle)",
+      "source_path": "4/dj_cary-downtempo_chill_2-06-waterfall_solar_cycle-30-59.mp3",
+      "genres": [
+        "Jazz"
+      ],
+      "split": "validation",
+      "selection_label": "Jazz",
+      "path": ".sonicforge/genre-eval/clip_29882.mp3",
+      "sha256": "5f632596c3bc24dd393f20d7aa4f1faa4bdc375b7b0d07da00b8e0f4caf53f3a"
+    },
+    {
+      "clip_id": "35165",
+      "artist": "Mutandina",
+      "track_id": "mutandina/Mutandina/08",
+      "title": "Desamor",
+      "source_path": "4/mutandina-mutandina-08-desamor-59-88.mp3",
+      "genres": [
+        "Jazz"
+      ],
+      "split": "test",
+      "selection_label": "Jazz",
+      "path": ".sonicforge/genre-eval/clip_35165.mp3",
+      "sha256": "ec0fd507642c2d6551ff2e1184a640c38ca59351f436cb02a531359ee62987ab"
+    },
+    {
+      "clip_id": "178",
+      "artist": "Burning Babylon",
+      "track_id": "burning babylon/Stereo Mash Up/01",
+      "title": "7 Nine Skank",
+      "source_path": "e/burning_babylon-stereo_mash_up-01-7_nine_skank-88-117.mp3",
+      "genres": [
+        "Rock",
+        "Jazz"
+      ],
+      "split": "test",
+      "selection_label": "Jazz",
+      "path": ".sonicforge/genre-eval/clip_178.mp3",
+      "sha256": "6d99c94fc5decd4f8fbc2fbd04de44a3761e3e903d4e8ffa097f9ce9ac46fad5"
+    },
+    {
+      "clip_id": "43945",
+      "artist": "Drop Trio",
+      "track_id": "drop trio/Cezanne/10",
+      "title": "robot suit i",
+      "source_path": "6/drop_trio-cezanne-10-robot_suit_i-175-204.mp3",
+      "genres": [
+        "Jazz"
+      ],
+      "split": "test",
+      "selection_label": "Jazz",
+      "path": ".sonicforge/genre-eval/clip_43945.mp3",
+      "sha256": "d0b2eeecace4b0e799b0ccc76d4fb206544a27ee4ff73f4d8f78a8e126a7948b"
+    },
+    {
+      "clip_id": "24746",
+      "artist": "Beatundercontrol",
+      "track_id": "beatundercontrol/The Introduction/05",
+      "title": "Speechless",
+      "source_path": "c/beatundercontrol-the_introduction-05-speechless-146-175.mp3",
+      "genres": [
+        "Electronic",
+        "Jazz"
+      ],
+      "split": "test",
+      "selection_label": "Jazz",
+      "path": ".sonicforge/genre-eval/clip_24746.mp3",
+      "sha256": "7de34c7bd8453cc7969e3c10fc748c37ddb51737bce9880d55f13b59d0028fca"
+    },
+    {
+      "clip_id": "1908",
+      "artist": "DAC Crowell",
+      "track_id": "dac crowell/The Mechanism of Starlight/01",
+      "title": "Helio's Course",
+      "source_path": "a/dac_crowell-the_mechanism_of_starlight-01-helios_course-987-1016.mp3",
+      "genres": [
+        "Ambient"
+      ],
+      "split": "validation",
+      "selection_label": "Ambient",
+      "path": ".sonicforge/genre-eval/clip_1908.mp3",
+      "sha256": "366abbadf8e2b6bb9742b86191d8238671d8d430e65c11ab4b70d1af2a3b9757"
+    },
+    {
+      "clip_id": "29390",
+      "artist": "Artemis",
+      "track_id": "artemis/Orbits/06",
+      "title": "Subterranean (Hidden Kisses Mix) - Hands Upon Black Earth",
+      "source_path": "9/artemis-orbits-06-subterranean_hidden_kisses_mix__hands_upon_black_earth-0-29.mp3",
+      "genres": [
+        "Ambient"
+      ],
+      "split": "validation",
+      "selection_label": "Ambient",
+      "path": ".sonicforge/genre-eval/clip_29390.mp3",
+      "sha256": "122eef5246f8ecd58d0ac76ac85b767d88a25588e0785544199f40a29aafe5f1"
+    },
+    {
+      "clip_id": "24156",
+      "artist": "Satori",
+      "track_id": "satori/Healing Sounds of Tibet/05",
+      "title": "River Meditation",
+      "source_path": "f/satori-healing_sounds_of_tibet-05-river_meditation-233-262.mp3",
+      "genres": [
+        "Ambient"
+      ],
+      "split": "test",
+      "selection_label": "Ambient",
+      "path": ".sonicforge/genre-eval/clip_24156.mp3",
+      "sha256": "7d2a6e16fb27e135a6bddc6870087e59ac0d751d43bc23fb2314c324a0ce3fcb"
+    },
+    {
+      "clip_id": "17210",
+      "artist": "Paul Avgerinos",
+      "track_id": "paul avgerinos/Maya - The Great Katun/04",
+      "title": "Dawn of The Gods (part 4)",
+      "source_path": "d/paul_avgerinos-maya__the_great_katun-04-dawn_of_the_gods_part_4-262-291.mp3",
+      "genres": [
+        "Ambient"
+      ],
+      "split": "test",
+      "selection_label": "Ambient",
+      "path": ".sonicforge/genre-eval/clip_17210.mp3",
+      "sha256": "dcc792a7414721c6a788f4ffd8ac9bb4b5568d39b2fab7d3f590a5f3c251f5db"
+    },
+    {
+      "clip_id": "25507",
+      "artist": "ABA STRUCTURE",
+      "track_id": "aba structure/EPIC/05",
+      "title": "Yelo",
+      "source_path": "7/aba_structure-epic-05-yelo-204-233.mp3",
+      "genres": [
+        "Electronic",
+        "Ambient"
+      ],
+      "split": "test",
+      "selection_label": "Ambient",
+      "path": ".sonicforge/genre-eval/clip_25507.mp3",
+      "sha256": "f01048f3dfacef2fa2cadee0166b8e0ddd40bbcdcd6b450763a2f4ec6e483836"
+    },
+    {
+      "clip_id": "21632",
+      "artist": "Tilopa",
+      "track_id": "tilopa/By The Way/05",
+      "title": "By The Ganges",
+      "source_path": "a/tilopa-by_the_way-05-by_the_ganges-813-842.mp3",
+      "genres": [
+        "Ambient"
+      ],
+      "split": "test",
+      "selection_label": "Ambient",
+      "path": ".sonicforge/genre-eval/clip_21632.mp3",
+      "sha256": "e2f94cd7980a054d59ac30d063b13c26b781ac556dfe662e4860a1851c599173"
+    },
+    {
+      "clip_id": "37994",
+      "artist": "Heavy Mellow",
+      "track_id": "heavy mellow/Acoustic Abstracts/08",
+      "title": "To Shea",
+      "source_path": "f/heavy_mellow-acoustic_abstracts-08-to_shea-88-117.mp3",
+      "genres": [
+        "Folk"
+      ],
+      "split": "validation",
+      "selection_label": "Folk",
+      "path": ".sonicforge/genre-eval/clip_37994.mp3",
+      "sha256": "b3b4f4635817234cc839ce9a6ed58c5ff279d1930d5cc349d9d838aea60f92ae"
+    },
+    {
+      "clip_id": "33682",
+      "artist": "O Fickle Fortune",
+      "track_id": "o fickle fortune/A Celebration of Robert Burns/07",
+      "title": "The Birks of Aberfeldy",
+      "source_path": "c/o_fickle_fortune-a_celebration_of_robert_burns-07-the_birks_of_aberfeldy-88-117.mp3",
+      "genres": [
+        "Folk"
+      ],
+      "split": "validation",
+      "selection_label": "Folk",
+      "path": ".sonicforge/genre-eval/clip_33682.mp3",
+      "sha256": "1655da716fee152d24d0c9cba3a3fbef4ec8a011524a88366481cfabb565a1d6"
+    },
+    {
+      "clip_id": "16507",
+      "artist": "Jeni Melia",
+      "track_id": "jeni melia/The Last of Old England/04",
+      "title": "Arise Arise (trad)",
+      "source_path": "7/jeni_melia-the_last_of_old_england-04-arise_arise_trad-88-117.mp3",
+      "genres": [
+        "Folk"
+      ],
+      "split": "test",
+      "selection_label": "Folk",
+      "path": ".sonicforge/genre-eval/clip_16507.mp3",
+      "sha256": "b9545f4f4468c9af68162715d343502a748d4571b6947307a7cf3cf3c86c4bf4"
+    },
+    {
+      "clip_id": "7876",
+      "artist": "Jag",
+      "track_id": "jag/Pretty Girl Blues/02",
+      "title": "Irish Jig",
+      "source_path": "3/jag-pretty_girl_blues-02-irish_jig-59-88.mp3",
+      "genres": [
+        "Folk"
+      ],
+      "split": "test",
+      "selection_label": "Folk",
+      "path": ".sonicforge/genre-eval/clip_7876.mp3",
+      "sha256": "39e16219587573e378b061176d89dcb7d11b652f79c42165dc2b3b4b37e5df81"
+    },
+    {
+      "clip_id": "47718",
+      "artist": "Ensemble Vermillian",
+      "track_id": "ensemble vermillian/Stolen Jewels/12",
+      "title": "Buxtehude Sonata II Op I Lento-Vivace",
+      "source_path": "0/ensemble_vermillian-stolen_jewels-12-buxtehude_sonata_ii_op_i_lentovivace-30-59.mp3",
+      "genres": [
+        "Folk"
+      ],
+      "split": "test",
+      "selection_label": "Folk",
+      "path": ".sonicforge/genre-eval/clip_47718.mp3",
+      "sha256": "5f729948d83444f96fba44845d53111814925063cc6d503b99e69f726696964f"
+    },
+    {
+      "clip_id": "42077",
+      "artist": "Minstrel Spirit",
+      "track_id": "minstrel spirit/Enter The Woods/10",
+      "title": "At the castle gate (reprise)",
+      "source_path": "6/minstrel_spirit-enter_the_woods-10-at_the_castle_gate_reprise-0-29.mp3",
+      "genres": [
+        "Folk"
+      ],
+      "split": "test",
+      "selection_label": "Folk",
+      "path": ".sonicforge/genre-eval/clip_42077.mp3",
+      "sha256": "3a5e52fe9aedb334595108532da72556da62c4dd231f140e3dcbe189ea7c7bfe"
+    }
+  ]
+}
