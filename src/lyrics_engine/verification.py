@@ -160,6 +160,8 @@ def verified_segments(model, audio, raw_segments, options, cancel_event=None, pr
         verification_options = dict(options, temperature=0.0, beam_size=beam_size)
         offset = 0.0
         if isinstance(audio, np.ndarray):
+            from .overlap import WINDOW_SECONDS
+            end = min(end, start + WINDOW_SECONDS)
             start_sample = int(start * 16000)
             clip = audio[start_sample:int(end * 16000)]
             if not len(clip):
@@ -217,7 +219,7 @@ def verified_segments(model, audio, raw_segments, options, cancel_event=None, pr
             # Long intros can cause Whisper to decode only the tail of the
             # first sung phrase. Move its window boundary without using lyrics
             # as prompts, and demand independent timing/text confirmation.
-            if (isinstance(audio, np.ndarray) and 12 <= raw.start <= 60 and bool(getattr(raw, 'words', None))
+            if (isinstance(audio, np.ndarray) and 12 <= raw.start and bool(getattr(raw, 'words', None))
                     and (len(tokens(raw.text)) <= 5 or doubtful_words(raw))
                     and attempts + 2 <= limit):
                 attempts += 2
@@ -269,8 +271,7 @@ def verified_segments(model, audio, raw_segments, options, cancel_event=None, pr
             if progress:
                 progress("verifying")
             start = max(0.0, raw.start - 5.0)
-            # Short isolated singing clips can lose entire words. Keep one full
-            # Whisper window of context, shifted away from the original boundary.
+            # Recheck with shifted short context, away from the original seam.
             original = raw
             candidates = recheck(raw, start, max(start + 30.0, raw.end + 5.0))
             raw = choose_verified_segment(raw, candidates, after_pause)

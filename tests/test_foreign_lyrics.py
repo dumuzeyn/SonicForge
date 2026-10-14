@@ -58,8 +58,8 @@ class ForeignLyricsTests(unittest.TestCase):
              patch.object(provider, '_get_model', return_value=model), \
              patch.object(provider, '_detect_song_language', return_value=(None, .28)):
             result = LyricsService(provider=provider).recognize('unused.mp3')
-        model.transcribe.assert_called_once()
-        self.assertIsNone(model.transcribe.call_args.kwargs['language'])
+        self.assertGreater(model.transcribe.call_count, 0)
+        self.assertTrue(all(call.kwargs['language'] is None for call in model.transcribe.call_args_list))
         self.assertTrue(result.text)
         self.assertFalse(result.instrumental)
         self.assertEqual(result.review_reason, 'language')

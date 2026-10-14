@@ -18,6 +18,20 @@ def segment(text, start=10.0, end=15.0, probabilities=None, logprob=-0.3):
 
 
 class LyricsVerificationTests(unittest.TestCase):
+    def test_opening_recovery_after_one_minute_uses_short_shifted_contexts(self):
+        original = segment('строка песни', 67.2, 69.9)
+        opening = segment('Первая полная строка звучит раньше', 60.8, 66.3)
+        lengths = []
+        class Model:
+            def transcribe(self, audio, **options):
+                offset = (55.2, 58.2)[len(lengths)]
+                lengths.append(len(audio) / 16000)
+                return iter([segment(opening.text, opening.start - offset, opening.end - offset)]), None
+        result = list(verified_segments(Model(), np.ones(90 * 16000), [original], {}, limit=2,
+                                        audio_duration=90))
+        self.assertEqual(result[0].start, 60.8)
+        self.assertEqual(result[0].text, opening.text)
+        self.assertEqual(lengths, [20, 20])
     def test_skipped_opening_is_recovered_without_duplicate_main_fragments(self):
         opening = segment("Первая полная строка звучит раньше", start=20.8, end=26.3)
         next_line = segment("Следующая полная строка песни", start=26.7, end=31.7)

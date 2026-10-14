@@ -52,13 +52,13 @@ class LyricsEngineTests(unittest.TestCase):
         calls = []
         def transcribe(_audio, **options):
             calls.append(options)
-            return iter([SimpleNamespace(start=28.2, end=30.0, text="Тестовая строка", no_speech_prob=0.05)]), SimpleNamespace(language="ru")
+            return iter([SimpleNamespace(start=18.2, end=20.0, text="Тестовая строка", no_speech_prob=0.05)]), SimpleNamespace(language="ru")
         with patch.object(provider, "available", return_value=True), \
              patch.object(provider, "_get_model", return_value=SimpleNamespace(transcribe=transcribe)):
             result = provider.transcribe("unused.mp3", language="ru")
-        self.assertEqual(result.segments[0].start, 28.2)
+        self.assertEqual(result.segments[0].start, 18.2)
         self.assertEqual(calls[0]["language"], "ru")
-        self.assertEqual(calls[0]["max_initial_timestamp"], 30.0)
+        self.assertEqual(calls[0]["max_initial_timestamp"], 20.0)
         self.assertFalse(calls[0]["vad_filter"])
         self.assertFalse(calls[0]["condition_on_previous_text"])
         self.assertTrue(calls[0]["word_timestamps"])
@@ -243,9 +243,10 @@ class LyricsEngineTests(unittest.TestCase):
         ), patch("faster_whisper.WhisperModel", FakeModel):
             russian = provider.transcribe("song.wav", language="other_ru")
             english = provider.transcribe("song.wav", language="other_en")
-        self.assertEqual([call["language"] for call in calls], [None, None])
-        self.assertEqual(russian.text, "ола мундо")
-        self.assertEqual(english.text, "hola mundo")
+        self.assertTrue(calls)
+        self.assertTrue(all(call['language'] is None for call in calls))
+        self.assertTrue(all(line == "ола мундо" for line in russian.text.splitlines()))
+        self.assertTrue(all(line == "hola mundo" for line in english.text.splitlines()))
         self.assertEqual(russian.segments[0].start, 1.0)
         self.assertEqual(russian.language, "es")
         self.assertEqual(russian.transcription_alphabet, "ru")
@@ -269,8 +270,9 @@ class LyricsEngineTests(unittest.TestCase):
             provider, "_vocal_audio", return_value=nullcontext("song.wav")
         ), patch("faster_whisper.WhisperModel", FakeModel):
             result = provider.transcribe("song.wav", language="other_en")
-        self.assertEqual(calls, [None])
-        self.assertEqual(result.text, "Русская строка песни")
+        self.assertTrue(calls)
+        self.assertTrue(all(language is None for language in calls))
+        self.assertTrue(all(line == "Русская строка песни" for line in result.text.splitlines()))
 
 
 if __name__ == "__main__":

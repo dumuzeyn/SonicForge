@@ -21,6 +21,29 @@ replacement action; recognition can still display a new result for review.
 
 ## Audio path
 
+From 2.3.2, ASR starts at t=0 and consumes at most 20 seconds per main window,
+advancing by 14 seconds (6-second overlap). Shifted verification is capped at
+20 seconds as well. This does not trim or skip the intro. The first phrase can
+be recovered before or after one minute. Word timestamps are converted to the
+original song coordinates before stitching; local window times never become
+the song's start times.
+
+Two adjacent windows are buffered. The seam uses matching words, nearby acoustic
+timestamps and neighboring context; identical words at unrelated chorus times
+are preserved. When decoders disagree, ownership changes at a complete timed
+word near the overlap center. Missing evidence in one window does not delete
+the other window's opening. Untimed results retain complete segments. These
+operations never splice characters within a word, but incorrect ASR alignment
+or differing words can still leave an imperfect seam.
+
+An empty window is retried once only with an explicit or acoustically supported
+language, even if other song windows returned text. Previously a whole-song empty
+retry could not rescue the opening after a late chorus was recognized. Only
+exact digital silence is rejected; no energy threshold is used to remove quiet
+words. Bounded window views avoid another song-sized waveform allocation.
+Cancellation is checked between windows, rows and retry calls; the existing
+isolated worker still handles cancelling an in-progress native decoder.
+
 The default path is original audio → bundled HTDemucs `htdemucs` vocal stem →
 existing isolated faster-whisper `large-v3-turbo`, CPU int8 → existing acoustic
 verification → reviewable lines. The existing separator processes bounded chunks
@@ -77,9 +100,37 @@ performance benchmark. Counts/confidence cannot establish which transcript is
 more accurate; the reference limitation still applies. A reviewable LRC was saved
 locally, without writing recognition into the original MP3.
 
-Validation: 140 focused tests passed, covering LRC validation and round trips,
+Validation in 2.3.1: 140 focused tests passed, covering LRC validation and round trips,
 GUI import/edit/timing, actual service routing to the vocal stem, temporary cache
 reuse/invalidation/cleanup, errors, timeline mismatch, cancellation, multi-song
 batch routing, original tag preservation and the existing recognition tests.
 The Windows bundle was checked for embedded vocal code and lyric controls; the
 native EXE opened its main window and closed normally.
+
+Validation in 2.3.2: 155 focused tests passed, including added checks for 20/6
+coverage from zero, missing early-window retries, a real-word fragment at a seam,
+same-occurrence deduplication, preservation of repeated choruses and one-sided
+evidence, rebased word timestamps, digital silence versus quiet audio, bounded
+padded tails, cancellation and first-phrase recovery after a minute. Reproduce
+the read-only real-audio check with `tools/check_lyrics_overlap.py AUDIO
+--duration 80 --intro-pad 0 --output validation/check/result.json`.
+`--intro-pad 40` additionally checks a copy of the real vocal with inserted
+digital silence; it is a timeline stress test, not an actual alternate song or
+a quality benchmark. The tool never writes metadata into the original.
+
+The user then supplied another real MP3 and a four-word opening reference for a
+specific missing-first-minute regression. Its existing embedded lyrics began at
+60.34 seconds. On a read-only 80-second excerpt from t=0, the new vocal/ASR path
+returned the opening at **5.32 seconds**. Three of the four supplied words matched;
+the last word's grammatical ending was wrong. The reference was not provided as
+a prompt or used to edit the recognized output. This demonstrates recovery of
+the missing early phrase, not complete lyric accuracy. The original SHA-256
+matched before and after, and its existing embedded text was left unchanged.
+
+The run took 360.41 seconds, including 257.49 seconds vocal preparation, under
+concurrent development/build load. It is not an isolated speed benchmark. Short
+overlapping windows and per-window retries cost additional ASR work; they do not
+promise a speed improvement. The additional artificial-intro stress run exposed
+a guessed line timed inside the inserted zero samples; the final code's exact
+silence check rejects such words, with regression coverage, while retaining quiet
+nonzero audio. Guesses on nonzero music/residual vocal noise remain possible.

@@ -9,6 +9,7 @@ from itertools import chain
 from .models import LyricsResult, TranscriptSegment
 from .audio import decode_song_audio
 from .verification import repair_repeated_words, verified_segments
+from .overlap import transcribe_overlapping, WINDOW_SECONDS
 
 
 class LyricsProvider(ABC):
@@ -63,9 +64,9 @@ class FasterWhisperProvider(LyricsProvider):
                 vad_filter=False,
                 word_timestamps=True,
                 condition_on_previous_text=False,
-                # Singing may begin near the end of a 30-second window. Do not
+                # Singing may begin near the end of a short window. Do not
                 # restrict the first timestamp to Whisper's default one second.
-                max_initial_timestamp=30.0,
+                max_initial_timestamp=WINDOW_SECONDS,
                 temperature=(0.0, 0.2, 0.4),
                 language_detection_segments=3,
                 language_detection_threshold=0.85,
@@ -93,25 +94,14 @@ class FasterWhisperProvider(LyricsProvider):
                 # models, so both large models are not retained in memory.
                 model = None
                 model = self._get_native_model(detected_language)
-            raw_segments, info = model.transcribe(
-                prepared_audio, language=detected_language, **options,
+            raw_segments, info = transcribe_overlapping(
+                model, prepared_audio, detected_language, options, cancel_event, progress,
+                retry_empty=bool(requested_language or (probability or 0) >= .60),
             )
             if progress:
                 progress('transcribing')
             raw_segments = iter(raw_segments)
             first = next(raw_segments, None)
-            # Spoken-voice thresholds can reject singing over a strong backing
-            # track. Retry an empty result only with real acoustic language evidence.
-            if first is None and (requested_language or (probability or 0) >= .60):
-                if cancel_event is not None and cancel_event.is_set():
-                    raise InterruptedError('Lyrics recognition was cancelled.')
-                if progress:
-                    progress('verifying')
-                fallback_options = dict(options, beam_size=3, temperature=0.0,
-                                        no_speech_threshold=None, log_prob_threshold=None)
-                raw_segments, info = model.transcribe(prepared_audio, language=detected_language, **fallback_options)
-                raw_segments = iter(raw_segments)
-                first = next(raw_segments, None)
             raw_segments = chain((first,), raw_segments) if first is not None else iter(())
             detected_language = detected_language or getattr(info, "language", "unknown") or "unknown"
             if probability is None:
@@ -157,6 +147,7 @@ class FasterWhisperProvider(LyricsProvider):
                         on_segment(segment)
                     if progress:
                         progress("transcribing")
+        unreliable_text = unreliable_text or getattr(info, 'truncated', False)
         segments = repair_repeated_words(segments, word_groups)
         if transcription_alphabet:
             from .transliteration import sound_spelling

@@ -75,7 +75,7 @@ def main():
     splash_constants = set(constants(embedded.extract('startup_splash')))
     assert {'UpdateLayeredWindow', 'premultiply_bgra', 'sonic_forge_mark.ico', 'hide_splash.flag'} <= splash_constants, 'Per-pixel transparent splash missing'
     identity_constants = set(constants(embedded.extract('app_identity')))
-    assert {'SonicForge', '2.3.1', 'https://github.com/dumuzeyn/SonicForge',
+    assert {'SonicForge', '2.3.2', 'https://github.com/dumuzeyn/SonicForge',
             'https://pay.cloudtips.ru/p/53cc3806'} <= identity_constants, 'Current title or project links missing'
     assert not any(name == 'mutagen' or name.startswith('mutagen.') for name in embedded.toc), 'Test-only checker is included in the application'
     assert 'audio_tags' in embedded.toc, 'Current tag writer is missing'
@@ -119,6 +119,10 @@ def main():
     assert {'_copy_widget_text', 'copy_lyrics_text'} <= app_constants, 'Direct lyric clipboard handling missing'
     assert {'lyrics_menu', 'copy_lyrics_button'} <= layout_constants, 'Lyric context menu or copy button missing'
     verification_constants = set(constants(embedded.extract('lyrics_engine.verification')))
+    overlap_code = embedded.extract('lyrics_engine.overlap')
+    assert 20.0 in overlap_code.co_consts and 6.0 in overlap_code.co_consts, 'Short overlapping lyric windows missing'
+    assert {'stitch', 'transcribe_overlapping'} <= set(constants(overlap_code)), 'Word overlap stitching missing'
+    assert 'transcribe_overlapping' in set(constants(embedded.extract('lyrics_engine.providers'))), 'ASR does not use overlapping windows'
     assert {'confirmed_opening', 'trim_covered_segment'} <= verification_constants, 'Acoustic opening recovery missing'
     assert any('добровольное пожертвование' in value and 'не открывает дополнительных функций' in value
                for value in strings), 'Donation notice missing'
