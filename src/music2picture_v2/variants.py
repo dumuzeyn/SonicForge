@@ -1,4 +1,4 @@
-"""Five presets and a custom style using the current or Music2Picture renderer.
+"""Independent pattern and color generations, plus custom user palettes.
 
 The historical renderer is imported only when one of its styles is requested.
 """
@@ -17,6 +17,7 @@ STYLE_BLEND = "blend"
 STYLE_LEGACY_CURRENT_COLORS = "legacy_current_colors"
 STYLE_LEGACY = "legacy"
 STYLE_CUSTOM = "custom"
+STYLE_GENERATED = 'generated'
 STYLES = (
     STYLE_CURRENT,
     STYLE_CURRENT_LEGACY_COLORS,
@@ -24,6 +25,7 @@ STYLES = (
     STYLE_LEGACY_CURRENT_COLORS,
     STYLE_LEGACY,
     STYLE_CUSTOM,
+    STYLE_GENERATED,
 )
 LEGACY_COLOR_MODES = ("ocean", "plasma", "fusion", "aurora")
 LEGACY_COMMIT = "342013aaa8bdb4cb86c8c14fec0acb038e50b5ca"
@@ -110,6 +112,10 @@ def render_variant(audio_path, visual_dna, visual_plan, *, style=STYLE_CURRENT,
         raise ValueError(f"Unknown cover style: {style}")
     if legacy_color_mode not in LEGACY_COLOR_MODES:
         raise ValueError(f"Unknown historical color mode: {legacy_color_mode}")
+    if style == STYLE_GENERATED:
+        return render_generated(audio_path, visual_dna, visual_plan, size=size, seed=seed,
+                                preview=preview, legacy_color_mode=legacy_color_mode,
+                                settings=custom_cover_settings)
     if style == STYLE_CUSTOM:
         from .custom_style import CustomCoverSettings, finish_custom_background
         settings = CustomCoverSettings.parse(custom_cover_settings)
@@ -118,6 +124,11 @@ def render_variant(audio_path, visual_dna, visual_plan, *, style=STYLE_CURRENT,
                 audio_path, size=size, seed=seed, color_mode=legacy_color_mode,
                 patterns=2, detail=settings.detail,
             )
+        elif settings.pattern == 'timeline':
+            from music2picture_v3 import analyze_structure, render_cover as render_timeline
+            background = render_timeline(visual_dna, visual_plan, analyze_structure(audio_path),
+                size=size, seed=seed, preview=preview, detail=settings.detail,
+                palette=settings.colors, palette_stops=settings.positions)
         else:
             background = render_cover(visual_dna, visual_plan, size=size, seed=seed,
                                       preview=preview, detail=settings.detail,
@@ -139,3 +150,32 @@ def render_variant(audio_path, visual_dna, visual_plan, *, style=STYLE_CURRENT,
     if style == STYLE_LEGACY_CURRENT_COLORS:
         return apply_palette(historical, current)
     return historical
+
+
+def render_generated(audio_path, dna, plan, *, size=1000, seed=None, preview=False,
+                     legacy_color_mode='plasma', settings=None):
+    from .custom_style import CustomCoverSettings, finish_custom_background
+    settings = CustomCoverSettings.parse(settings if settings is not None else {'color_source': 'modern'})
+    structure = None
+    if settings.pattern == 'timeline' or settings.color_source == 'speed':
+        from music2picture_v3 import analyze_structure
+        structure = analyze_structure(audio_path)
+    if settings.pattern == 'legacy':
+        image = render_legacy(audio_path, size=size, seed=seed, color_mode=legacy_color_mode,
+                              patterns=2, detail=settings.detail)
+    elif settings.pattern == 'timeline':
+        from music2picture_v3 import render_cover as render_timeline
+        image = render_timeline(dna, plan, structure, size=size, seed=seed,
+                                preview=preview, detail=settings.detail)
+    else:
+        image = render_cover(dna, plan, size=size, seed=seed, preview=preview, detail=settings.detail)
+    if settings.color_source == 'legacy' and settings.pattern != 'legacy':
+        donor = render_legacy(audio_path, size=min(size, 640), seed=seed, color_mode=legacy_color_mode)
+        image = apply_palette(image, donor)
+    elif settings.color_source == 'modern' and settings.pattern == 'legacy':
+        donor = render_cover(dna, plan, size=min(size, 640), seed=seed, preview=preview)
+        image = apply_palette(image, donor)
+    elif settings.color_source == 'speed':
+        from music2picture_v3.colors import apply_speed_colors
+        image = apply_speed_colors(image, structure)
+    return finish_custom_background(image, settings, recolor=False)

@@ -75,7 +75,7 @@ def main():
     splash_constants = set(constants(embedded.extract('startup_splash')))
     assert {'UpdateLayeredWindow', 'premultiply_bgra', 'sonic_forge_mark.ico', 'hide_splash.flag'} <= splash_constants, 'Per-pixel transparent splash missing'
     identity_constants = set(constants(embedded.extract('app_identity')))
-    assert {'SonicForge', '2.3.2', 'https://github.com/dumuzeyn/SonicForge',
+    assert {'SonicForge', '2.4.0', 'https://github.com/dumuzeyn/SonicForge',
             'https://pay.cloudtips.ru/p/53cc3806'} <= identity_constants, 'Current title or project links missing'
     assert not any(name == 'mutagen' or name.startswith('mutagen.') for name in embedded.toc), 'Test-only checker is included in the application'
     assert 'audio_tags' in embedded.toc, 'Current tag writer is missing'
@@ -88,13 +88,21 @@ def main():
     assert 'music2picture_v2.character' in embedded.toc, 'Song-character palette mapping missing'
     assert 'cover_engine.music_lettering' in embedded.toc, 'Music-conditioned lettering missing'
     lettering_constants=set(constants(embedded.extract('cover_engine.music_lettering')))
-    assert {'music-lettering-v3','composition_zone','glyph-following','local-3x-lanczos'} <= lettering_constants, 'Antialiased title composition missing'
+    assert {'music-lettering-v5','composition_zone','glyph-following','local-6x-area-coverage'} <= lettering_constants, 'Antialiased title composition missing'
     assert 'cover_engine.composition' in embedded.toc, 'Shared cover composition missing'
     composition_constants=set(constants(embedded.extract('cover_engine.composition')))
-    assert {'cover-composition-v3','supporting_artwork','title_zone_pixels','orbital_fragment','ROUND_SAFE_RADIUS','ARTWORK_LIFT'} <= composition_constants, 'Raised round-safe cover composition missing'
+    assert {'cover-composition-v4','supporting_artwork','title_zone_pixels','orbital_fragment','ROUND_SAFE_RADIUS','ARTWORK_LIFT'} <= composition_constants, 'Raised round-safe cover composition missing'
     assert 'cover_engine.song_symbol' in embedded.toc, 'Song focal symbol missing'
     symbol_constants = set(constants(embedded.extract('cover_engine.song_symbol')))
-    assert {'song-symbol-v7', 'compose_song_symbol', 'AUDIO_ARCHETYPES', 'ABSTRACT_MOTIFS', '_expressive_contour', 'energy_profile', 'semantic_source', 'background_complexity','adaptive-2x-4x-lanczos'} <= symbol_constants, 'Antialiased expressive song symbols missing'
+    assert {'song-symbol-v9', 'compose_song_symbol', 'AUDIO_ARCHETYPES', 'ABSTRACT_MOTIFS', '_expressive_contour', 'energy_profile', 'semantic_source', 'background_complexity','adaptive-6x-area-coverage'} <= symbol_constants, 'Antialiased expressive song symbols missing'
+    assert {'cover_engine.symbol_shapes','cover_engine.supporting_shapes','cover_engine.materials'} <= set(embedded.toc), 'Adaptive artwork catalogs missing'
+    shape_constants=set(constants(embedded.extract('cover_engine.symbol_shapes')))
+    assert {'cloud','rainbow','hand','arrow','diamond','hexagon','lotus','swan','fish','jellyfish',
+            'shell','antenna','pyramid','tower','book','chain','scales','flask','atom','helix'} <= shape_constants, 'New focal silhouettes missing'
+    support_constants=set(constants(embedded.extract('cover_engine.supporting_shapes')))
+    assert {'SECONDARY_FAMILIES','advanced_support','silken_leaves','twin_rings','cut_ribbons'} <= support_constants, 'Sixty secondary schemes missing'
+    material_constants=set(constants(embedded.extract('cover_engine.materials')))
+    assert {'shared-palette-inks-v1','light_ink','dark_ink','backing_for_ink'} <= material_constants, 'Shared palette inks missing'
     expected_symbols = {'mirror', 'heart', 'feather', 'claw', 'prism', 'star', 'flame', 'moon', 'sun',
                         'wave', 'mountain', 'eye', 'hourglass', 'key', 'wing', 'flower', 'crown',
                         'lightning', 'orbit', 'bloom', 'tree', 'leaf', 'butterfly', 'bird', 'dragon',
@@ -116,7 +124,7 @@ def main():
     assert {'_start_palette_drag', '_drag_palette_color', '_end_palette_drag', 'positions'} <= dialog_constants, 'Draggable palette stops missing'
     app_constants = set(constants(marshal.loads(archive.extract('music_polisher_gui'))))
     assert {'import_lyrics_file', 'insert_lyrics_timestamp', 'toggle_lyrics_timestamps', 'lyrics_separate_vocals_var'} <= app_constants, 'Timed lyric and vocal controls missing'
-    assert {'_copy_widget_text', 'copy_lyrics_text'} <= app_constants, 'Direct lyric clipboard handling missing'
+    assert {'_copy_widget_text', 'copy_lyrics_text', '_edit_text_clipboard', 'edit_lyrics_text'} <= app_constants, 'Direct lyric clipboard handling missing'
     assert {'lyrics_menu', 'copy_lyrics_button'} <= layout_constants, 'Lyric context menu or copy button missing'
     verification_constants = set(constants(embedded.extract('lyrics_engine.verification')))
     overlap_code = embedded.extract('lyrics_engine.overlap')

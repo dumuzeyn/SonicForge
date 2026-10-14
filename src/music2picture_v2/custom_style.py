@@ -16,6 +16,7 @@ class CustomCoverSettings:
     contrast: float = 100
     saturation: float = 100
     softness: float = 0
+    color_source: str = 'custom'
 
     @classmethod
     def parse(cls, value=None):
@@ -50,8 +51,10 @@ class CustomCoverSettings:
             settings = cls(**value)
         except TypeError as exc:
             raise ValueError("Unknown custom cover setting") from exc
-        if settings.pattern not in ("modern", "legacy"):
+        if settings.pattern not in ("modern", "legacy", "timeline"):
             raise ValueError("Unknown custom artwork pattern")
+        if settings.color_source not in ('custom', 'legacy', 'modern', 'speed'):
+            raise ValueError('Unknown artwork color source')
         for color in settings.colors:
             if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
                 raise ValueError("Palette colors must use #RRGGBB")

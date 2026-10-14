@@ -42,21 +42,21 @@ AUDIO_FILE_TYPES = [
 COVER_CHOICES = {
     "style": {
         "ru": {
-            "Современный рисунок": "current",
-            "Современный рисунок · классические цвета": "current_legacy_colors",
-            "Слияние рисунков": "blend",
-            "Классический узор · современные цвета": "legacy_current_colors",
-            "Классический Music2Picture": "legacy",
-            "Свой стиль": "custom",
+            "Своя тема": "custom",
+            "Генерируемая": "generated",
         },
         "en": {
-            "Modern artwork": "current",
-            "Modern artwork · classic colors": "current_legacy_colors",
-            "Blended artwork": "blend",
-            "Classic pattern · modern colors": "legacy_current_colors",
-            "Classic Music2Picture": "legacy",
-            "Custom style": "custom",
+            "Custom theme": "custom",
+            "Generated": "generated",
         },
+    },
+    "color": {
+        "ru": {"M2Pv1 — классические цвета": "legacy", "M2Pv2 — характер песни": "modern", "M2Pv3 — скорость ритма": "speed"},
+        "en": {"M2Pv1 — classic colors": "legacy", "M2Pv2 — musical character": "modern", "M2Pv3 — rhythmic speed": "speed"},
+    },
+    "pattern": {
+        "ru": {"M2Pv1 — классический узор": "legacy", "M2Pv2 — органический узор": "modern", "M2Pv3 — структура песни": "timeline"},
+        "en": {"M2Pv1 — classic pattern": "legacy", "M2Pv2 — organic pattern": "modern", "M2Pv3 — song structure": "timeline"},
     },
     "mood": {
         "ru": {"Автоматически": "auto", "Спокойное": "calm", "Меланхоличное": "melancholic", "Энергичное": "energetic", "Напряжённое": "intense", "Романтичное": "romantic"},
@@ -287,12 +287,16 @@ class SonicForgeApp(TkinterDnD.Tk):
 
         self.seed_var = tk.StringVar()
         self.cover_size_var = tk.IntVar(value=1000)
-        self.cover_style_var = tk.StringVar(value="Современный рисунок")
+        self.cover_style_var = tk.StringVar(value="Генерируемая")
         from music2picture_v2.custom_style import CustomCoverSettings
         saved_cover_settings = load_custom_cover_settings()
-        self.custom_cover_settings = saved_cover_settings or CustomCoverSettings().to_dict()
-        if saved_cover_settings is not None:
-            self.cover_style_var.set("Свой стиль")
+        self.custom_cover_settings = saved_cover_settings or CustomCoverSettings(color_source='modern').to_dict()
+        if self.custom_cover_settings['color_source'] == 'custom':
+            self.cover_style_var.set("Своя тема")
+        self.cover_color_var = tk.StringVar(value=next(label for label, key in COVER_CHOICES['color']['ru'].items()
+            if key == (self.custom_cover_settings['color_source'] if self.custom_cover_settings['color_source'] != 'custom' else 'modern')))
+        self.cover_pattern_var = tk.StringVar(value=next(label for label, key in COVER_CHOICES['pattern']['ru'].items()
+            if key == self.custom_cover_settings['pattern']))
         self.cover_mood_var = tk.StringVar(value="Автоматически")
         self.cover_title_var = tk.BooleanVar(value=True)
         self.cover_artist_var = tk.BooleanVar(value=False)
@@ -483,11 +487,18 @@ class SonicForgeApp(TkinterDnD.Tk):
             mapping = COVER_CHOICES[kind][language]
             if value in mapping:
                 return mapping[value]
+        if kind == 'style':
+            if value in ('Свой стиль', 'Custom style'):
+                return 'custom'
+            if value not in ('custom', 'generated'):
+                return 'generated'
         return value
 
     def _translate_cover_choices(self):
         for kind, variable in (
             ("style", self.cover_style_var),
+            ("color", self.cover_color_var),
+            ("pattern", self.cover_pattern_var),
             ("mood", self.cover_mood_var),
         ):
             internal = self.cover_choice(kind, variable.get())
@@ -673,6 +684,7 @@ class SonicForgeApp(TkinterDnD.Tk):
 
     def apply_custom_cover_settings(self, settings):
         try:
+            settings = dict(settings, color_source='custom')
             saved = save_custom_cover_settings(settings)
         except (OSError, ValueError) as exc:
             messagebox.showerror(self.app_name(), self.t('custom_save_failed').format(error=exc))
@@ -680,7 +692,26 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.custom_cover_settings = saved
         self.cover_style_var.set(next(label for label in self.cover_choice_values('style')
                                       if self.cover_choice('style', label) == 'custom'))
+        self.view.update_cover_source()
         return True
+
+    def active_cover_settings(self):
+        settings = dict(self.custom_cover_settings)
+        if self.cover_choice('style', self.cover_style_var.get()) == 'generated':
+            settings.update(color_source=self.cover_choice('color', self.cover_color_var.get()),
+                            pattern=self.cover_choice('pattern', self.cover_pattern_var.get()))
+        else:
+            settings['color_source'] = 'custom'
+        return settings
+
+    def cover_generation_changed(self, _event=None):
+        try:
+            saved = save_custom_cover_settings(self.active_cover_settings())
+        except (OSError, ValueError) as exc:
+            messagebox.showerror(self.app_name(), self.t('custom_save_failed').format(error=exc))
+            return
+        self.custom_cover_settings = saved
+        self.view.update_cover_source()
 
     def show_additional_metadata(self):
         if self.metadata_dialog and self.metadata_dialog.winfo_exists():
@@ -1043,7 +1074,7 @@ class SonicForgeApp(TkinterDnD.Tk):
             "extra_metadata": self._metadata_values(),
             "cover_seed": self._parse_seed(),
             "cover_style": self.cover_choice("style", self.cover_style_var.get()),
-            "custom_cover_settings": dict(self.custom_cover_settings),
+            "custom_cover_settings": self.active_cover_settings(),
             "cover_size": int(self.cover_size_var.get()),
             "cover_text_mode": self._cover_text_mode(),
             "cover_mood": self.cover_choice("mood", self.cover_mood_var.get()),
@@ -1291,7 +1322,7 @@ class SonicForgeApp(TkinterDnD.Tk):
             messagebox.showerror(self.app_name(), self.t("bad_seed"))
             return
         cover_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonicForge" / "cover_preview"
-        preview_size = min(size, 384)
+        preview_size = min(size, 768)
         output_path = cover_dir / f"{source.stem}_cover_preview_{preview_size}_{seed}_{uuid.uuid4().hex[:8]}.png"
         use_lyrics_for_cover = False
         lyrics_text = ""
@@ -1316,7 +1347,7 @@ class SonicForgeApp(TkinterDnD.Tk):
                 mood,
                 style,
                 use_lyrics_for_cover,
-                dict(self.custom_cover_settings),
+                self.active_cover_settings(),
             ),
             daemon=True,
         )
@@ -1856,6 +1887,8 @@ class SonicForgeApp(TkinterDnD.Tk):
         if event_name == "<<Copy>>":
             self._copy_widget_text(widget)
             return "break"
+        if event_name in {"<<Cut>>", "<<Paste>>"} and isinstance(widget, tk.Text):
+            return self._edit_text_clipboard(widget, event_name)
         if event_name in {"<<Cut>>", "<<Paste>>"} and not isinstance(widget, tk.Text):
             self._record_undo(widget)
         try:
@@ -1863,6 +1896,44 @@ class SonicForgeApp(TkinterDnD.Tk):
         except tk.TclError:
             return None
         return "break"
+
+    def _edit_text_clipboard(self, widget, event_name):
+        """Edit this Text directly, independent of Tk's global selection owner."""
+        try:
+            if str(widget.cget("state")) != "normal":
+                return "break"
+            selection = widget.tag_ranges(tk.SEL)
+            if event_name == "<<Cut>>":
+                if not selection or not self._copy_widget_text(widget):
+                    return "break"
+            elif event_name == "<<Paste>>":
+                text = self.clipboard_get()
+                if not text:
+                    return "break"
+                text = text.replace("\r\n", "\n").replace("\r", "\n")
+            else:
+                return None
+            position = selection[0] if selection else widget.index(tk.INSERT)
+            auto_separators = widget.cget("autoseparators")
+            widget.edit_separator()
+            widget.configure(autoseparators=False)
+            try:
+                if selection:
+                    widget.delete(selection[0], selection[1])
+                widget.mark_set(tk.INSERT, position)
+                if event_name == "<<Paste>>":
+                    widget.insert(tk.INSERT, text)
+            finally:
+                widget.edit_separator()
+                widget.configure(autoseparators=auto_separators)
+            widget.tag_remove(tk.SEL, "1.0", tk.END)
+            widget.see(tk.INSERT)
+        except tk.TclError:
+            pass
+        return "break"
+
+    def edit_lyrics_text(self, event_name):
+        return self._edit_text_clipboard(self.view.lyrics_editor, event_name)
 
     def _copy_widget_text(self, widget, all_text=False):
         """Read this widget, never Tk's global selection or another entry."""

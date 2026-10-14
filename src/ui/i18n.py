@@ -252,6 +252,8 @@ I18N = {
         "clear_log": "Очистить",
         "copy_log": "Копировать журнал",
         "copy": "Копировать",
+        "cut": "Вырезать",
+        "paste": "Вставить",
         "select_all": "Выделить всё",
         "log_ready": "Готов к работе.",
         "run_started": "Обработка запущена.",
@@ -568,6 +570,8 @@ I18N = {
         "clear_log": "Clear",
         "copy_log": "Copy log",
         "copy": "Copy",
+        "cut": "Cut",
+        "paste": "Paste",
         "select_all": "Select all",
         "log_ready": "Ready.",
         "run_started": "Processing started.",
@@ -762,3 +766,31 @@ I18N['en'].update({
 })
 
 add_help_strings(I18N)
+
+
+I18N['ru'].update({
+    'cover_style': 'Тема обложки',
+    'cover_color': 'Цвет',
+    'cover_pattern': 'Генерация',
+    'custom_pattern_modern': 'M2Pv2 — органический узор',
+    'custom_pattern_legacy': 'M2Pv1 — классический узор',
+    'custom_pattern_timeline': 'M2Pv3 — структура песни слева → направо',
+    'custom_style_configure': 'Настроить свою тему…',
+    'custom_style_hint': '«Применить» сохраняет палитру и выбирает «Своя тема». Затем нажмите «Предпросмотр обложки». M2Pv3 показывает начало слева, конец справа; фильтры применяются до надписей.',
+    'tip_cover_style': 'Своя тема использует вашу палитру. В генерируемой теме цвет и узор выбираются независимо между M2Pv1, M2Pv2 и M2Pv3.',
+    'tip_cover_color': 'M2Pv1 — классическая окраска; M2Pv2 — цвета характера песни; M2Pv3 — скорость ритма: медленнее — холодные оттенки, быстрее — тёплые. Оценка темпа может ошибаться вдвое.',
+    'tip_cover_pattern': 'M2Pv1 — спектральные деформации; M2Pv2 — органические складки; M2Pv3 — узор поверх структуры песни, начало слева, конец справа.',
+})
+I18N['en'].update({
+    'cover_style': 'Cover theme',
+    'cover_color': 'Color',
+    'cover_pattern': 'Generation',
+    'custom_pattern_modern': 'M2Pv2 — organic pattern',
+    'custom_pattern_legacy': 'M2Pv1 — classic pattern',
+    'custom_pattern_timeline': 'M2Pv3 — song structure from left to right',
+    'custom_style_configure': 'Customize theme…',
+    'custom_style_hint': 'Apply saves your palette and selects Custom theme. Then click Preview cover. M2Pv3 shows the opening on the left and ending on the right; filters run before lettering.',
+    'tip_cover_style': 'Custom theme uses your palette. Generated theme lets you choose color and pattern independently from M2Pv1, M2Pv2 and M2Pv3.',
+    'tip_cover_color': 'M2Pv1 — classic colors; M2Pv2 — musical character; M2Pv3 — rhythmic speed: slower is cooler, faster is warmer. Tempo estimates may be half or double time.',
+    'tip_cover_pattern': 'M2Pv1 — warped spectrum; M2Pv2 — organic folds; M2Pv3 — folds over song structure, opening on the left and ending on the right.',
+})

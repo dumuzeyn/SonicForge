@@ -33,7 +33,8 @@ class CustomCoverDialog(CenteredDialog):
         from music2picture_v2.custom_style import CustomCoverSettings
         settings = CustomCoverSettings.parse(app.custom_cover_settings)
         self.patterns = {app.t("custom_pattern_modern"): "modern",
-                         app.t("custom_pattern_legacy"): "legacy"}
+                         app.t("custom_pattern_legacy"): "legacy",
+                         app.t("custom_pattern_timeline"): "timeline"}
         self.pattern = tk.StringVar(self, next(label for label, key in self.patterns.items()
                                              if key == settings.pattern))
         self.variables = {key: tk.DoubleVar(self, getattr(settings, key))

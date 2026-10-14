@@ -684,16 +684,32 @@ class SonicForgeView(ttk.Frame):
             values=self.app.cover_choice_values("style"), state="readonly",
         )
         self.cover_style_combo.grid(row=0, column=1, sticky="ew", pady=SPACING["xs"])
+        self.cover_style_combo.bind('<<ComboboxSelected>>', self.app.cover_generation_changed)
         self.cover_controls.extend((style_label, self.cover_style_combo))
         self.cover_generation_controls.extend((style_label, self.cover_style_combo))
         self._tip(style_label, "tip_cover_style")
         self._tip(self.cover_style_combo, "tip_cover_style")
 
+        self.cover_version_controls = []
+        for row, kind, variable in ((1, 'color', self.app.cover_color_var),
+                                    (2, 'pattern', self.app.cover_pattern_var)):
+            label = self._localize(ttk.Label(controls, style='SurfaceSecondary.TLabel'), 'cover_' + kind)
+            label.grid(row=row, column=0, sticky='w', padx=(0, SPACING['sm']), pady=SPACING['xs'])
+            combo = ttk.Combobox(controls, textvariable=variable,
+                                 values=self.app.cover_choice_values(kind), state='readonly')
+            combo.grid(row=row, column=1, sticky='ew', pady=SPACING['xs'])
+            combo.bind('<<ComboboxSelected>>', self.app.cover_generation_changed)
+            setattr(self, 'cover_' + kind + '_combo', combo)
+            self.cover_version_controls.extend((label, combo))
+            self.cover_generation_controls.extend((label, combo))
+            self.cover_controls.extend((label, combo))
+            self._tip(combo, 'tip_cover_' + kind)
+
         fields = (
             ("seed", self.app.seed_var, None, "tip_seed"),
             ("cover_size", self.app.cover_size_var, "size", "tip_cover_size"),
         )
-        for row, (key, variable, values, tip_key) in enumerate(fields, start=1):
+        for row, (key, variable, values, tip_key) in enumerate(fields, start=3):
             label = self._localize(ttk.Label(controls, style="SurfaceSecondary.TLabel"), key)
             label.grid(row=row, column=0, sticky="w", padx=(0, SPACING["sm"]), pady=SPACING["xs"])
             if isinstance(values, tuple):
@@ -710,7 +726,7 @@ class SonicForgeView(ttk.Frame):
             self._tip(control, tip_key)
 
         options = ttk.Frame(controls, style="Surface.TFrame")
-        options.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(SPACING["sm"], 0))
+        options.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(SPACING["sm"], 0))
         self.cover_title_check = self._localize(
             SquareCheckbutton(options, self.app.cover_title_var, fixed_width=145),
             "cover_show_title",
@@ -735,7 +751,7 @@ class SonicForgeView(ttk.Frame):
         self.cover_style_settings_button = self._localize(
             RoundedButton(controls, command=self.app.show_custom_cover_settings), "custom_style_configure"
         )
-        self.cover_style_settings_button.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        self.cover_style_settings_button.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         self.cover_controls.append(self.cover_style_settings_button)
         self.cover_generation_controls.append(self.cover_style_settings_button)
 
@@ -760,6 +776,9 @@ class SonicForgeView(ttk.Frame):
                 justify=tk.CENTER,
                 wraplength=190,
                 font=FONTS["small"],
+                borderwidth=0,
+                padx=0,
+                pady=0,
             ),
             "cover_preview_empty",
         )
@@ -930,6 +949,11 @@ class SonicForgeView(ttk.Frame):
         self.lyrics_menu.add_command(label=self.app.t("lyrics_copy_all"), command=self.app.copy_lyrics_text)
         self.lyrics_menu.add_command(label=self.app.t("select_all"),
                                     command=self._select_all_lyrics)
+        self.lyrics_menu.add_separator()
+        self.lyrics_menu.add_command(label=self.app.t("cut"), accelerator="Ctrl+X",
+                                    command=lambda: self.app.edit_lyrics_text("<<Cut>>"))
+        self.lyrics_menu.add_command(label=self.app.t("paste"), accelerator="Ctrl+V",
+                                    command=lambda: self.app.edit_lyrics_text("<<Paste>>"))
         self.lyrics_editor.bind("<Button-3>", self._show_lyrics_menu)
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.lyrics_controls = [
@@ -1142,6 +1166,9 @@ class SonicForgeView(ttk.Frame):
     def update_cover_source(self):
         if not hasattr(self, "cover_custom_status"):
             return
+        generated_theme = self.app.cover_choice('style', self.app.cover_style_var.get()) == 'generated'
+        for control in self.cover_version_controls:
+            control.grid() if generated_theme else control.grid_remove()
         custom = self.app.custom_cover_path_var.get().strip()
         if custom:
             from pathlib import Path
@@ -1179,6 +1206,8 @@ class SonicForgeView(ttk.Frame):
         self._rebuild_metadata_menu()
         self.update_dependencies()
         self.cover_style_combo.configure(values=self.app.cover_choice_values("style"))
+        self.cover_color_combo.configure(values=self.app.cover_choice_values('color'))
+        self.cover_pattern_combo.configure(values=self.app.cover_choice_values('pattern'))
         self.update_cover_source()
         self.lyrics_language.configure(values=self.app.lyrics_language_values())
         self.audio_profile_combo.configure(values=self.app.audio_profile_values())
@@ -1187,6 +1216,8 @@ class SonicForgeView(ttk.Frame):
         self.lyrics_menu.entryconfigure(0, label=self.app.t("copy"))
         self.lyrics_menu.entryconfigure(1, label=self.app.t("lyrics_copy_all"))
         self.lyrics_menu.entryconfigure(2, label=self.app.t("select_all"))
+        self.lyrics_menu.entryconfigure(4, label=self.app.t("cut"))
+        self.lyrics_menu.entryconfigure(5, label=self.app.t("paste"))
         self._refresh_lyrics_execution()
         self.editor.apply_language()
         self.update_editor_pipeline()
@@ -1237,8 +1268,8 @@ class SonicForgeView(ttk.Frame):
                 source.draft("RGB", (440, 440))
             except (AttributeError, OSError):
                 pass
-            source.thumbnail((220, 220), Image.Resampling.LANCZOS)
             image = source.convert("RGB")
+            image.thumbnail((216, 216), Image.Resampling.LANCZOS, reducing_gap=3)
         self._cover_preview_photo = ImageTk.PhotoImage(image)
         self.cover_preview_image.configure(image=self._cover_preview_photo, text="")
 

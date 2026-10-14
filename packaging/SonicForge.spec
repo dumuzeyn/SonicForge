@@ -58,7 +58,7 @@ a = Analysis(
         ('C:/ffmpeg/README.txt', 'licenses/ffmpeg'),
         (project_file('build/separator/SonicForgeSeparator'), 'separator'),
     ] + license_datas + whisper_datas + language_datas + collect_data_files('anyascii') + collect_data_files('tkinterdnd2'),
-    hiddenimports=collect_submodules('music2picture_v2') + [
+    hiddenimports=collect_submodules('music2picture_v2') + collect_submodules('music2picture_v3') + [
         'faster_whisper',
         'faster_whisper.audio',
         'faster_whisper.tokenizer',

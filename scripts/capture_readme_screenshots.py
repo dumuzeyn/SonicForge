@@ -43,7 +43,9 @@ def main():
         make_demo(song, 220)
         make_demo(harmony, 330, 12)
         cover = demo / 'cover.png'
-        make_cover(song, cover, size=440, seed=42, preview=True, text_mode='title', use_lyrics_for_cover=False)
+        make_cover(song, cover, size=768, seed=42, preview=True, text_mode='title',
+                   use_lyrics_for_cover=False, style='generated',
+                   custom_cover_settings=dict(pattern='timeline', color_source='speed'))
         with patch('cover_preferences.preference_path', return_value=demo / 'custom_cover.json'):
             app = SonicForgeApp()
         try:
@@ -78,6 +80,14 @@ def main():
                 for name in ('editor', 'metadata', 'audio', 'cover', 'lyrics', 'processing', 'help', 'settings'):
                     app.view.show_tab(name)
                     if name == 'cover':
+                        for kind, variable, selected in (
+                            ('style', app.cover_style_var, 'generated'),
+                            ('color', app.cover_color_var, 'speed'),
+                            ('pattern', app.cover_pattern_var, 'timeline'),
+                        ):
+                            variable.set(next(label for label in app.cover_choice_values(kind)
+                                              if app.cover_choice(kind, label) == selected))
+                        app.cover_generation_changed()
                         app.view.show_cover_preview(cover)
                     settle(app)
                     capture(app, output / f'{name}-{language}.png')

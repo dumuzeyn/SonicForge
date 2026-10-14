@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 
-VERSION = "music-lettering-v3"
+VERSION = "music-lettering-v5"
 
 
 def unit(value):
@@ -148,7 +148,7 @@ def line_mask(engine, text, size, design, accent=False):
     # Transform a local oversampled glyph strip, not an enlarged cover. This
     # preserves fractional kerning and smooth diagonal stems after shearing.
     nominal_size = size
-    sample_scale = 3
+    sample_scale = 6
     layout_font = variable_font(engine, text, nominal_size, design)
     size *= sample_scale
     font = variable_font(engine, text, size, design, source_font=layout_font)
@@ -198,7 +198,8 @@ def line_mask(engine, text, size, design, accent=False):
             math.ceil(bbox[2]/sample_scale)*sample_scale,
             math.ceil(bbox[3]/sample_scale)*sample_scale)
     mask = mask.crop(bbox)
-    mask = mask.resize((mask.width//sample_scale, mask.height//sample_scale), Image.Resampling.LANCZOS)
+    from .raster import downsample_coverage
+    mask = downsample_coverage(mask, (mask.width//sample_scale, mask.height//sample_scale))
     bbox = mask.getbbox()
     return mask.crop(bbox) if bbox else Image.new("L", (1, 1)), layout_font, extension
 
@@ -272,23 +273,19 @@ def luminance(rgb):
     return linear @ np.array([.2126, .7152, .0722])
 
 
-def ink_for_region(image, box, design, accent):
+def ink_for_region(image, box, design, accent, preferred_ink=None):
     pixels = np.asarray(image.crop(box).convert("RGB").resize((48, 48)), dtype=float)
     background = luminance(pixels)
-    # Harmonize emotional hue with the artwork; retain a reliable luminance.
-    art_hue, art_sat, _ = colorsys.rgb_to_hsv(*(channel / 255 for channel in accent))
-    hue = design.hue
-    if art_sat > .16:
-        delta = ((art_hue - hue + .5) % 1) - .5
-        hue = (hue + delta * .70) % 1
+    from .materials import cover_material, ink_candidates, backing_for_ink
+    material = cover_material(image)
     choices = []
-    for light in (.94, .08):
-        rgb = tuple(round(channel * 255) for channel in colorsys.hls_to_rgb(hue, light, design.saturation))
+    colors = (preferred_ink,) if preferred_ink is not None else tuple(rgb for _, rgb in ink_candidates(material))
+    for rgb in colors:
         level = float(luminance(rgb))
         contrasts = (np.maximum(level, background) + .05) / (np.minimum(level, background) + .05)
         choices.append((float(np.percentile(contrasts, 15)), rgb, level))
     contrast, rgb, level = max(choices)
-    return rgb, contrast, (0, 0, 0) if level > .5 else (255, 255, 255)
+    return rgb, contrast, backing_for_ink(material, rgb)
 
 
 def select_region(image, width, height, design, subject, protected_boxes=(), placement_override=None,
@@ -403,7 +400,8 @@ def compose_music_title(engine, image, title, artist, dna, profile=None, show_ar
         _, box, placement, overlap, complexity = select_region(image, width, height, design, subject, protected_boxes, placement_override,
                                                              composition_zone,alignment)
     accent = engine._artistic_accent(image, box) or (128, 128, 128)
-    ink, initial_contrast, backing = ink_for_region(image, box, design, accent)
+    ink, initial_contrast, backing = ink_for_region(image, box, design, accent,
+                                                   getattr(profile, 'cover_ink', None))
     mask = Image.new("L", canvas.size, 0)
     y = box[1]
     for line in masks + ([artist_mask] if artist_mask else []):
@@ -456,7 +454,7 @@ def compose_music_title(engine, image, title, artist, dna, profile=None, show_ar
     contrast = float(np.percentile(ratios, 5)) if ratios.size else 1.
     engine.last_layout = {
         "version": VERSION, "style": "music-conditioned lettering", "design": design.to_dict(),
-        "edge_sampling": "local-3x-lanczos",
+        "edge_sampling": "local-6x-area-coverage",
         "placement": placement, "preferred_placement": design.preferred_placement,
         "language": language, "display_lines": lines, "line_count": len(lines),
         "font_size": max(f.size for f in fonts), "font_path": str(getattr(fonts[0], "path", "fallback")),

@@ -7,8 +7,8 @@
 <p align="center">Настольный аудиоредактор: дорожки, звук, метаданные, текст песни и обложки.</p>
 
 <p align="center">
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.2/SonicForge-Setup-2.3.2.exe"><img src="https://img.shields.io/badge/Скачать_EXE-Версия_2.3-6750bd?style=for-the-badge" alt="Скачать установщик SonicForge 2.3"></a>
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.2/SonicForge-2.3.2-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Скачать портативную версию"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.4.0/SonicForge-Setup-2.4.0.exe"><img src="https://img.shields.io/badge/Скачать_EXE-Версия_2.4-6750bd?style=for-the-badge" alt="Скачать установщик SonicForge 2.4"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.4.0/SonicForge-2.4.0-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Скачать портативную версию"></a>
   <a href="#english"><img src="https://img.shields.io/badge/English-Open-ffd12f?style=for-the-badge&labelColor=17151d" alt="Open English guide"></a>
 </p>
 
@@ -20,7 +20,7 @@
 
 ## Установка и первый запуск
 
-1. На странице релиза скачайте **SonicForge-Setup-2.3.2.exe** и запустите установщик. Это полноценный установщик, а не одинокий EXE без библиотек.
+1. На странице релиза скачайте **SonicForge-Setup-2.4.0.exe** и запустите установщик. Это полноценный установщик, а не одинокий EXE без библиотек.
 2. Выберите папку установки; ярлык рабочего стола можно включить отдельно. Права администратора обычно не нужны: установка выполняется для текущего пользователя.
 3. Запустите SonicForge. Для обработки звука и создания обложек отдельно устанавливать Python и FFmpeg не требуется.
 4. Для смены языка откройте «Настройки». Справка доступна в верхней полосе и по F1.
@@ -214,7 +214,7 @@ Windows x64. Сборка рассчитана на Windows 10/11. Устано�
 
 ## Обложка: генерация и собственная картинка
 
-Название меняет толщину, пропорции, наклон и интервалы по характеру музыки. Его размещение согласуется с одним из 40 семейств символов и дополнительными дугами, гранями или плавными формами. Буквы и фигуры сглаживаются при отрисовке, а весь текст помещается внутри круга с запасом для круглых обложек плеера. Исполнитель выключен по умолчанию; его можно включить вручную. Новое оформление применяется при повторной генерации и входит в сохраняемый PNG. [Подробнее о системе и исследованиях](docs/music-lettering.md).
+Название меняет толщину, пропорции, наклон и интервалы по характеру музыки. Текст и главный символ используют общую окрашенную краску, выбранную из палитры фона, и локальную тональную поддержку для читаемости. Дополнительный рисунок учитывает пропорции силуэта, место и длину названия, локальный контраст, ритм и Seed. Плотные линии спектра M2Pv3 сглаживаются отдельно от основного узора; границы участков плавно изгибаются, сохраняя начало слева и конец справа. Его размещение согласуется с одним из 60 семейств символов и одной из 60 схем дополнительного рисунка. Буквы и фигуры сглаживаются при отрисовке, а весь текст помещается внутри круга с запасом для круглых обложек плеера. Исполнитель выключен по умолчанию; его можно включить вручную. Новое оформление применяется при повторной генерации и входит в сохраняемый PNG. [Подробнее о системе и исследованиях](docs/music-lettering.md).
 
 ![Предпросмотр обложки и кнопка выбора своей картинки](docs/images/cover-ru.png)
 
@@ -224,7 +224,9 @@ Music2Picture анализирует звук и строит процедурн
 
 | Управление | Действие |
 | --- | --- |
-| Стиль | Пять готовых сочетаний рисунка и палитры или «Свой стиль» |
+| Тема обложки | «Своя тема» или «Генерируемая» |
+| Цвет | Для генерируемой темы: M2Pv1 — классические цвета, M2Pv2 — характер песни, M2Pv3 — скорость ритма |
+| Генерация | Независимо от цвета: M2Pv1 — классика, M2Pv2 — органика, M2Pv3 — структура песни слева → направо |
 | «Настроить свой стиль…» | Узор, палитра с любым количеством цветов, детализация, контраст, насыщенность и мягкость фона |
 | Seed | Целое число вариации; при одинаковых исходнике, настройках и версии помогает повторить рисунок |
 | Размер, px | Размер стороны квадратного результата; увеличение не добавляет деталей исходной пользовательской фотографии |
@@ -236,7 +238,7 @@ Music2Picture анализирует звук и строит процедурн
 | «Выбрать свою картинку» | Принимает PNG, JPEG, WebP; проверяет изображение, приводит к квадрату выбранного размера |
 | «Использовать генерацию» | Возвращает автоматический источник после выбора своей картинки |
 
-Пять стилей: современный рисунок; современный рисунок с классическими цветами; смесь обоих рисунков 50/50; классический узор с современными цветами; классический Music2Picture. Классический вариант основан на [закреплённой версии Music2Picture](https://github.com/dumuzeyn/Music2Picture/tree/342013aaa8bdb4cb86c8c14fec0acb038e50b5ca). Исходные поля, изломы и тонкие контуры сохраняются, в том числе у коротких песен. Отдельные шумные пиксели удаляются медианным фильтром 3×3, без общего размытия картинки. Длительность и разнообразие звучания регулируют силу контуров, а не заменяют узор упрощённым шаблоном. Увеличение размера картинки не добавляет новых слоёв или мелкого шума.
+В «Генерируемой» теме цвет и генерация выбираются независимо: доступны девять сочетаний. Цвет M2Pv3 переходит от синего и бирюзового к золотому и оранжевому по измеренной скорости ритма, а не по громкости. Темп оценивается по участкам; возможны ошибки половинного/двойного темпа. Генерация M2Pv3 сохраняет спектральный фон и развитие песни по горизонтали: начало слева, конец справа. «Своя тема» использует вашу палитру с любым из трёх узоров. Классический вариант основан на [закреплённой версии Music2Picture](https://github.com/dumuzeyn/Music2Picture/tree/342013aaa8bdb4cb86c8c14fec0acb038e50b5ca). Исходные поля, изломы и тонкие контуры сохраняются, в том числе у коротких песен. Отдельные шумные пиксели удаляются медианным фильтром 3×3, без общего размытия картинки. Длительность и разнообразие звучания регулируют силу контуров, а не заменяют узор упрощённым шаблоном. Увеличение размера картинки не добавляет новых слоёв или мелкого шума.
 
 Настроение задаётся внутренней автоматической обработкой: в текущем окне нет поля ручного описания сцены. Своя картинка заменяет генерацию; параметры генератора для неё не применяются, оригинальное изображение не меняется. При «Выполнении» полный PNG сохраняется в папке covers; при включённом встраивании он добавляется к выходному аудио. Предпросмотр ещё не означает, что картинка записана в песню.
 
@@ -244,9 +246,9 @@ Music2Picture анализирует звук и строит процедурн
 
 ![Настройки своей палитры и узора](docs/images/cover-custom-ru.png)
 
-**Левая часть шкалы — спокойствие, правая — драйв.** Разместите подходящие вам спокойные цвета слева, энергичные справа. Песня использует ограниченный диапазон вокруг своего основного характера, а не всю палитру сразу. Быстрый фрагмент спокойной песни даст небольшой акцент справа; спокойный фрагмент энергичной — слева. Маркеры определяют, какие цвета соответствуют каждому уровню активности. Это правило работает для обеих основ «Своего стиля»: современного рисунка и классического узора.
+**Левая часть шкалы — спокойствие, правая — драйв.** Разместите подходящие вам спокойные цвета слева, энергичные справа. Песня использует ограниченный диапазон вокруг своего основного характера, а не всю палитру сразу. Быстрый фрагмент спокойной песни даст небольшой акцент справа; спокойный фрагмент энергичной — слева. Маркеры определяют, какие цвета соответствуют каждому уровню активности. Это правило работает для всех трёх узоров своей темы; в M2Pv3 цвета следуют активности соответствующих временных участков.
 
-Нажмите «Настроить свой стиль…», выберите современную органическую текстуру или классический Music2Picture. В списке палитры нет ограничения на количество цветов: используйте «Добавить…», «Изменить…» и «Удалить». **Перетаскивайте цветные маркеры под шкалой**, чтобы менять положение цветов и ширину переходов; при переносе через соседний маркер меняется порядок. Шкала обновляется сразу, а позиции используются и в готовой обложке. Стрелки ↑/↓ меняют цвета местами, не сдвигая позиции. Для точной настройки выберите маркер и нажимайте ←/→ (шаг 1%, с Shift — 0,1%). Если маркеры перекрываются, выберите нужный цвет в списке. Новый цвет добавляется справа и может быть перетащен в любое место. Большой список прокручивается; рядом с каждым цветом показана его позиция. «Применить» сохраняет настройки, «Отмена» оставляет прежние. Остаётся минимум один цвет — в этом случае узор использует оттенки выбранного цвета. «Детализация» меняет мелкие структуры современного рисунка или плавно регулирует плотность и силу деталей классического узора от 0 до 100. Контраст работает в диапазоне 50–150%, насыщенность — 0–150% (0% даёт чёрно-белый фон), мягкость — 0–100% (0% отключает размытие). Фильтры применяются **до** надписей, поэтому название не размывается.
+Нажмите «Настроить свою тему…» и выберите узор M2Pv1, M2Pv2 или M2Pv3. В списке палитры нет ограничения на количество цветов: используйте «Добавить…», «Изменить…» и «Удалить». **Перетаскивайте цветные маркеры под шкалой**, чтобы менять положение цветов и ширину переходов; при переносе через соседний маркер меняется порядок. Шкала обновляется сразу, а позиции используются и в готовой обложке. Стрелки ↑/↓ меняют цвета местами, не сдвигая позиции. Для точной настройки выберите маркер и нажимайте ←/→ (шаг 1%, с Shift — 0,1%). Если маркеры перекрываются, выберите нужный цвет в списке. Новый цвет добавляется справа и может быть перетащен в любое место. Большой список прокручивается; рядом с каждым цветом показана его позиция. «Применить» сохраняет настройки, «Отмена» оставляет прежние. Остаётся минимум один цвет — в этом случае узор использует оттенки выбранного цвета. «Детализация» меняет мелкие структуры современного рисунка или плавно регулирует плотность и силу деталей классического узора от 0 до 100. Контраст работает в диапазоне 50–150%, насыщенность — 0–150% (0% даёт чёрно-белый фон), мягкость — 0–100% (0% отключает размытие). Фильтры применяются **до** надписей, поэтому название не размывается.
 
 «Применить» выбирает «Свой стиль» и запоминает палитру, позиции цветов, узор, детализацию, контраст, насыщенность и мягкость между запусками. Настройки хранятся отдельно от программы в `%LOCALAPPDATA%/SonicForge/custom_cover.json`, поэтому обновление приложения их не сбрасывает. Затем нажмите «Предпросмотр обложки» и, если результат подходит, выполните этап обложки. «Отмена» не меняет сохранённые настройки, «По умолчанию» сбрасывает поля окна до применения. Для повторяемого результата сохраните одинаковые цвета, параметры и Seed. Настройки также записываются в профиль рядом с готовым PNG. Короткие слова в названии не мешают автоматическому переносу: размер надписи подбирается по всей композиции.
 
@@ -263,7 +265,7 @@ Music2Picture анализирует звук и строит процедурн
 1. Выберите один файл в блоке источника.
 2. «Открыть готовый» читает текст из тегов или соседнего TXT/LRC без повторного распознавания.
 3. «Распознать» запускает локальную обработку звука; строки появляются по мере работы.
-4. Проверьте слова вручную. Двойной щелчок выделяет слово с учётом Unicode, апострофов и дефисов; Ctrl+A/C/X/V/Z работают и в русской раскладке. Ctrl+C в поле текста копирует выделение, а без выделения — весь текст песни. Кнопка «Копировать текст» и пункт правого меню копируют весь текст, даже во время распознавания. Правое меню также позволяет скопировать только выделенное и выделить всё.
+4. Проверьте слова вручную. Двойной щелчок выделяет слово с учётом Unicode, апострофов и дефисов; Ctrl+A/C/X/V/Z работают и в русской раскладке. Ctrl+C в поле текста копирует выделение, а без выделения — весь текст песни. Кнопка «Копировать текст» и пункт правого меню копируют весь текст, даже во время распознавания. Ctrl+X вырезает выделенные слова; Ctrl+V вставляет текст в позицию курсора или заменяет выделение. Многострочная вставка и замена отменяются одним Ctrl+Z. Правое меню также позволяет вырезать, вставить, скопировать выделенное и выделить всё.
 5. Сохраните исправленный текст кнопкой «Записать в песню» / сохранения.
 
 | Настройка | Значение |
@@ -354,7 +356,7 @@ python -m unittest discover -s tests -t .
 .\scripts\build_windows.ps1
 ~~~
 
-Результаты: dist\SonicForge\SonicForge.exe вместе с _internal и **dist\SonicForge-Setup-2.3.2.exe**. Скрипт не закрывает насильно открытый портативный проект. Служебные сборки, локальные проверки, кэши и бинарные релизы не коммитятся в исходный репозиторий.
+Результаты: dist\SonicForge\SonicForge.exe вместе с _internal и **dist\SonicForge-Setup-2.4.0.exe**. Скрипт не закрывает насильно открытый портативный проект. Служебные сборки, локальные проверки, кэши и бинарные релизы не коммитятся в исходный репозиторий.
 
 Командные инструменты: `python src/easy_music_process.py` — полная обработка; `python src/music2picture.py covers` / `describe` — обложки и описания; `python src/music_metadata.py` — метаданные. Для параметров используйте --help. Ключи, меняющие файлы, применяйте сначала на копиях.
 
@@ -401,8 +403,8 @@ python -m unittest discover -s tests -t .
 <p align="center">A desktop audio editor: tracks, sound, metadata, lyrics and cover art.</p>
 
 <p align="center">
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.2/SonicForge-Setup-2.3.2.exe"><img src="https://img.shields.io/badge/Download_EXE-Version_2.3-6750bd?style=for-the-badge" alt="Download SonicForge 2.3 installer"></a>
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.3.2/SonicForge-2.3.2-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Download portable edition"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.4.0/SonicForge-Setup-2.4.0.exe"><img src="https://img.shields.io/badge/Download_EXE-Version_2.4-6750bd?style=for-the-badge" alt="Download SonicForge 2.4 installer"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v2.4.0/SonicForge-2.4.0-windows-x64.zip"><img src="https://img.shields.io/badge/Portable-ZIP-6750bd?style=for-the-badge&labelColor=17151d" alt="Download portable edition"></a>
   <a href="#russian"><img src="https://img.shields.io/badge/Русский-Открыть-ffd12f?style=for-the-badge&labelColor=17151d" alt="Открыть русское руководство"></a>
 </p>
 
@@ -414,7 +416,7 @@ python -m unittest discover -s tests -t .
 
 ## Install and start
 
-1. Download **SonicForge-Setup-2.3.2.exe** from the release page and run it. This is the complete installer, not a standalone launcher missing its libraries.
+1. Download **SonicForge-Setup-2.4.0.exe** from the release page and run it. This is the complete installer, not a standalone launcher missing its libraries.
 2. Select an installation folder. The desktop shortcut is optional. Installation normally requires no administrator rights and is scoped to the current user.
 3. Start SonicForge. The packaged application does not require a separate Python or FFmpeg installation for audio processing or artwork.
 4. Open Settings to choose the interface language. Use the Help tab or F1 for instructions.
@@ -608,7 +610,7 @@ Done closes the window. These settings affect batch audio, not Editor clips.
 
 ## Cover art: generated or your own image
 
-Titles adjust weight, proportions, slant and spacing to the recording's musical character. Placement is coordinated with one of 40 symbol families and supporting sweeps, facets or flowing shapes. Letter and figure edges are antialiased, and all text fits inside an inset circle for circular player artwork. Artist lettering is off by default and can be enabled manually. Regenerate existing covers to apply the new artwork; the saved PNG contains all elements. [System details and research](docs/music-lettering.md).
+Titles adjust weight, proportions, slant and spacing to the recording's musical character. Title and focal symbol share colored ink derived from the background palette, with local tonal support for readability. Supporting artwork adapts to silhouette proportions, title placement and length, local contrast, rhythm and Seed. Dense M2Pv3 spectral lines are smoothed separately from the organic pattern; section boundaries curve gently while retaining the opening on the left and ending on the right. Placement is coordinated with one of 60 symbol families and one of 60 supporting artwork schemes. Letter and figure edges are antialiased, and all text fits inside an inset circle for circular player artwork. Artist lettering is off by default and can be enabled manually. Regenerate existing covers to apply the new artwork; the saved PNG contains all elements. [System details and research](docs/music-lettering.md).
 
 ![Artwork preview and the custom-image button](docs/images/cover-en.png)
 
@@ -618,7 +620,9 @@ Modern artwork chooses its pattern family from musical evidence, not a random fi
 
 | Control | Function |
 | --- | --- |
-| Style | Five ready-made pattern/palette combinations or Custom style |
+| Cover theme | Custom theme or Generated |
+| Color | Generated theme: M2Pv1 classic colors, M2Pv2 musical character, M2Pv3 rhythmic speed |
+| Generation | Independently choose M2Pv1 classic pattern, M2Pv2 organic folds or M2Pv3 chronological song structure |
 | Customize artwork… | Pattern, a palette with any number of colors, detail, contrast, saturation and background softness |
 | Seed | Integer variation; matching source, settings and version help reproduce a pattern |
 | Size, px | Square output side; upscaling does not add real detail to a supplied photograph |
@@ -630,7 +634,7 @@ Modern artwork chooses its pattern family from musical evidence, not a random fi
 | Choose your image | PNG, JPEG or WebP; validates and fits it to the requested square |
 | Use generation | Switches back after choosing a custom image |
 
-Styles: modern artwork; modern artwork with classic colors; a 50/50 blend; classic pattern with modern colors; classic Music2Picture. The classic variant is based on a [pinned Music2Picture revision](https://github.com/dumuzeyn/Music2Picture/tree/342013aaa8bdb4cb86c8c14fec0acb038e50b5ca). Original fields, angular warps and fine contours are retained, including for short songs. A 3×3 median filter removes isolated noisy pixels without blurring the entire image. Duration and musical variety adjust contour strength rather than substitute a simplified template. Increasing image size does not add extra layers or fine noise.
+Generated theme offers nine independent color/pattern combinations. M2Pv3 colors shift from blue and turquoise to gold and orange with measured rhythmic speed rather than loudness; local tempo estimates may be half or double time. M2Pv3 generation retains spectral structure chronologically, opening on the left and ending on the right. Custom theme combines your palette with any of the three patterns. The classic variant is based on a [pinned Music2Picture revision](https://github.com/dumuzeyn/Music2Picture/tree/342013aaa8bdb4cb86c8c14fec0acb038e50b5ca). Original fields, angular warps and fine contours are retained, including for short songs. A 3×3 median filter removes isolated noisy pixels without blurring the entire image. Duration and musical variety adjust contour strength rather than substitute a simplified template. Increasing image size does not add extra layers or fine noise.
 
 Mood is handled internally; the current window has no manual scene-description field. A custom image replaces generation and does not use generator-specific controls. Its original is unchanged. Processing saves a full PNG in covers and embeds it if enabled. A preview does not mean the song already contains the picture.
 
@@ -638,9 +642,9 @@ Mood is handled internally; the current window has no manual scene-description f
 
 ![Custom palette and pattern controls](docs/images/cover-custom-en.png)
 
-**Left means calm; right means driven.** Put your calm colors on the left and energetic colors on the right. A song uses a limited range around its dominant character, not the whole palette at once. An energetic section in a calm song creates a small right-side accent; a calm section in an energetic song adds a left-side accent. Stop positions assign colors to activity levels. This applies to both Custom style patterns: modern artwork and the classic pattern.
+**Left means calm; right means driven.** Put your calm colors on the left and energetic colors on the right. A song uses a limited range around its dominant character, not the whole palette at once. An energetic section in a calm song creates a small right-side accent; a calm section in an energetic song adds a left-side accent. Stop positions assign colors to activity levels. This applies to all three custom patterns; M2Pv3 follows activity at the corresponding time positions.
 
-Click Customize artwork… and choose modern organic textures or classic Music2Picture. The palette has no color-count cap: use Add…, Edit… and Remove. **Drag the colored stops below the strip** to change color positions and transition widths; crossing another stop changes their order. The strip updates immediately, and final artwork uses these positions too. ↑/↓ swap colors without moving positions. Select a stop and use ←/→ for precise adjustment (1%, or 0.1% with Shift). If stops overlap, select the desired color in the list. New colors appear at the right endpoint and can be dragged anywhere. Large lists scroll, and each row shows its stop position. Apply saves settings; Cancel retains the previous ones. Keep at least one color; a single-color pattern uses tonal shades of that hue. Detail changes fine modern structures or continuously adjusts the density and strength of classic details from 0 to 100. Contrast ranges from 50–150%, saturation from 0–150% (0% is grayscale), and softness from 0–100% (0% disables blur). Filters run **before** lettering, keeping the title sharp.
+Click Customize theme… and choose the M2Pv1, M2Pv2 or M2Pv3 pattern. The palette has no color-count cap: use Add…, Edit… and Remove. **Drag the colored stops below the strip** to change color positions and transition widths; crossing another stop changes their order. The strip updates immediately, and final artwork uses these positions too. ↑/↓ swap colors without moving positions. Select a stop and use ←/→ for precise adjustment (1%, or 0.1% with Shift). If stops overlap, select the desired color in the list. New colors appear at the right endpoint and can be dragged anywhere. Large lists scroll, and each row shows its stop position. Apply saves settings; Cancel retains the previous ones. Keep at least one color; a single-color pattern uses tonal shades of that hue. Detail changes fine modern structures or continuously adjusts the density and strength of classic details from 0 to 100. Contrast ranges from 50–150%, saturation from 0–150% (0% is grayscale), and softness from 0–100% (0% disables blur). Filters run **before** lettering, keeping the title sharp.
 
 Apply selects Custom style and remembers the palette, stop positions, pattern, detail, contrast, saturation and softness between launches. Preferences are stored outside the application in `%LOCALAPPDATA%/SonicForge/custom_cover.json`, so updating the app does not reset them. Click Preview, then run the cover stage when satisfied. Cancel keeps saved settings; Reset defaults resets the dialog fields until applied. Keep colors, controls and Seed identical for reproducible output. Settings are also saved in the profile beside the finished PNG. Short words no longer prevent automatic title wrapping or force tiny lettering.
 
@@ -657,7 +661,7 @@ Version 2.3.2 imports TXT/LRC and accepts `[00:20.62]line`. Show timestamps togg
 1. Select one file in Source.
 2. Load existing reads tags or a neighboring TXT/LRC without recognition.
 3. Recognize starts local transcription; lines appear as they are processed.
-4. Review words manually. Double-click selects a Unicode word, including internal apostrophes/hyphens. Ctrl+A/C/X/V/Z also work with a Russian keyboard layout. Ctrl+C in the lyric editor copies the selection, or all lyrics when nothing is selected. Copy lyrics and its context-menu action copy the complete text, including during recognition. The context menu also offers copying the selection and selecting all.
+4. Review words manually. Double-click selects a Unicode word, including internal apostrophes/hyphens. Ctrl+A/C/X/V/Z also work with a Russian keyboard layout. Ctrl+C in the lyric editor copies the selection, or all lyrics when nothing is selected. Copy lyrics and its context-menu action copy the complete text, including during recognition. Ctrl+X cuts selected words; Ctrl+V inserts at the cursor or replaces the selection. Multiline pastes and replacements undo with a single Ctrl+Z. The context menu also offers Cut, Paste, Copy selection and Select all.
 5. Save the corrected text using Save into song / the save button.
 
 | Setting | Meaning |
@@ -748,7 +752,7 @@ Windows packaging also requires Inno Setup 6. The current profile expects FFmpeg
 .\scripts\build_windows.ps1
 ~~~
 
-Outputs: dist\SonicForge\SonicForge.exe with _internal, and **dist\SonicForge-Setup-2.3.2.exe**. The build script does not forcibly close an open portable project. Build directories, local validation, caches and binary releases are excluded from source commits.
+Outputs: dist\SonicForge\SonicForge.exe with _internal, and **dist\SonicForge-Setup-2.4.0.exe**. The build script does not forcibly close an open portable project. Build directories, local validation, caches and binary releases are excluded from source commits.
 
 Command-line tools: `python src/easy_music_process.py` for full processing; `python src/music2picture.py covers` / `describe` for artwork/descriptions; `python src/music_metadata.py` for tags. Use --help for arguments and test file-changing operations on copies.
 

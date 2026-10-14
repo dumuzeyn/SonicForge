@@ -138,7 +138,7 @@ def artistic_parameters(dna: VisualDNA, plan: VisualPlan, resolved_seed: int | N
     )
 
 
-def _artistic_texture(dna, plan, params, size, rng, *, palette=None, palette_stops=None):
+def _artistic_texture(dna, plan, params, size, rng, *, palette=None, palette_stops=None, timeline=None):
     y, x = np.mgrid[0:size, 0:size].astype(np.float32)
     x = x / max(1, size - 1) * 2.0 - 1.0
     y = y / max(1, size - 1) * 2.0 - 1.0
@@ -164,6 +164,8 @@ def _artistic_texture(dna, plan, params, size, rng, *, palette=None, palette_sto
     phase = directional * math.pi * flow_frequency
     phase += (macro_b - .5) * math.pi * (1.2 + params.warp_strength * 2.0)
     phase += (meso - .5) * (.25 + params.turbulence * .50)
+    if timeline is not None:
+        phase += (meso - .5) * timeline.drive * 1.8
     phase += np.sin(cross * math.pi * (0.7 + dna.harmonic_complexity * 1.1)) * (0.28 + params.turbulence * 0.55)
     currents = np.sin(phase) * 0.5 + 0.5
     folds = np.sin(phase * (0.82 + dna.chord_change_rate * 0.45) + macro_b * 1.8) * 0.5 + 0.5
@@ -201,9 +203,19 @@ def _artistic_texture(dna, plan, params, size, rng, *, palette=None, palette_sto
     lookup = palette_rgb(plan.palette if palette is None else palette,
                          np.linspace(0, 1, 4096), palette_stops)
     positions = palette_positions(base_field, dna, minority)
+    if timeline is not None:
+        # M2Pv3 keeps the organic foreground but exposes the spectral structure
+        # underneath it. These fields use the original x, never folded xw.
+        base_field = np.clip(base_field * .84 + timeline.spectrum * .10 + timeline.level * .06, 0, 1)
+        center = .18 + timeline.drive * .64
+        positions = np.clip(center + (base_field - .5) * (.40 + dna.harmonic_complexity * .10), 0, 1)
     rgb = lookup[np.rint(positions * 4095).astype(np.uint16)].astype(np.float32)
     # Tonal depth is independent of hue selection, including a one-color palette.
     local_drive = params.energy * (1 - minority) + character.opposite_drive * minority
+    if timeline is not None:
+        local_drive = np.broadcast_to(timeline.drive, base_field.shape)
+        rgb *= (.76 + timeline.level * .24)[..., None]
+        rgb *= (.90 + timeline.spectrum * .16)[..., None]
     rgb *= (.52 + .52 * base_field)[..., None]
     # Fine lamination follows the broad folds instead of adding speckled noise.
     # Energetic music has more strata; quiet material stays open and spacious.
@@ -218,6 +230,8 @@ def _artistic_texture(dna, plan, params, size, rng, *, palette=None, palette_sto
     ribbons = np.exp(-((currents - .56) / ribbon_width) ** 2)
     ribbons *= .35 + .65 * _smoothstep(.22, .78, macro_b)
     ribbon_alpha = ribbons[..., None] * (.08 + params.vein_strength * .18)
+    if timeline is not None:
+        ribbon_alpha *= (.35 + timeline.drive * .65 + timeline.attack * .20)[..., None]
     highlight = rgb * .45 + 140
     rgb = rgb * (1 - ribbon_alpha) + highlight * ribbon_alpha
     # A narrow shadow next to a highlight gives folds depth without pixel edges.

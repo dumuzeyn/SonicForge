@@ -18,7 +18,7 @@ from music2picture_v2 import (
 )
 from music2picture_v2.renderer import GENERATOR_VERSION, artistic_parameters, deterministic_seed, customize_parameters
 from music2picture_v2.variants import (
-    LEGACY_COLOR_MODES, LEGACY_COMMIT, STYLES, STYLE_CURRENT, STYLE_LEGACY, STYLE_CUSTOM,
+    LEGACY_COLOR_MODES, LEGACY_COMMIT, STYLES, STYLE_CURRENT, STYLE_LEGACY, STYLE_CUSTOM, STYLE_GENERATED,
     CLASSIC_RENDERER_VERSION, render_legacy, render_variant,
 )
 
@@ -63,9 +63,10 @@ def make_cover(
     output_path = Path(output_path)
     if style not in STYLES:
         raise ValueError(f"Unknown cover style: {style}")
-    if style == STYLE_CUSTOM:
+    if style in (STYLE_CUSTOM, STYLE_GENERATED):
         from music2picture_v2.custom_style import CustomCoverSettings
-        custom_cover_settings = CustomCoverSettings.parse(custom_cover_settings).to_dict()
+        custom_cover_settings = CustomCoverSettings.parse(custom_cover_settings if custom_cover_settings is not None
+            else {'color_source': 'modern' if style == STYLE_GENERATED else 'custom'}).to_dict()
     if legacy_color_mode not in LEGACY_COLOR_MODES:
         raise ValueError(f"Unknown historical color mode: {legacy_color_mode}")
     check_cancelled(cancel_event)
@@ -86,7 +87,7 @@ def make_cover(
         image, symbol_layout = _add_cover_symbol(
             image, lettering_bundle.visual_dna, tags.get("title") or clean_stem(path),
             lyrics_text if use_lyrics_for_cover else "",
-            show_title=text_mode != 'none',
+            show_title=text_mode != 'none', variation=int(seed or 0),
         )
         image = _add_cover_text(
             image, tags.get("title") or clean_stem(path), tags.get("artist", ""),
@@ -153,7 +154,8 @@ def make_cover(
         custom_cover_settings=custom_cover_settings,
     )
     lettering_layout = {}
-    image, symbol_layout = _add_cover_symbol(image, bundle.visual_dna, title, resolved_lyrics,show_title=text_mode != 'none')
+    image, symbol_layout = _add_cover_symbol(image, bundle.visual_dna, title, resolved_lyrics,
+                                            show_title=text_mode != 'none', variation=int(seed or 0))
     image = _add_cover_text(image, title, artist, text_mode=text_mode, language=bundle.language,
                             visual_dna=bundle.visual_dna, layout_out=lettering_layout,
                             symbol_layout=symbol_layout)
@@ -166,12 +168,12 @@ def make_cover(
     return output_path
 
 
-def _add_cover_symbol(image, visual_dna, title, lyrics="", *, show_title=True):
+def _add_cover_symbol(image, visual_dna, title, lyrics="", *, show_title=True, variation=0):
     if visual_dna is None:
         return image, {}
     from cover_engine.song_symbol import compose_song_symbol
 
-    return compose_song_symbol(image, visual_dna, title, lyrics,show_title=show_title)
+    return compose_song_symbol(image, visual_dna, title, lyrics,show_title=show_title, variation=variation)
 
 
 def _add_cover_text(image, title, artist, *, text_mode, language, visual_dna=None, layout_out=None,
@@ -193,6 +195,7 @@ def _add_cover_text(image, title, artist, *, text_mode, language, visual_dna=Non
             composition_zone=(symbol_layout or {}).get('composition',{}).get('title_zone_pixels'),
             composition_alignment=(symbol_layout or {}).get('composition',{}).get('title_alignment'),
             round_safe_radius=(symbol_layout or {}).get('composition',{}).get('round_safe_radius'),
+            cover_ink=(symbol_layout or {}).get('material_color'),
         ),
         title_treatment=title_resolution, enabled=True,
         show_artist=text_mode == "title_artist", language=language,
@@ -412,7 +415,7 @@ def _save_music2picture_profile(output_path, audio_path, bundle, seed, text_mode
         "text_mode": text_mode,
         "generator_version": GENERATOR_VERSION,
         "style": style,
-        "custom_cover_settings": custom_cover_settings if style == STYLE_CUSTOM else None,
+        "custom_cover_settings": custom_cover_settings if style in (STYLE_CUSTOM, STYLE_GENERATED) else None,
         "legacy_commit": LEGACY_COMMIT if style != STYLE_CURRENT else None,
         "legacy_color_mode": legacy_color_mode if style != STYLE_CURRENT else None,
         "classic_renderer_version": CLASSIC_RENDERER_VERSION if (
@@ -423,12 +426,26 @@ def _save_music2picture_profile(output_path, audio_path, bundle, seed, text_mode
         "artistic_parameters": customize_parameters(
             artistic_parameters(bundle.visual_dna, bundle.visual_plan,
                                 deterministic_seed(bundle.visual_dna.fingerprint, seed)),
-            custom_cover_settings["detail"] if style == STYLE_CUSTOM and custom_cover_settings else None,
+            custom_cover_settings["detail"] if style in (STYLE_CUSTOM, STYLE_GENERATED) and custom_cover_settings else None,
         ).to_dict(),
         "analysis_bundle": bundle.to_dict(),
         "typography": lettering_layout or {},
         "song_symbol": symbol_layout or {},
     }
+    if style in (STYLE_CUSTOM, STYLE_GENERATED) and custom_cover_settings:
+        pattern = custom_cover_settings['pattern']
+        data['pattern_generation'] = {'legacy': 'M2Pv1', 'modern': 'M2Pv2', 'timeline': 'M2Pv3'}[pattern]
+        data['color_generation'] = {'legacy': 'M2Pv1', 'modern': 'M2Pv2', 'speed': 'M2Pv3', 'custom': 'custom'}[custom_cover_settings['color_source']]
+        if pattern == 'timeline':
+            from music2picture_v3 import GENERATOR_VERSION as TIMELINE_VERSION
+            data['generator_version'] = TIMELINE_VERSION
+            data['timeline_direction'] = 'left_to_right'
+        elif pattern == 'legacy':
+            data['generator_version'] = CLASSIC_RENDERER_VERSION
+            data['classic_renderer_version'] = CLASSIC_RENDERER_VERSION
+        if custom_cover_settings['color_source'] == 'speed':
+            from music2picture_v3.colors import SPEED_COLOR_VERSION
+            data['color_generator_version'] = SPEED_COLOR_VERSION
     target = directory / f"{output_path.stem}.profile.json"
     temporary = target.with_suffix(".tmp")
     temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -96,6 +96,12 @@ PAGES['processing'] = (
 )
 
 
+PAGES['cover'] = (
+    'Выберите «Своя тема» или «Генерируемая». В генерируемой теме «Цвет» и «Генерация» выбираются независимо между M2Pv1, M2Pv2 и M2Pv3. Цвет M2Pv3 показывает скорость ритма: медленнее — холодные оттенки, быстрее — тёплые; возможны ошибки половинного или двойного темпа. Генерация M2Pv3 показывает развитие песни слева направо: начало слева, конец справа. «Настроить свою тему…» позволяет редактировать палитру и выбрать любой из трёх узоров. Настройки запоминаются между запусками. Предпросмотр не меняет песню; встраивание происходит при выполнении этапа обложки. Также можно выбрать свою картинку PNG, JPEG или WebP.',
+    'Choose Custom theme or Generated. Generated theme lets you select Color and Generation independently from M2Pv1, M2Pv2 and M2Pv3. M2Pv3 color shows rhythmic speed: slower is cooler, faster is warmer; tempo estimates may be half or double time. M2Pv3 generation follows the song from left to right, opening on the left and ending on the right. Customize theme edits your palette and selects any of the three patterns. Settings persist between launches. Preview leaves the song unchanged; embedding happens during the Cover stage. You can also choose your own PNG, JPEG or WebP.',
+)
+
+
 def add_help_strings(translations):
     for key, values in EXTRA.items():
         for index, language in enumerate(("ru", "en")):

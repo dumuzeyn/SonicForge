@@ -41,8 +41,8 @@ class SongSymbolTests(unittest.TestCase):
                 expected=mask.filter(ImageFilter.MinFilter(diameter))
                 self.assertIsNone(ImageChops.difference(expected,_minimum_filter(mask,diameter)).getbbox())
 
-    def test_forty_families_need_meaning_while_audio_fallback_stays_abstract(self):
-        self.assertEqual(len(AUDIO_ARCHETYPES),40)
+    def test_sixty_families_need_meaning_while_audio_fallback_stays_abstract(self):
+        self.assertEqual(len(AUDIO_ARCHETYPES),60)
         self.assertEqual({name for name,_ in IMAGERY},set(AUDIO_ARCHETYPES))
         # Exercise the nearest-shape decision at every archetype, including
         # the newly added forms, rather than just asserting a catalog count.

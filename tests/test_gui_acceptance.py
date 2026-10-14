@@ -265,6 +265,82 @@ class GuiAcceptanceTests(unittest.TestCase):
             self.app.view.set_lyrics_text(original_text)
             self.app.source_var.set(source)
 
+    def test_lyrics_cut_paste_and_undo_use_the_lyrics_selection(self):
+        editor = self.app.view.lyrics_editor
+        original_text = self.app.view.get_lyrics_text()
+        source = self.app.source_var.get()
+        text = "[00:20.62]Первая строка\n[00:24.00]Вторая строка"
+        try:
+            self.app.view.show_tab('lyrics')
+            self.app.view.set_lyrics_busy(False)
+            self.app.source_var.set('C:/TestMusic/Чужое выделение.mp3')
+            self.app.view.source_entry.selection_range(0, tk.END)
+            for keysym, keycode, paste_sym in (('x', 88, 'v'), ('Cyrillic_che', 88, 'Cyrillic_em')):
+                self.app.view.set_lyrics_text(text)
+                editor.edit_reset()
+                editor.tag_add(tk.SEL, '2.0', '2.end')
+                editor.mark_set(tk.INSERT, '1.0')
+                self.assertEqual(self.app._lyrics_editor_shortcut(SimpleNamespace(
+                    widget=editor, keysym=keysym, keycode=keycode, state=4)), 'break')
+                self.assertEqual(self.app.clipboard_get(), '[00:24.00]Вторая строка')
+                self.assertEqual(editor.get('1.0', 'end-1c'), '[00:20.62]Первая строка\n')
+                self.assertEqual(self.app._lyrics_editor_shortcut(SimpleNamespace(
+                    widget=editor, keysym=paste_sym, keycode=86, state=4)), 'break')
+                self.assertEqual(editor.get('1.0', 'end-1c'), text)
+                editor.edit_undo()
+                self.assertEqual(editor.get('1.0', 'end-1c'), '[00:20.62]Первая строка\n')
+                editor.edit_undo()
+                self.assertEqual(editor.get('1.0', 'end-1c'), text)
+            # Exercise the installed keyboard bindings, including replacing a selection.
+            editor.focus_force()
+            self.app.update()
+            editor.tag_add(tk.SEL, '2.0', '2.end')
+            self._send_control_key(editor, 'x')
+            self._send_control_key(editor, 'v')
+            self.assertEqual(editor.get('1.0', 'end-1c'), text)
+            editor.tag_add(tk.SEL, '2.0', '2.end')
+            self.app.clipboard_clear()
+            self.app.clipboard_append('[00:25.00]Новая строка\r\nПродолжение')
+            self._send_control_key(editor, 'v')
+            self.assertEqual(editor.get('1.0', 'end-1c'), '[00:20.62]Первая строка\n[00:25.00]Новая строка\nПродолжение')
+            self._send_control_key(editor, 'z')
+            self.assertEqual(editor.get('1.0', 'end-1c'), text)
+            self.assertEqual(self.app.source_var.get(), 'C:/TestMusic/Чужое выделение.mp3')
+        finally:
+            self.app.view.set_lyrics_busy(False)
+            self.app.view.set_lyrics_text(original_text)
+            self.app.source_var.set(source)
+
+    def test_lyrics_clipboard_menu_and_readonly_guard(self):
+        editor = self.app.view.lyrics_editor
+        original_text = self.app.view.get_lyrics_text()
+        try:
+            self.app.view.set_lyrics_text('Строка песни')
+            editor.tag_add(tk.SEL, '1.0', '1.end')
+            self.app.view.lyrics_menu.invoke(4)
+            self.assertEqual(self.app.clipboard_get(), 'Строка песни')
+            self.assertEqual(editor.get('1.0', 'end-1c'), '')
+            self.app.view.lyrics_menu.invoke(5)
+            self.assertEqual(editor.get('1.0', 'end-1c'), 'Строка песни')
+            editor.tag_add(tk.SEL, '1.0', '1.end')
+            self.app.view.set_lyrics_busy(True)
+            self.app.view.lyrics_menu.invoke(4)
+            self.app.view.lyrics_menu.invoke(5)
+            self.assertEqual(editor.get('1.0', 'end-1c'), 'Строка песни')
+            self.app.view.set_lyrics_busy(False)
+            editor.tag_remove(tk.SEL, '1.0', tk.END)
+            self.app.view.lyrics_menu.invoke(4)
+            self.assertEqual(editor.get('1.0', 'end-1c'), 'Строка песни')
+            with patch.object(self.app, 'clipboard_get', side_effect=tk.TclError('No clipboard text')):
+                self.app.view.lyrics_menu.invoke(5)
+            self.assertEqual(editor.get('1.0', 'end-1c'), 'Строка песни')
+            self.app.toggle_language()
+            self.assertEqual(self.app.view.lyrics_menu.entrycget(4, 'label'), 'Cut')
+            self.assertEqual(self.app.view.lyrics_menu.entrycget(5, 'label'), 'Paste')
+        finally:
+            self.app.view.set_lyrics_busy(False)
+            self.app.view.set_lyrics_text(original_text)
+
     def setUp(self):
         if self.app.language != "ru":
             self.app.toggle_language()
@@ -471,14 +547,27 @@ class GuiAcceptanceTests(unittest.TestCase):
                         )
         self.assertEqual(failures, [])
 
-    def test_six_cover_styles_relocalize(self):
-        self.assertEqual(len(self.app.cover_choice_values("style")), 6)
+    def test_two_cover_themes_and_independent_generations_relocalize(self):
+        self.assertEqual(len(self.app.cover_choice_values("style")), 2)
+        self.assertEqual(len(self.app.cover_choice_values('color')), 3)
+        self.assertEqual(len(self.app.cover_choice_values('pattern')), 3)
         self.assertNotIn("disabled", self.app.view.cover_style_combo.state())
-        self.app.cover_style_var.set("Классический узор · современные цвета")
-        self.assertEqual(self.app._process_kwargs()["cover_style"], "legacy_current_colors")
+        self.app.cover_style_var.set('Генерируемая')
+        self.app.cover_color_var.set('M2Pv3 — скорость ритма')
+        self.app.cover_pattern_var.set('M2Pv1 — классический узор')
+        self.app.view.update_cover_source()
+        self.assertEqual(self.app._process_kwargs()["cover_style"], 'generated')
+        self.assertEqual(self.app._process_kwargs()['custom_cover_settings']['color_source'], 'speed')
+        self.assertEqual(self.app._process_kwargs()['custom_cover_settings']['pattern'], 'legacy')
+        self.assertEqual(self.app.view.cover_color_combo.winfo_manager(), 'grid')
         self.app.toggle_language()
         self.assertEqual(self.app.cover_choice("style", self.app.cover_style_var.get()),
-                         "legacy_current_colors")
+                         'generated')
+        self.assertEqual(self.app.cover_choice('color', self.app.cover_color_var.get()), 'speed')
+        self.assertEqual(self.app.cover_choice('pattern', self.app.cover_pattern_var.get()), 'legacy')
+        self.app.cover_style_var.set('Custom theme')
+        self.app.view.update_cover_source()
+        self.assertEqual(self.app.view.cover_color_combo.winfo_manager(), '')
 
     def test_cover_page_has_only_a_real_preview_action(self):
         self.app.view.show_tab("cover")
@@ -488,6 +577,19 @@ class GuiAcceptanceTests(unittest.TestCase):
         self.assertFalse(hasattr(self.app.view, "cover_detail_combo"))
         self.assertFalse(hasattr(self.app.view, "cover_title_mode_combo"))
         self.assertFalse(hasattr(self.app.view, "description_generate_button"))
+
+    def test_indexed_artwork_preview_resamples_rgb_edges(self):
+        import numpy as np
+        from PIL import ImageDraw, ImageTk
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'indexed.png'
+            image=Image.new('P',(660,660))
+            image.putpalette([0,0,0,255,255,255]+[0]*762)
+            ImageDraw.Draw(image).polygon(((0,0),(659,0),(659,659)),fill=1)
+            image.save(path)
+            self.app.view.show_cover_preview(path)
+            preview=ImageTk.getimage(self.app.view._cover_preview_photo)
+            self.assertGreater(len(np.unique(np.asarray(preview.convert('L')))),10)
 
     def test_custom_style_apply_cancel_and_relocalization(self):
         from ui.dialogs import CustomCoverDialog
@@ -508,7 +610,7 @@ class GuiAcceptanceTests(unittest.TestCase):
             self.assertEqual(self.app._process_kwargs()["custom_cover_settings"]["softness"], 35)
             self.assertEqual(self.app.cover_choice("style", self.app.cover_style_var.get()), "custom")
             self.app.toggle_language()
-            self.assertEqual(self.app.cover_style_var.get(), "Custom style")
+            self.assertEqual(self.app.cover_style_var.get(), "Custom theme")
             dialog = CustomCoverDialog(self.app)
             self.assertEqual(dialog.title(), "Custom cover style")
             dialog.reset()
@@ -728,13 +830,18 @@ class GuiAcceptanceTests(unittest.TestCase):
             self.app.source_var.set(old_source)
 
     def test_recognized_lines_display_independently_of_log_queue(self):
-        self.app.view.set_lyrics_text("")
-        self.app.view.set_lyrics_busy(True)
-        self.app._lyrics_results.put(("line", TranscriptSegment(1, 3, "Русская строка песни")))
-        self.app._lyrics_results.put(("done", None))
-        self.app._poll_lyrics()
-        self.assertEqual(self.app.view.get_lyrics_text(), "Русская строка песни")
-        self.assertNotIn("[00:", self.app.view.get_lyrics_text())
+        timestamps = self.app.lyrics_timestamps_var.get()
+        try:
+            self.app.lyrics_timestamps_var.set(False)
+            self.app.view.set_lyrics_text("")
+            self.app.view.set_lyrics_busy(True)
+            self.app._lyrics_results.put(("line", TranscriptSegment(1, 3, "Русская строка песни")))
+            self.app._lyrics_results.put(("done", None))
+            self.app._poll_lyrics()
+            self.assertEqual(self.app.view.get_lyrics_text(), "Русская строка песни")
+            self.assertNotIn("[00:", self.app.view.get_lyrics_text())
+        finally:
+            self.app.lyrics_timestamps_var.set(timestamps)
 
     def test_preview_never_reads_the_image_before_rendering_finishes(self):
         previous_worker = self.app.worker
@@ -760,7 +867,12 @@ class GuiAcceptanceTests(unittest.TestCase):
                               segments=(TranscriptSegment(1, 3, "Русская строка песни", 0.9),))
         previous_service = self.app._lyrics_service
         previous_source = self.app.source_var.get()
+        previous_vocals = self.app.lyrics_separate_vocals_var.get()
+        previous_timestamps = self.app.lyrics_timestamps_var.get()
         try:
+            # The mock provider consumes a placeholder file, not real audio.
+            self.app.lyrics_separate_vocals_var.set(False)
+            self.app.lyrics_timestamps_var.set(False)
             with tempfile.TemporaryDirectory() as directory:
                 source = Path(directory) / "song.mp3"
                 source.touch()
@@ -780,6 +892,8 @@ class GuiAcceptanceTests(unittest.TestCase):
         finally:
             self.app._lyrics_service = previous_service
             self.app.source_var.set(previous_source)
+            self.app.lyrics_separate_vocals_var.set(previous_vocals)
+            self.app.lyrics_timestamps_var.set(previous_timestamps)
 
     def test_file_selection_sets_sibling_output_without_audio_analysis(self):
         source = Path("C:/Music/Album/song.mp3")
@@ -863,13 +977,13 @@ class GuiAcceptanceTests(unittest.TestCase):
                 self.app.worker.join(timeout=5)
             self.app._poll_cover_preview()
             self.assertEqual(len(rendered), 1)
-            self.assertEqual(rendered[0][1]["size"], 384)
+            self.assertEqual(rendered[0][1]["size"], 512)
             self.assertTrue(rendered[0][1]["preview"])
             self.assertIs(rendered[0][1]["use_lyrics_for_cover"], False)
             self.assertEqual(rendered[0][1]["lyrics_text"], "")
             self.assertTrue(self.app.last_cover_path.is_file())
             self.assertTrue(self.app.view.cover_preview_image.cget("image"))
-            self.assertEqual(self.app.view._cover_preview_photo.width(), 220)
+            self.assertEqual(self.app.view._cover_preview_photo.width(), 216)
             self.app.source_var.set("")
 
     def test_cover_lyrics_switch_reaches_preview_and_processing(self):

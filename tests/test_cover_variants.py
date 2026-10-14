@@ -96,7 +96,7 @@ class CoverVariantTests(unittest.TestCase):
                 self.assertLessEqual(bounds[2], 192)
                 self.assertLessEqual(bounds[3], 192)
             titled_profile = json.loads((root / ".sonicforge" / "default_style.profile.json").read_text(encoding="utf-8"))
-            self.assertEqual(titled_profile["typography"]["version"], "music-lettering-v3")
+            self.assertEqual(titled_profile["typography"]["version"], "music-lettering-v5")
             self.assertGreaterEqual(titled_profile["typography"]["contrast_ratio"], 4.5)
             profile = json.loads((root / ".sonicforge" / "variant.profile.json").read_text(encoding="utf-8"))
             self.assertEqual(profile["legacy_commit"], "342013aaa8bdb4cb86c8c14fec0acb038e50b5ca")

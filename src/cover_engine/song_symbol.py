@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import hashlib
 import re
 import unicodedata
 
@@ -9,9 +10,10 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 from .music_lettering import design_from_music, intersection_fraction, luminance, unit
+from .symbol_shapes import ADDITIONAL_SYMBOLS, draw_symbol
 
 
-VERSION = "song-symbol-v7"
+VERSION = "song-symbol-v9"
 # Meaning is taken from available words, never invented from a genre label.
 IMAGERY = (
     ("mirror", ("не верю", "невер", "trust", "mirror", "зеркал", "оскол", "обман")),
@@ -84,6 +86,8 @@ AUDIO_ARCHETYPES = {
 # With no word evidence use geometric music gestures, not an invented object
 # such as an anchor, crown, sword, or skull. All 40 remain available by meaning.
 ABSTRACT_MOTIFS = ("orbit", "bloom", "spiral", "prism", "wave", "lightning")
+IMAGERY += tuple((name, values[0]) for name, values in ADDITIONAL_SYMBOLS.items())
+AUDIO_ARCHETYPES.update({name: values[1] for name, values in ADDITIONAL_SYMBOLS.items()})
 
 
 def _words(text):
@@ -194,7 +198,7 @@ def _imagery_from_words(text, distance):
     return min(choices)[2:] if choices else (None, "")
 
 
-def symbol_plan(dna, title="", lyrics=""):
+def symbol_plan(dna, title="", lyrics="", variation=0):
     design = design_from_music(dna)
     vector = (design.angularity,design.mass,design.openness,float(dna.valence),
               float(dna.rhythmic_density),float(dna.tension))
@@ -221,6 +225,8 @@ def symbol_plan(dna, title="", lyrics=""):
     envelope = tuple(float(x) for x in np.interp(np.linspace(0,1,12),np.linspace(0,1,len(envelope)),envelope))
     activity = tuple(float(x) for x in np.interp(np.linspace(0,1,12),np.linspace(0,1,len(activity)),activity))
     construction = "outline" if mass < .28 and flow > .62 else "solid"
+    layout_seed = int.from_bytes(hashlib.sha256(
+        f'{getattr(dna, "fingerprint", "")}|{int(variation)}|supporting-art-v4'.encode()).digest()[:4], 'little')
     return {
         "version": VERSION, "motif": motif,
         "source": "title/lyrics + audio" if cue else "audio",
@@ -229,6 +235,7 @@ def symbol_plan(dna, title="", lyrics=""):
         "flow": flow, "rhythm": rhythm, "tension": tension,
         "dynamic": float(dna.dynamic_complexity),
         "construction": construction, "selection_policy": "meaning-first; abstract audio fallback",
+        "layout_seed": layout_seed, "variation": int(variation),
         "energy_profile": envelope, "activity_profile": activity,
         "stroke": .022 + .030*mass + .014*rhythm,
         "aspect": .77 + .28*mass + .10*(1-flow),
@@ -245,6 +252,8 @@ def bezier(points, count=40):
 
 
 def _mask(plan, size):
+    if plan['motif'] in ADDITIONAL_SYMBOLS:
+        return _expressive_contour(draw_symbol(plan['motif'], size, plan), plan)
     mask = Image.new("L", (size, size), 0)
     d = ImageDraw.Draw(mask)
     edge, mass = plan["angularity"], plan["mass"]
@@ -669,9 +678,11 @@ def _expressive_contour(mask, plan):
     return result
 
 
-def _symbol_region(image, plan, shape, protected_boxes, scene=None):
+def _symbol_region(image, plan, shape, protected_boxes, scene=None, material=None):
     """Prefer the centre; move into quieter upper space when the art needs it."""
     original_gray = image.convert("L")
+    from .materials import cover_material, ink_candidates
+    material = material or cover_material(image)
     gray = original_gray.resize((128,128), Image.Resampling.LANCZOS)
     # Measure edges before reducing: fine texture otherwise averages into a
     # deceptively smooth area, exactly where a small symbol loses its outline.
@@ -708,11 +719,10 @@ def _symbol_region(image, plan, shape, protected_boxes, scene=None):
             pixels=np.asarray(image.crop(box).convert("RGB").resize((64,64)),dtype=float)
             levels=luminance(pixels)[occupied]
             options=[]
-            for light,neutral in ((True,(246,238,216)),(False,(20,27,33))):
+            for light, ink in ink_candidates(material):
                 # A restrained tint keeps the image palette while retaining a
                 # readable silhouette, especially in player thumbnails.
-                accent=np.median(pixels.reshape(-1,3),axis=0)
-                base=accent*.12 + np.array(neutral)*.88
+                base=np.asarray(ink, dtype=float)
                 final=luminance(base*.95+pixels[occupied]*.05)
                 contrast=float(np.percentile((np.maximum(final,levels)+.05)/(np.minimum(final,levels)+.05),5))
                 options.append((contrast,light,base))
@@ -722,22 +732,32 @@ def _symbol_region(image, plan, shape, protected_boxes, scene=None):
     return min(entries,key=lambda item:item[0])
 
 
-def compose_song_symbol(image, dna, title="", lyrics="", *, protected_boxes=(), show_title=True):
+def compose_song_symbol(image, dna, title="", lyrics="", *, protected_boxes=(), show_title=True, variation=0):
     """Return integrated artwork plus bounds that typography must protect."""
-    plan = symbol_plan(dna, title, lyrics)
+    plan = symbol_plan(dna, title, lyrics, variation)
+    from .materials import cover_material, backing_for_ink
+    material_palette = cover_material(image)
+    plan['material_palette'] = material_palette
     from .composition import spatial_plan, supporting_artwork
     scene=spatial_plan(plan,title,show_title)
     plan['size']=scene['hero_size']
     expected_span=round(min(image.size)*plan['size'])
-    # At least 2x the actual exported symbol, up to 4x for player thumbnails.
-    # Never enlarge a low-resolution contour for a large PNG.
-    work = max(256, round(max(expected_span*2, min(expected_span*4,1536))))
+    # Render contour and relief together at high resolution, then integrate
+    # pixel coverage once. Bound memory for the largest exports.
+    work = max(384, min(4096, round(expected_span*6)))
     shape = _mask(plan, work)
-    _,box,center,span,light,base,texture,overlap = _symbol_region(image,plan,shape,protected_boxes,scene)
+    _,box,center,span,light,base,texture,overlap = _symbol_region(image,plan,shape,protected_boxes,scene,material_palette)
     plan.update(center=center,size=span/min(image.size),background_complexity=round(texture,4),
                 protected_overlap=round(overlap,4),placement='composed')
-    shape=shape.resize((span,span),Image.Resampling.LANCZOS)
+    plan['material_color'] = tuple(int(v) for v in base)
+    from .raster import downsample_coverage
+    high_shape=shape
+    shape=downsample_coverage(high_shape,(span,span))
+    occupied=np.asarray(shape,dtype=np.float32)/255
+    scene['silhouette_fill']=float(np.mean(occupied))
+    scene['silhouette_symmetry']=float(1-np.mean(np.abs(occupied-occupied[:,::-1])))
     local_bounds=shape.getbbox()
+    scene['silhouette_aspect']=(local_bounds[2]-local_bounds[0])/max(1,local_bounds[3]-local_bounds[1])
     plan['bounds']=tuple(local_bounds[i]+box[i%2] for i in range(4))
     image,scene=supporting_artwork(image,plan,scene,protected_boxes)
     plan['composition']=scene
@@ -745,15 +765,16 @@ def compose_song_symbol(image, dna, title="", lyrics="", *, protected_boxes=(), 
     highlight = .88 + .16*(1-y/span) + .08*np.cos((x+y*.6)/span*math.pi)
     material = np.clip(base[None,None,:]*highlight[...,None],0,255).astype(np.uint8)
     # Shallow relief, with light direction shared across the whole sculpture.
-    rim_width=max(3,round(span*.004)|1)
-    eroded = shape.filter(ImageFilter.MinFilter(rim_width))
-    rim = np.clip(np.asarray(shape,dtype=int)-np.asarray(eroded,dtype=int),0,255)/255
-    material = np.clip(material.astype(float)+rim[...,None]*(16 if light else -9),0,255).astype(np.uint8)
+    rim_radius=max(.5,span*.002)*work/span
+    eroded = _minimum_filter(high_shape,max(3,round(rim_radius)*2+1))
+    high_rim=Image.fromarray(np.clip(np.asarray(high_shape,dtype=np.int16)-np.asarray(eroded,dtype=np.int16),0,255).astype(np.uint8))
+    rim=np.asarray(downsample_coverage(high_rim,(span,span)),dtype=np.float32)/255
+    material = np.clip(material.astype(float)+rim[...,None]*(9 if light else -5),0,255).astype(np.uint8)
     symbol = Image.fromarray(material).convert("RGBA")
     symbol.putalpha(shape.point(lambda a: round(a*.95)))
     canvas = image.convert("RGBA")
     shadow = Image.new("RGBA",canvas.size)
-    local_shadow = Image.new("RGBA",(span,span),(4,8,12,0))
+    local_shadow = Image.new("RGBA",(span,span),(*material_palette['shadow'],0))
     local_shadow.putalpha(symbol.getchannel("A").point(lambda a:round(a*.27)).filter(ImageFilter.GaussianBlur(max(1,span*.015))))
     shadow.alpha_composite(local_shadow,(box[0]+round(span*.008),box[1]+round(span*.013)))
     canvas = Image.alpha_composite(canvas,shadow)
@@ -767,7 +788,7 @@ def compose_song_symbol(image, dna, title="", lyrics="", *, protected_boxes=(), 
     for opacity in (0.,.15,.30,.45,.60,.75,.90):
         adjusted = original.copy()
         if opacity:
-            veil = Image.new("RGBA",original.size,(0,0,0) if light else (255,255,255))
+            veil = Image.new("RGBA",original.size,backing_for_ink(material_palette, base))
             veil.putalpha(footprint.point(lambda a:round(a*opacity)))
             adjusted = Image.alpha_composite(adjusted,veil)
         composed = Image.alpha_composite(adjusted,symbol)
@@ -781,7 +802,7 @@ def compose_song_symbol(image, dna, title="", lyrics="", *, protected_boxes=(), 
             break
     canvas.paste(composed,(box[0],box[1]))
     plan.update(contrast_ratio=round(contrast,3),initial_contrast_ratio=round(initial_contrast,3),
-                backing_opacity=opacity,edge_sampling='adaptive-2x-4x-lanczos',contour_resolution=work)
+                backing_opacity=opacity,edge_sampling='adaptive-6x-area-coverage',contour_resolution=work)
     bounds = symbol.getchannel("A").getbbox()
     plan["bounds"] = tuple(bounds[i]+box[i%2] for i in range(4))
     plan["material_color"] = tuple(int(v) for v in base)

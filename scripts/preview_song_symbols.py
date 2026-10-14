@@ -11,6 +11,7 @@ sys.path.insert(0,str(ROOT/'src'))
 import numpy as np
 from PIL import Image,ImageChops,ImageDraw,ImageFont
 from cover_engine.song_symbol import AUDIO_ARCHETYPES,IMAGERY,compose_song_symbol
+from cover_engine.symbol_shapes import ADDITIONAL_SYMBOLS
 from music2picture_v2.audio_analysis import analyze_audio_array
 from music2picture_v2.semantics import build_visual_dna
 
@@ -22,9 +23,12 @@ LABELS=("Зеркало","Сердце","Перо","Когти","Кристал�
         "Мост","Фонарь","Капля","Снежинка")
 
 
+LABELS += tuple(values[2] for values in ADDITIONAL_SYMBOLS.values())
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output',type=Path,default=ROOT/'validation/music_symbol/40_symbols.png')
+    parser.add_argument('--output',type=Path,default=ROOT/'validation/music_symbol/60_symbols.png')
     parser.add_argument('--new-only',action='store_true')
     args=parser.parse_args()
     base=build_visual_dna(analyze_audio_array(np.zeros(22050,dtype=np.float32)))

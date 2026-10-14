@@ -4,7 +4,7 @@ import sys
 
 APP_NAME = "SonicForge"
 APP_LOCALIZED_NAME = "Кузница Звука"
-APP_VERSION = "2.3.2"
+APP_VERSION = "2.4.0"
 APP_PUBLISHER = "Dumuzeyn"
 APP_USER_MODEL_ID = "Dumuzeyn.SonicForge"
 GITHUB_REPOSITORY_URL = "https://github.com/dumuzeyn/SonicForge"
