@@ -11,3 +11,4 @@ validation/
 *.ckpt
 *.gguf
 demo_covers/
+aqtinstall.log

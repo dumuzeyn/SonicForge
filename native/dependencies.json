@@ -1,0 +1,12 @@
+{
+  "qt": "6.10.0",
+  "mingw": "13.1.0",
+  "whisper": "927cfce34f31707e17f2bff35c349632fb9e2c3a",
+  "demucs": "f1206e9adeea103aef4a636b9e62297cf1f8e34e",
+  "eigen": "dd8c71e62852b2fe429edb6682ac91fd1c578a26",
+  "onnxruntime": {
+    "version": "1.21.0",
+    "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.21.0/onnxruntime-win-x64-1.21.0.zip",
+    "sha256": "5c07bb2805cd666dda75fa9bfa60e75f2f90d478b952298dd9d55c00740d81bf"
+  }
+}
