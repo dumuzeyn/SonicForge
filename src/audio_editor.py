@@ -226,6 +226,25 @@ class Timeline:
         self.clips = [clip if c.id == identifier else c for c in self.clips]
         return clip
 
+    def join(self, first_id, second_id, source):
+        """Commit a rendered transition as one reversible edit."""
+        first, second = self.get(first_id), self.get(second_id)
+        following = sorted((c for c in self.clips if c.lane == first.lane
+                            and c.position >= first.position + first.duration - 1e-9), key=lambda c: c.position)
+        if not following or following[0] != second:
+            raise ValueError('Choose the next clip on the same lane')
+        self.sources[source.path] = source
+        joined = replace(first, source=source.path, start=0, end=source.duration,
+                         gain=0, fade_in=0, fade_out=0)
+        remaining = [c for c in self.clips if c.id not in (first_id, second_id)]
+        if any(c.lane == joined.lane and c.position < joined.position + joined.duration - 1e-9
+               and joined.position < c.position + c.duration - 1e-9 for c in remaining):
+            raise ValueError('Transition overlaps another clip')
+        self._validate(joined, check_overlap=False)
+        self._remember()
+        self.clips = [*remaining, joined]
+        return joined
+
     def toggle_mute(self, lane):
         self._remember()
         self.muted.symmetric_difference_update({lane})
@@ -319,6 +338,87 @@ def remove_audio_selection(source, clip, selection_start, selection_end, cancel=
         return replace(audio, path=str(target / output.name))
 
 
+def crossfade_audio(project, first_id, second_id, cancel=None, cache_root=None, seconds=2):
+    """Render a same-lane transition; match local RMS and blend at equal power.
+
+    Attenuation only, bounded to 12 dB, avoids amplifying noise or silence.
+    Inner edge fades are replaced by the transition; outer fades are retained.
+    """
+    first, second = project.get(first_id), project.get(second_id)
+    following = sorted((c for c in project.clips if c.lane == first.lane
+                        and c.position >= first.position + first.duration - 1e-9), key=lambda c: c.position)
+    if not following or following[0] != second:
+        raise ValueError('Choose the next clip on the same lane')
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError('Transition duration must be positive')
+    overlap = min(seconds, first.duration / 2, second.duration / 2)
+    root = Path(cache_root) if cache_root is not None else Path(os.environ.get('LOCALAPPDATA', tempfile.gettempdir())) / 'SonicForge/editor-edits'
+    root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.transition-', dir=root) as directory:
+        working = Path(directory)
+        files = []
+        for index, clip in enumerate((replace(first, fade_out=0), replace(second, fade_in=0))):
+            single = Timeline()
+            single.sources = project.sources
+            single.clips = [replace(clip, position=0)]
+            files.append(render(single, working / f'{index}.wav', cancel))
+        def rms_at(path, tail):
+            with wave.open(str(path)) as audio:
+                frames = min(audio.getnframes(), round(overlap * audio.getframerate()))
+                if tail:
+                    audio.setpos(audio.getnframes() - frames)
+                values = array('h', audio.readframes(frames))
+                if os.sys.byteorder != 'little':
+                    values.byteswap()
+                return math.sqrt(sum(v * v for v in values) / max(1, len(values))) / 32768
+        levels = (rms_at(files[0], True), rms_at(files[1], False))
+        # A silent intro/outro is intentional and must not mute the other song.
+        gains = [1., 1.]
+        if min(levels) > .001:
+            for index, level in enumerate(levels):
+                gains[index] = max(10 ** (-12 / 20), min(levels) / level)
+        duration = first.duration + second.duration - overlap
+        # Attenuate only near the join and restore each song's original level
+        # smoothly away from it.
+        a, b = gains
+        filters = (
+            f"[0:a]volume='1-(1-{a:.9f})*clip((t-{first.duration - 2 * overlap:.9f})/{overlap:.9f},0,1)':eval=frame[a];"
+            f"[1:a]volume='{b:.9f}+(1-{b:.9f})*clip((t-{overlap:.9f})/{overlap:.9f},0,1)':eval=frame[b];"
+            f"[a][b]acrossfade=d={overlap:.9f}:c1=qsin:c2=qsin,"
+            'alimiter=limit=0.95:level=0:latency=1[out]')
+        result_dir = working / 'result'
+        result_dir.mkdir()
+        output = result_dir / (Path(first.source).stem + '-transition.wav')
+        run_ffmpeg(['-i', str(files[0]), '-i', str(files[1]), '-filter_complex', filters,
+                    '-map', '[out]', '-t', f'{duration:.9f}', '-c:a', 'pcm_f32le', str(output)], cancel)
+        audio = read_waveform(output, cancel)
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
+        target = root / uuid.uuid4().hex
+        result_dir.rename(target)
+        return replace(audio, path=str(target / output.name))
+
+
+def fade_lengths(clip):
+    """Keep legacy overlapping fades at the edges instead of multiplying them."""
+    incoming, outgoing = clip.fade_in, clip.fade_out
+    total = incoming + outgoing
+    if total > clip.duration:
+        incoming *= clip.duration / total
+        outgoing *= clip.duration / total
+    return incoming, outgoing
+
+
+def fade_level(clip, at):
+    incoming, outgoing = fade_lengths(clip)
+    value = 1.0
+    if incoming:
+        value *= min(1, max(0, at / incoming))
+    if outgoing:
+        value *= min(1, max(0, (clip.duration - at) / outgoing))
+    return value
+
+
 def render(project, target, cancel=None, start=0, length=None):
     target = Path(target).resolve()
     sources = {Path(c.source).resolve() for c in project.clips}
@@ -349,14 +449,15 @@ def render(project, target, cancel=None, start=0, length=None):
         inputs.extend(["-ss", f"{clip.start + offset:.6f}", "-t", f"{duration:.6f}", "-i", clip.source])
         chain = ["asetpts=PTS-STARTPTS", "aresample=44100", "aformat=channel_layouts=stereo",
                  f"volume={clip.gain:.4f}dB"]
-        # Evaluate envelopes at the original clip offset, including partial previews.
+        # Sample-accurate fades retain clip time even when preview seeks inside it.
         if clip.fade_in or clip.fade_out:
-            envelope = "1"
-            if clip.fade_in:
-                envelope += f"*min(1,(t+{offset:.6f})/{clip.fade_in:.6f})"
-            if clip.fade_out:
-                envelope += f"*min(1,max(0,({clip.duration:.6f}-t-{offset:.6f})/{clip.fade_out:.6f}))"
-            chain.append(f"volume='{envelope}':eval=frame")
+            incoming, outgoing = fade_lengths(clip)
+            chain.append(f"asetpts=PTS-STARTPTS+{offset:.9f}/TB")
+            if incoming:
+                chain.append(f"afade=t=in:st=0:d={incoming:.9f}")
+            if outgoing:
+                chain.append(f"afade=t=out:st={clip.duration - outgoing:.9f}:d={outgoing:.9f}")
+            chain.append("asetpts=PTS-STARTPTS")
         delay = max(0, clip.position - start) * 1000
         chain.append(f"adelay={round(delay)}:all=1")
         filters.append(f"[{index}:a]" + ",".join(chain) + f"[c{index}]")

@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import uuid
+from dataclasses import asdict
 
 from .models import LyricsResult, TranscriptSegment
 from .memory import MemoryWatch, memory_snapshot, recycle_when_idle
@@ -33,7 +34,8 @@ def result_from_json(data):
 class IsolatedLyricsProvider:
     name = 'faster-whisper'
 
-    def __init__(self):
+    def __init__(self, command_factory=None):
+        self._command_factory = command_factory
         self._process = None
         self._stderr = None
         self._events = None
@@ -47,7 +49,7 @@ class IsolatedLyricsProvider:
         error_log = tempfile.TemporaryFile(mode='w+b')
         try:
             process = subprocess.Popen(
-                worker_command(), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                (self._command_factory or worker_command)(), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=error_log, text=True, encoding='utf-8', errors='replace', bufsize=1,
                 env=dict(os.environ, OMP_NUM_THREADS='8', MKL_NUM_THREADS='8', TOKENIZERS_PARALLELISM='false'),
                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
@@ -86,6 +88,13 @@ class IsolatedLyricsProvider:
         threading.Thread(target=read_messages, daemon=True).start()
 
     def transcribe(self, audio_path, cancel_event=None, progress=None, language=None, on_segment=None):
+        return self._request(audio_path, cancel_event, progress, language, on_segment)
+
+    def align(self, audio_path, original, cancel_event=None, progress=None, language=None):
+        return self._request(audio_path, cancel_event, progress, language,
+                             request_fields=dict(operation='align', lyrics=asdict(original)))
+
+    def _request(self, audio_path, cancel_event=None, progress=None, language=None, on_segment=None, request_fields=None):
         with self._lock:
             if cancel_event is not None and cancel_event.is_set():
                 raise InterruptedError('Lyrics recognition was cancelled.')
@@ -98,14 +107,15 @@ class IsolatedLyricsProvider:
             memory_watch = MemoryWatch()
             latest_memory = None
             try:
-                process.stdin.write(json.dumps(dict(id=request_id, path=str(Path(audio_path).resolve()),
-                                                   language=language), ensure_ascii=True) + '\n')
+                payload = dict(id=request_id, path=str(Path(audio_path).resolve()), language=language)
+                payload.update(request_fields or {})
+                process.stdin.write(json.dumps(payload, ensure_ascii=True) + '\n')
                 process.stdin.flush()
                 while True:
                     if cancel_event is not None and cancel_event.is_set():
                         raise InterruptedError('Lyrics recognition was cancelled.')
                     now = time.monotonic()
-                    if now - last_event > (1800 if stage == 'loading_model' else 600) or now - started > 3600:
+                    if now - last_event > (1800 if stage in ('loading_model', 'loading_alignment') else 600) or now - started > 3600:
                         raise RuntimeError('Recognition timed out on this file; the batch can continue.')
                     if now - last_memory_check >= 2:
                         last_memory_check = now

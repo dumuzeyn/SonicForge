@@ -20,6 +20,45 @@ from ui.widgets import ModernScale, RoundedButton, SquareCheckbutton
 
 
 class GuiAcceptanceTests(unittest.TestCase):
+    def test_timing_edits_never_sort_lyrics_by_wrong_old_times(self):
+        old = self.app.lyrics_mode_var.get()
+        try:
+            self.app.lyrics_mode_var.set(self.app.t('lyrics_mode_align'))
+            result = self.app._edited_lyrics_result('[00:20]First\n[00:10]Second\n[00:30]First')
+            self.assertEqual(result.text, 'First\nSecond\nFirst')
+            self.assertEqual([s.start for s in result.segments], [20,10,30])
+        finally:
+            self.app.lyrics_mode_var.set(old)
+    def test_timing_mode_changes_action_and_guards_word_replacement(self):
+        old = self.app.lyrics_mode_var.get()
+        try:
+            self.app.lyrics_mode_var.set(self.app.t('lyrics_mode_align'))
+            self.app.lyrics_mode_changed()
+            self.assertEqual(self.app.lyrics_mode_key(), 'align')
+            self.assertFalse(self.app.overwrite_lyrics_var.get())
+            self.assertFalse(self.app.view.overwrite_lyrics_check.enabled)
+            self.assertEqual(self.app._process_kwargs()['lyrics_mode'], 'align')
+            with patch.object(self.app, 'correct_lyrics_timing') as correct:
+                self.app.recognize_lyrics()
+                correct.assert_called_once()
+        finally:
+            self.app.lyrics_mode_var.set(old)
+            self.app.lyrics_mode_changed()
+
+    def test_timing_folder_action_does_not_reuse_single_song_text(self):
+        old_source = self.app.source_var.get()
+        old_link = self.app.editor_pipeline_var.get()
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                self.app.source_var.set(directory)
+                self.app.editor_pipeline_var.set(False)
+                with patch.object(self.app, '_run_process') as run:
+                    self.app.correct_lyrics_timing()
+                    run.assert_called_once_with({'lyrics'})
+        finally:
+            self.app.source_var.set(old_source)
+            self.app.editor_pipeline_var.set(old_link)
+
     def test_audio_processing_requires_explicit_selection(self):
         self.assertFalse(self.app.process_audio_var.get())
         self.app.process_audio_var.set(False)
@@ -310,6 +349,30 @@ class GuiAcceptanceTests(unittest.TestCase):
             self.app.view.set_lyrics_busy(False)
             self.app.view.set_lyrics_text(original_text)
             self.app.source_var.set(source)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows NumLock modifier')
+    def test_real_control_events_with_numlock_and_unknown_cyrillic_keysym(self):
+        editor = self.app.view.lyrics_editor
+        original = self.app.view.get_lyrics_text()
+        text = '[00:01.00]Русская строка\nВторая строка'
+        try:
+            self.app.view.show_tab('lyrics')
+            self.app.view.set_lyrics_busy(False)
+            self.app.view.set_lyrics_text(text)
+            editor.focus_force()
+            self.app.update()
+            for letter in ('a', 'c', 'x', 'v'):
+                editor.event_generate('<Control-KeyPress>', keycode=ord(letter.upper()), state=12)
+                self.app.update()
+                if letter == 'a':
+                    self.assertEqual(editor.get(tk.SEL_FIRST, tk.SEL_LAST), text)
+                elif letter == 'c':
+                    self.assertEqual(self.app.clipboard_get(), text)
+                elif letter == 'x':
+                    self.assertEqual(editor.get('1.0', 'end-1c'), '')
+            self.assertEqual(editor.get('1.0', 'end-1c'), text)
+        finally:
+            self.app.view.set_lyrics_text(original)
 
     def test_lyrics_clipboard_menu_and_readonly_guard(self):
         editor = self.app.view.lyrics_editor

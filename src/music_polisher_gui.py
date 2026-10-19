@@ -22,6 +22,7 @@ from PIL import Image, ImageTk
 
 from lyrics_engine import LyricsResult, LyricsService, TranscriptSegment, save_lyrics
 from lyrics_engine.formats import result_from_text, render_lrc, format_timestamp, TIMESTAMP_RE
+from lyrics_engine.formats import timing_input
 from ui.dialogs import AdditionalMetadataDialog, AdvancedAudioDialog, CustomCoverDialog
 from ui.i18n import APP_NAMES, I18N
 from app_identity import set_windows_app_identity
@@ -31,6 +32,7 @@ from sound_analysis import SoundAnalysisCache
 from cover_preferences import load_custom_cover_settings, save_custom_cover_settings
 from ui.folder_picker import choose_windows_folder
 from ui.layout import SonicForgeView
+from ui.keyboard import alt_pressed
 from ui.theme import COLORS, FONTS, SIZES, SPACING, configure_styles
 from ui.windowing import show_centered, set_native_window_icon
 
@@ -313,6 +315,7 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.lyrics_timestamps_var = tk.BooleanVar(value=True)
         self.lyrics_separate_vocals_var = tk.BooleanVar(value=True)
         self.lyrics_timestamp_var = tk.StringVar(value='00:00.00')
+        self.lyrics_mode_var = tk.StringVar(value=self.t('lyrics_mode_recognize'))
         self.show_splash_var = tk.BooleanVar(value=not splash_preference_path().is_file())
         self.lyrics_status_key = "lyrics_status_empty"
         self.lyrics_status_args = {}
@@ -424,6 +427,21 @@ class SonicForgeApp(TkinterDnD.Tk):
 
     def lyrics_language_values(self):
         return tuple(LYRICS_LANGUAGE_CHOICES[self.language])
+
+    def lyrics_mode_key(self):
+        value = self.lyrics_mode_var.get()
+        return 'align' if value in ('align', I18N['ru']['lyrics_mode_align'], I18N['en']['lyrics_mode_align']) else 'recognize'
+
+    def lyrics_mode_values(self):
+        return (self.t('lyrics_mode_recognize'), self.t('lyrics_mode_align'))
+
+    def lyrics_mode_changed(self):
+        timing = self.lyrics_mode_key() == 'align'
+        if timing:
+            self.overwrite_lyrics_var.set(False)
+        if hasattr(self, 'view') and hasattr(self.view, 'lyrics_mode_combo'):
+            self.view.recognize_lyrics_button.configure(text=self.t('lyrics_correct_timing' if timing else 'lyrics_recognize'))
+            self.view.overwrite_lyrics_check.configure(state='disabled' if timing or self.view.busy else 'normal')
 
     def lyrics_language_key(self):
         value = self.lyrics_language_var.get()
@@ -606,6 +624,10 @@ class SonicForgeApp(TkinterDnD.Tk):
 
     def _set_source_path(self, path, *, is_folder):
         self.stop_audio_preview()
+        if not self.editor_pipeline_var.get():
+            self.view.lyrics_player.invalidate()
+            self.view.lyrics_player.has_position = False
+            self.view.lyrics_player.value.set(0)
         self.source_var.set(str(path))
         self.output_var.set(str(default_output_path(path)))
         self._last_source_directory = str(Path(path) if is_folder else Path(path).parent)
@@ -617,9 +639,10 @@ class SonicForgeApp(TkinterDnD.Tk):
         self.view.set_audio_recommendation_ready(False)
         self.last_cover_path = None
         self.view.reset_cover_preview()
-        self.lyrics_result = None
-        self.view.set_lyrics_text("")
-        self._set_lyrics_status("lyrics_status_empty")
+        if not self.editor_pipeline_var.get():
+            self.lyrics_result = None
+            self.view.set_lyrics_text("")
+            self._set_lyrics_status("lyrics_status_empty")
 
     def choose_source_folder(self):
         self._choose_folder("source")
@@ -1043,6 +1066,7 @@ class SonicForgeApp(TkinterDnD.Tk):
     def play_audio_preview(self, processed=False):
         if not self.audio_preview_paths:
             return
+        self.view.lyrics_player.stop()
         try:
             import winsound
 
@@ -1087,6 +1111,7 @@ class SonicForgeApp(TkinterDnD.Tk):
             "lyrics_language": self.lyrics_language_key(),
             "overwrite_lyrics": bool(self.overwrite_lyrics_var.get()),
             "lyrics_separate_vocals": bool(self.lyrics_separate_vocals_var.get()),
+            "lyrics_mode": self.lyrics_mode_key(),
         }
         kwargs.update(self._audio_processing_values())
         return kwargs
@@ -1120,9 +1145,10 @@ class SonicForgeApp(TkinterDnD.Tk):
             self.view.set_audio_recommendation_ready(False)
             self.view.reset_cover_preview()
             self.last_cover_path = None
-            self.lyrics_result = None
-            self.view.set_lyrics_text('')
-            self._set_lyrics_status('lyrics_status_empty')
+            # Text and manually corrected timings belong to the workspace.
+            # Invalidating an audio render must never discard the user's edits.
+            if hasattr(self.view, 'lyrics_player'):
+                self.view.lyrics_player.invalidate()
         self._sync_lyrics_format()
         self.view.update_editor_pipeline()
 
@@ -1260,7 +1286,7 @@ class SonicForgeApp(TkinterDnD.Tk):
         if source is None:
             return
         try:
-            result = LyricsService(metadata_reader=music_metadata.read_all_metadata).load_existing(source)
+            result = LyricsService(metadata_reader=music_metadata.read_all_metadata).load_for_timing(source)
         except Exception as exc:
             messagebox.showerror(self.app_name(), str(exc))
             return
@@ -1270,6 +1296,8 @@ class SonicForgeApp(TkinterDnD.Tk):
         self._apply_lyrics_result(result)
 
     def recognize_lyrics(self, _prepared_source=None):
+        if self.lyrics_mode_key() == 'align':
+            return self.correct_lyrics_timing(_prepared_source)
         if self.editor_pipeline_var.get() and _prepared_source is None:
             return self._prepare_editor_source(self.recognize_lyrics)
         if self.worker and self.worker.is_alive():
@@ -1292,6 +1320,47 @@ class SonicForgeApp(TkinterDnD.Tk):
         )
         self.worker.start()
         self._lyrics_after_id = self.after(100, self._poll_lyrics)
+
+    def correct_lyrics_timing(self, _prepared_source=None):
+        if self.worker and self.worker.is_alive():
+            return
+        if self.editor_pipeline_var.get() and _prepared_source is None:
+            return self._prepare_editor_source(self.correct_lyrics_timing)
+        if not self.editor_pipeline_var.get() and Path(self.source_var.get().strip()).is_dir():
+            self.view.show_tab('processing')
+            return self._run_process({'lyrics'})
+        source = _prepared_source or self._single_audio_source()
+        if source is None:
+            return
+        text = self.view.get_lyrics_text()
+        try:
+            original = timing_input(text, self.lyrics_result)
+            if not original.text.strip():
+                raise ValueError(self.t('lyrics_timing_requires_text'))
+        except ValueError as exc:
+            messagebox.showerror(self.app_name(), str(exc))
+            return
+        self.cancel_event.clear()
+        self.view.set_busy(True)
+        self.view.set_lyrics_busy(True)
+        self._set_lyrics_status('lyrics_status_aligning')
+        self.worker = threading.Thread(target=self._lyrics_timing_worker,
+            args=(source, original, self.lyrics_language_key(), bool(self.lyrics_separate_vocals_var.get())), daemon=True)
+        self.worker.start()
+        self._lyrics_after_id = self.after(100, self._poll_lyrics)
+
+    def _lyrics_timing_worker(self, source, original, language, vocals):
+        try:
+            result = self._get_lyrics_service(vocals).align(source, original, self.cancel_event,
+                lambda stage: self._lyrics_results.put(('progress', stage)), language)
+            if result.review_reason:
+                self._lyrics_results.put(('timing_review', None))
+            else:
+                self._lyrics_results.put(('timing_result', result))
+        except Exception as exc:
+            self._lyrics_results.put(('cancelled', None) if self.cancel_event.is_set() else ('error', str(exc)))
+        finally:
+            self._lyrics_results.put(('done', None))
 
     def preview_cover(self, _prepared_source=None):
         if self.worker and self.worker.is_alive():
@@ -1457,10 +1526,18 @@ class SonicForgeApp(TkinterDnD.Tk):
                 if event == "line":
                     line = f'[{format_timestamp(value.start)}]{value.text}' if self.lyrics_timestamps_var.get() else value.text
                     self.view.append_lyrics_line(line)
+                elif event == 'timing_result':
+                    self.lyrics_timestamps_var.set(True)
+                    self._apply_lyrics_result(value)
+                    self._set_lyrics_status('lyrics_timing_partial' if value.timings_preserved else 'lyrics_timing_ready',
+                                            count=value.timings_preserved)
+                elif event == 'timing_review':
+                    self._set_lyrics_status('lyrics_timing_review')
                 elif event == "progress":
                     key = {"loading_model": "lyrics_status_loading", "detecting_language": "lyrics_status_language",
                            "verifying": "lyrics_status_verifying", 'separating_vocals': 'lyrics_status_separating',
-                           'vocals_cached': 'lyrics_status_vocals_cached'}.get(
+                           'vocals_cached': 'lyrics_status_vocals_cached', 'aligning': 'lyrics_status_aligning',
+                           'loading_alignment': 'lyrics_status_alignment_loading'}.get(
                         value, "lyrics_status_recognizing",
                     )
                     self._set_lyrics_status(key)
@@ -1479,7 +1556,7 @@ class SonicForgeApp(TkinterDnD.Tk):
                 elif event == "cancelled":
                     self.write_log(self.t("run_stopped") + "\n")
                 elif event == "error":
-                    self._set_lyrics_status("lyrics_status_error")
+                    self._set_lyrics_status('lyrics_status_alignment_error' if self.lyrics_mode_key() == 'align' else 'lyrics_status_error')
                     messagebox.showerror(self.app_name(), value)
                 elif event == "done":
                     done = True
@@ -1530,6 +1607,8 @@ class SonicForgeApp(TkinterDnD.Tk):
         return None
 
     def _edited_lyrics_result(self, text):
+        if self.lyrics_mode_key() == 'align':
+            return timing_input(text, self.lyrics_result)
         return result_from_text(text, self.lyrics_result)
 
     def import_lyrics_file(self):
@@ -1540,8 +1619,9 @@ class SonicForgeApp(TkinterDnD.Tk):
         if not path:
             return
         try:
-            result = result_from_text(Path(path).read_text(encoding='utf-8-sig'),
-                                      force_timed=Path(path).suffix.lower() == '.lrc')
+            raw = Path(path).read_text(encoding='utf-8-sig')
+            result = timing_input(raw) if self.lyrics_mode_key() == 'align' else result_from_text(
+                raw, force_timed=Path(path).suffix.lower() == '.lrc')
             self._apply_lyrics_result(result)
         except (OSError, ValueError) as exc:
             messagebox.showerror(self.app_name(), str(exc))
@@ -1559,18 +1639,19 @@ class SonicForgeApp(TkinterDnD.Tk):
             self.lyrics_timestamps_var.set(not self.lyrics_timestamps_var.get())
             messagebox.showerror(self.app_name(), str(exc))
 
-    def insert_lyrics_timestamp(self, from_cursor=False):
+    def insert_lyrics_timestamp(self, from_cursor=False, advance=False):
         if self.worker and self.worker.is_alive():
             return
         try:
-            stamp = (format_timestamp(self.view.editor.cursor) if from_cursor else
+            player = self.view.lyrics_player
+            position = player.position if player.has_position else self.view.editor.cursor
+            stamp = (format_timestamp(max(0, position - .1)) if from_cursor else
                      format_timestamp(result_from_text(f'[{self.lyrics_timestamp_var.get()}]x', force_timed=True).segments[0].start))
         except (ValueError, IndexError) as exc:
             messagebox.showerror(self.app_name(), str(exc))
             return
         if not self.lyrics_timestamps_var.get():
             self.lyrics_timestamps_var.set(True)
-            self.toggle_lyrics_timestamps()
         editor = self.view.lyrics_editor
         start = editor.index('insert linestart')
         line = editor.get(start, 'insert lineend')
@@ -1581,6 +1662,16 @@ class SonicForgeApp(TkinterDnD.Tk):
         editor.insert(start, f'[{stamp}]')
         editor.edit_separator()
         self.lyrics_timestamp_var.set(stamp)
+        if advance:
+            # Keep written order and keyboard focus while tapping successive lines.
+            number = int(start.split('.')[0]) + 1
+            last = int(editor.index('end-1c').split('.')[0])
+            while number <= last and not editor.get(f'{number}.0', f'{number}.end').strip():
+                number += 1
+            if number <= last:
+                editor.mark_set(tk.INSERT, f'{number}.0')
+                editor.see(tk.INSERT)
+            editor.focus_set()
 
     def _apply_lyrics_result(self, result):
         self.lyrics_result = result
@@ -1848,7 +1939,7 @@ class SonicForgeApp(TkinterDnD.Tk):
 
     def _editor_shortcut(self, event):
         # AltGr (Ctrl+Alt) is text input, not an editing shortcut.
-        if not event.state & 0x4 or event.state & (0x8 | 0x20000):
+        if not event.state & 0x4 or alt_pressed(event.state):
             return None
         letter = str(event.keysym).lower()
         if sys.platform == "win32":

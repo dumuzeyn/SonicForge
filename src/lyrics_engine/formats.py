@@ -93,6 +93,27 @@ def result_from_text(text, previous=None, force_timed=False):
                    instrumental=False, review_reason='')
 
 
+def timing_input(text, previous=None):
+    """Capture supplied lines in their written order, even when old times are wrong."""
+    if not TIMESTAMP_HINT_RE.search(text):
+        result = result_from_text(text, previous)
+        lines = [line for line in result.text.splitlines() if line.strip()]
+        return replace(result, segments=tuple(replace(s, text=line) for s, line in zip(result.segments, lines)))
+    segments = []
+    offset = next((raw.strip() for raw in text.splitlines()
+                   if re.fullmatch(r'\[offset:[+-]?\d+\]', raw.strip(), re.I)), '')
+    for raw in text.splitlines():
+        if not raw.strip() or LRC_HEADER_RE.fullmatch(raw.strip()) or re.fullmatch(r'\[offset:[+-]?\d+\]', raw.strip(), re.I):
+            continue
+        segments.extend(parse_lrc(offset + '\n' + raw, strict=True))
+    if not segments:
+        raise ValueError('Timing correction requires existing lyric lines')
+    segments = tuple(replace(segment, end=segments[index + 1].start if index + 1 < len(segments) else segment.start)
+                     for index, segment in enumerate(segments))
+    return replace(previous or LyricsResult(text=''), text='\n'.join(s.text for s in segments),
+                   segments=segments, review_reason='', instrumental=False)
+
+
 def render_lrc(result):
     if result.segments:
         return "\n".join(f"[{_timestamp(segment.start)}]{segment.text.strip()}" for segment in result.segments if segment.text.strip()) + "\n"
@@ -101,7 +122,8 @@ def render_lrc(result):
 
 def embed_lyrics(audio_path, result):
     """Store timed lyric lines in an MP3 USLT frame without a sidecar file."""
-    from audio_tags import text_frame, update_id3
+    from audio_tags import text_frame, update_id3, read_id3
+    from cover_tag import compact_artwork
 
     audio_path = Path(audio_path)
     if audio_path.suffix.lower() != ".mp3":
@@ -118,8 +140,16 @@ def embed_lyrics(audio_path, result):
                         ("SONICFORGE_LYRICS_ALPHABET", result.transcription_alphabet)):
         if value and value != "unknown":
             frames.append(text_frame('TXXX', value, description=name))
-    update_id3(audio_path, frames, remove_names=('USLT',), remove_custom=(
-        'SONICFORGE_LYRICS_LANGUAGE', 'SONICFORGE_LYRICS_ALPHABET'))
+    custom = ('SONICFORGE_LYRICS_LANGUAGE', 'SONICFORGE_LYRICS_ALPHABET')
+    _, _, existing = read_id3(audio_path)
+    retained = [frame for frame in existing if frame.name != 'USLT'
+                and not (frame.name == 'TXXX' and frame.description in custom)]
+    compatible = compact_artwork(retained + frames)
+    covers = [frame for frame in compatible if frame.name == 'APIC']
+    changed = covers != [frame for frame in retained if frame.name == 'APIC']
+    if changed:
+        frames.extend(covers)
+    update_id3(audio_path, frames, remove_names=('USLT', 'APIC') if changed else ('USLT',), remove_custom=custom)
     return audio_path
 
 

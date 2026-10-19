@@ -21,6 +21,7 @@ class LyricsResult:
     source: str = "unknown"
     transcription_alphabet: str | None = None
     review_reason: str = ""
+    timings_preserved: int = 0
 
     @property
     def has_timestamps(self):

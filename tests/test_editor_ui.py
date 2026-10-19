@@ -1,5 +1,6 @@
 from pathlib import Path
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -11,6 +12,7 @@ from unittest.mock import patch, PropertyMock
 from audio_editor import AudioSource
 from music_polisher_gui import SonicForgeApp
 from ui.widgets import RoundedButton
+from ui.editor import ICONS
 from test_audio_editor import make_tone
 
 
@@ -27,6 +29,9 @@ class EditorUiTests(unittest.TestCase):
         from audio_editor import Timeline
         self.editor = self.app.view.editor
         self.editor.stop()
+        self.app.view.lyrics_player.stop()
+        self.app.view.lyrics_player.has_position = False
+        self.app.view.lyrics_player.value.set(0)
         self.editor.project = Timeline()
         self.editor.selected = None
         self.editor.cursor = 0
@@ -44,6 +49,120 @@ class EditorUiTests(unittest.TestCase):
         self.assertEqual(self.app.view.active_tab, "editor")
         self.assertIsNone(self.app._lyrics_service)
         self.assertIsNone(self.app.worker)
+
+    def test_right_drag_selects_and_control_wheel_zooms_without_editing_audio(self):
+        clip = self.editor.project.add(AudioSource('song.wav', 20))
+        self.editor.changed()
+        self.app.update()
+        self.editor._right_press(self._event(2))
+        self.editor._motion(self._event(5))
+        self.editor._release(self._event(5))
+        self.assertEqual(self.editor._trim_range(), (2, 5))
+        self.assertEqual(self.editor.project.clips, [clip])
+        self.assertEqual(len(self.editor.project._undo), 1)
+        zoom = self.editor.zoom
+        self.editor._wheel(SimpleNamespace(delta=120, state=4, x=250))
+        self.assertGreater(self.editor.zoom, zoom)
+        self.editor._wheel(SimpleNamespace(delta=-120, state=4, x=250))
+        self.assertAlmostEqual(self.editor.zoom, zoom)
+
+    def test_linked_lyrics_survive_navigation_audio_edits_and_mode_changes(self):
+        from lyrics_engine.formats import timing_input
+        app = self.app
+        clip = self.editor.project.add(AudioSource('song.wav', 20))
+        self.editor.selected = clip.id
+        text = '[00:01.20]First line\n[00:04.30]Second line'
+        original = timing_input(text)
+        app.lyrics_result = original
+        app.view.set_lyrics_text(text)
+        app.view.lyrics_editor.mark_set(tk.INSERT, '2.5')
+        linked = app.editor_pipeline_var.get()
+        try:
+            app.editor_pipeline_var.set(True)
+            for tab in ('lyrics', 'audio', 'metadata', 'editor', 'lyrics'):
+                app.view.show_tab(tab)
+                app.update_idletasks()
+            self.editor.apply_fade('fade_in', .5)
+            self.editor.history(False)
+            app._editor_project_changed(force=True)
+            self.assertEqual(app.view.get_lyrics_text(), text)
+            self.assertEqual(app.view.lyrics_editor.index(tk.INSERT), '2.5')
+            self.assertIs(app.lyrics_result, original)
+        finally:
+            app.editor_pipeline_var.set(linked)
+
+    def test_live_lyrics_stamps_anticipate_and_advance_without_erasing_plain_lines(self):
+        app = self.app
+        player = app.view.lyrics_player
+        app.view.set_lyrics_text('First line\n\nSecond line')
+        app.view.lyrics_editor.mark_set(tk.INSERT, '1.0')
+        app.lyrics_timestamps_var.set(False)
+        player.duration = 20
+        player.has_position = True
+        player.value.set(3)
+        app.insert_lyrics_timestamp(True, advance=True)
+        self.assertEqual(app.view.get_lyrics_text(), '[00:02.90]First line\n\nSecond line')
+        self.assertEqual(app.view.lyrics_editor.index(tk.INSERT), '3.0')
+        player.value.set(.05)
+        app.insert_lyrics_timestamp(True)
+        self.assertIn('[00:00.00]Second line', app.view.get_lyrics_text())
+        app.lyrics_timestamp_var.set('00:04.25')
+        app.insert_lyrics_timestamp()
+        self.assertIn('[00:04.25]Second line', app.view.get_lyrics_text())
+
+    def test_lyrics_player_plays_editor_mix_seeks_and_reuses_render(self):
+        from audio_editor import read_waveform
+        app = self.app
+        player = app.view.lyrics_player
+        linked = app.editor_pipeline_var.get()
+        try:
+            with tempfile.TemporaryDirectory() as folder, patch('winsound.PlaySound') as sound:
+                path = Path(folder) / 'song.wav'
+                make_tone(path, duration=2)
+                before = path.read_bytes()
+                self.editor.project.add(read_waveform(path))
+                app.editor_pipeline_var.set(True)
+                player.play()
+                self._wait_for_player()
+                self.assertAlmostEqual(player.duration, 2, places=2)
+                sound.assert_called()
+                player.stop()
+                player.seek(1)
+                with patch('ui.lyrics_player.render') as renderer:
+                    player.play()
+                    self._wait_for_player()
+                    renderer.assert_not_called()
+                self.assertGreaterEqual(player.position, 1)
+                player.stop()
+                self.assertEqual(path.read_bytes(), before)
+        finally:
+            player.stop()
+            app.editor_pipeline_var.set(linked)
+
+    def test_lyrics_player_reads_single_file_in_separate_mode(self):
+        app = self.app
+        player = app.view.lyrics_player
+        linked = app.editor_pipeline_var.get()
+        try:
+            with tempfile.TemporaryDirectory() as folder, patch('winsound.PlaySound'):
+                path = Path(folder) / 'song.wav'
+                make_tone(path)
+                app.editor_pipeline_var.set(False)
+                with patch.object(app, '_single_audio_source', return_value=path):
+                    player.play()
+                    self._wait_for_player()
+                self.assertAlmostEqual(player.duration, 2, places=2)
+        finally:
+            player.stop()
+            app.editor_pipeline_var.set(linked)
+
+    def _wait_for_player(self):
+        deadline = time.monotonic() + 10
+        while not self.app.view.lyrics_player.playing:
+            self.app.update()
+            time.sleep(.005)
+            if time.monotonic() > deadline:
+                self.fail(self.app.lyrics_status_var.get())
 
     def test_metadata_keep_lyrics_setting_defaults_on_and_is_forwarded(self):
         self.assertTrue(self.app.preserve_lyrics_var.get())
@@ -79,7 +198,7 @@ class EditorUiTests(unittest.TestCase):
             self.editor.cursor = 9.75
             app.insert_lyrics_timestamp(True)
             result = app._edited_lyrics_result(app.view.get_lyrics_text())
-            self.assertEqual([s.start for s in result.segments], [1.25, 9.75])
+            self.assertEqual([s.start for s in result.segments], [1.25, 9.65])
             self.assertEqual(result.text, 'Edited first\nEdited second')
             with patch('music_polisher_gui.messagebox.showerror') as error:
                 app.lyrics_timestamp_var.set('bad time')
@@ -127,13 +246,11 @@ class EditorUiTests(unittest.TestCase):
         self.editor.project.add(AudioSource('second.wav', 10), lane=1)
         self.editor.selected = first.id
         self.editor.refresh()
-        self.assertEqual(self.editor.track_toggle_button.cget('text'), self.editor.tr('track_on'))
         with patch.object(self.editor, 'stop') as stop:
             self.editor.toggle_track()
         stop.assert_called_once()
         self.assertEqual(self.editor.project.muted, {0})
         self.assertIsNone(self.editor._preview_cache)
-        self.assertEqual(self.editor.track_toggle_button.cget('text'), self.editor.tr('track_off'))
         self.editor.history(False)
         self.assertEqual(self.editor.project.muted, set())
         self.editor.history(True)
@@ -156,7 +273,7 @@ class EditorUiTests(unittest.TestCase):
         self.editor.refresh()
         self.editor.toggle_track()
         self.assertEqual(self.editor.project.muted, set())
-        self.assertEqual(str(self.editor.track_toggle_button.cget('state')), 'disabled')
+        self.assertEqual(str(self.editor.cursor_selection_button.cget('state')), 'disabled')
 
     def test_tool_shortcuts_work_in_russian_layout_and_show_in_stem_menu(self):
         def key(code, symbol, state=4):
@@ -181,7 +298,7 @@ class EditorUiTests(unittest.TestCase):
         modal = tk.Toplevel(self.app)
         try:
             with patch.object(self.editor, 'separate_stems') as separate:
-                for widget, state in ((entry, 5), (self.editor.canvas, 13), (modal, 5)):
+                for widget, state in ((entry, 5), (self.editor.canvas, 5 | (0x20000 if sys.platform == 'win32' else 8)), (modal, 5)):
                     event = SimpleNamespace(widget=widget, state=state, keycode=86, keysym='V')
                     self.assertIsNone(self.editor._shortcut(event))
                 self.app.view.show_tab('metadata')
@@ -212,7 +329,7 @@ class EditorUiTests(unittest.TestCase):
         self.editor.selected = clip.id
         self.editor.project.update(clip.id, end=8)
         self.editor.refresh()
-        for focus in (self.editor.canvas, self.editor.undo_button, self.editor.inspector_controls[0]):
+        for focus in (self.editor.canvas, self.editor.undo_button, self.editor.selection_controls[0]):
             focus.focus_force()
             self.app.update()
             focus.event_generate('<KeyPress>', keycode=90, state=4)
@@ -258,10 +375,8 @@ class EditorUiTests(unittest.TestCase):
         clip = self.editor.project.add(source)
         self.editor.selected = clip.id
         self.editor.refresh()
-        self.editor.fields["start"].set("1,5")
-        self.editor.fields["end"].set("8")
-        self.editor.fields["gain"].set("-6")
-        self.editor.apply()
+        self.editor.project.update(clip.id, start=1.5, end=8, gain=-6)
+        self.editor.changed()
         self.assertEqual(self.editor.project.get(clip.id).start, 1.5)
         self.assertEqual(self.editor.project.get(clip.id).gain, -6)
         self.editor.cursor = 3
@@ -340,7 +455,7 @@ class EditorUiTests(unittest.TestCase):
         before = (button.winfo_width(), button.winfo_height())
         button.invoke()
         self.app.update_idletasks()
-        self.assertEqual(button.cget('text'), self.editor.tr('finish_range'))
+        self.assertEqual(button.cget('text'), ICONS['finish_range'])
         self.assertEqual((button.winfo_width(), button.winfo_height()), before)
         self.editor.cursor = 6.345
         self.editor._update_cursor_selection()
@@ -349,7 +464,7 @@ class EditorUiTests(unittest.TestCase):
         self.assertEqual(self.editor.project.get(clip.id), clip)
         button.invoke()
         self.app.update_idletasks()
-        self.assertEqual(button.cget('text'), self.editor.tr('begin_range'))
+        self.assertEqual(button.cget('text'), ICONS['begin_range'])
         self.assertEqual((button.winfo_width(), button.winfo_height()), before)
         self.assertEqual(self.editor._trim_range(), (4.234, 6.345))
         self.assertEqual(self.editor.trim_button.cget('state'), 'normal')
@@ -473,23 +588,65 @@ class EditorUiTests(unittest.TestCase):
             self.assertEqual(self.editor.range, before)
         self.editor.selected = None
         self.editor.refresh()
-        self.assertTrue(all(str(w.cget('state')) == 'disabled' for w in self.editor.inspector_controls + self.editor.selection_controls))
+        self.assertTrue(all(str(w.cget('state')) == 'disabled' for w in self.editor.selection_controls))
 
-    def test_inspector_groups_apply_all_audio_and_placement_parameters(self):
-        clip = self.editor.project.add(AudioSource('song.wav', 20))
+    def test_fade_tools_update_only_the_selected_edge_and_support_undo(self):
+        clip = self.editor.project.add(AudioSource('song.wav', 10))
+        clip = self.editor.project.update(clip.id, gain=-7, position=2, fade_out=1)
         self.editor.selected = clip.id
         self.editor.refresh()
-        self.assertEqual(len(self.editor.inspector_groups), 3)
-        for key, value in {'start': '1.234', 'end': '12.345', 'position': '2.345',
-                           'gain': '-3.5', 'fade_in': '0.123', 'fade_out': '0.234'}.items():
-            self.editor.fields[key].set(value)
-        self.editor.lane.set(3)
-        self.editor.apply()
-        changed = self.editor.project.get(clip.id)
-        self.assertEqual((changed.start, changed.end, changed.position, changed.gain, changed.fade_in, changed.fade_out, changed.lane),
-                         (1.234, 12.345, 2.345, -3.5, .123, .234, 2))
+        self.assertTrue(self.editor.apply_fade('fade_in', .75))
+        edited = self.editor.project.get(clip.id)
+        self.assertEqual((edited.fade_in, edited.fade_out, edited.gain, edited.position), (.75, 1, -7, 2))
+        self.assertFalse(self.editor.apply_fade('fade_out', 10))
+        self.assertEqual(self.editor.project.get(clip.id), edited)
         self.editor.history(False)
         self.assertEqual(self.editor.project.get(clip.id), clip)
+        self.editor.history(True)
+        self.assertEqual(self.editor.project.get(clip.id), edited)
+        self.editor.draw()
+        self.assertEqual(len(self.editor.canvas.find_withtag('fade-envelope')), 2)
+
+    def test_shift_wheel_zooms_about_pointer_without_changing_audio(self):
+        clip = self.editor.project.add(AudioSource('song.wav', 120))
+        self.editor.selected = clip.id
+        self.editor.refresh()
+        self.editor.draw()
+        self.editor.zoom = 3
+        self.editor.draw()
+        self.editor.canvas.xview_moveto(.2)
+        pointer = 400
+        before = (self.editor.canvas.canvasx(pointer) - 85) / self.editor._scale()
+        vertical = self.editor.canvas.yview()
+        self.assertEqual(self.editor._wheel(SimpleNamespace(delta=120, state=1, x=pointer)), 'break')
+        after = (self.editor.canvas.canvasx(pointer) - 85) / self.editor._scale()
+        self.assertAlmostEqual(after, before, delta=1.5 / self.editor._scale())
+        self.assertEqual(self.editor.zoom, 3.75)
+        self.assertEqual(self.editor.canvas.yview(), vertical)
+        self.assertEqual(self.editor.project.get(clip.id), clip)
+        self.editor._wheel(SimpleNamespace(delta=-120, state=1, x=pointer))
+        self.assertEqual(self.editor.zoom, 3)
+        self.editor._wheel(SimpleNamespace(delta=-120, state=0, x=pointer))
+        self.assertEqual(self.editor.zoom, 3)
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows NumLock modifier')
+    def test_numlock_control_shortcuts_on_timeline(self):
+        clip = self.editor.project.add(AudioSource('song.wav', 10))
+        self.editor.selected = clip.id
+        self.editor.cursor = 5
+        self.editor.refresh()
+        self.editor._shortcut(SimpleNamespace(widget=self.editor.canvas, state=12, keycode=75, keysym='??'))
+        self.assertEqual(len(self.editor.project.clips), 2)
+
+    def test_editor_has_icon_tools_in_order_and_no_inspector_or_draft(self):
+        self.assertFalse(hasattr(self.editor, 'inspector'))
+        self.assertFalse(hasattr(self.editor, 'menu'))
+        self.assertEqual([key for key, _ in self.editor.main_tools],
+                         ['fade_in', 'fade_out', 'crossfade', 'begin_range', 'split', 'delete'])
+        for key, button in self.editor.main_tools:
+            self.assertEqual(button.cget('text'), ICONS[key])
+            self.assertTrue(button.help_text_provider())
+            self.assertTrue(button.bind('<ButtonPress-3>'))
 
     def test_open_with_arguments_import_unicode_audio_into_editor_without_processing(self):
         with tempfile.TemporaryDirectory() as folder:

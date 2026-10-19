@@ -206,16 +206,16 @@ def _artistic_texture(dna, plan, params, size, rng, *, palette=None, palette_sto
     if timeline is not None:
         # M2Pv3 keeps the organic foreground but exposes the spectral structure
         # underneath it. These fields use the original x, never folded xw.
-        base_field = np.clip(base_field * .84 + timeline.spectrum * .10 + timeline.level * .06, 0, 1)
+        base_field = np.clip(base_field * .90 + timeline.spectrum * .07 + timeline.level * .03, 0, 1)
         center = .18 + timeline.drive * .64
-        positions = np.clip(center + (base_field - .5) * (.40 + dna.harmonic_complexity * .10), 0, 1)
+        positions = np.clip(positions * .70 + center * .30 + (base_field - .5) * .08, 0, 1)
     rgb = lookup[np.rint(positions * 4095).astype(np.uint16)].astype(np.float32)
     # Tonal depth is independent of hue selection, including a one-color palette.
     local_drive = params.energy * (1 - minority) + character.opposite_drive * minority
     if timeline is not None:
         local_drive = np.broadcast_to(timeline.drive, base_field.shape)
-        rgb *= (.76 + timeline.level * .24)[..., None]
-        rgb *= (.90 + timeline.spectrum * .16)[..., None]
+        rgb *= (.88 + timeline.level * .12)[..., None]
+        rgb *= (.94 + timeline.spectrum * .08)[..., None]
     rgb *= (.52 + .52 * base_field)[..., None]
     # Fine lamination follows the broad folds instead of adding speckled noise.
     # Energetic music has more strata; quiet material stays open and spacious.

@@ -41,7 +41,7 @@ Windows x64. Сборка рассчитана на Windows 10/11. Устано�
 
 Кнопка «Связь с редактором» переключает режим. **Выкл.** — редактор экспортирует отдельно, остальные разделы используют выбранный исходник. **Вкл.** — анализ, обложка, текст и «Выполнение» используют текущий монтаж всех включённых дорожек, без ручного экспорта. Экспорт редактора доступен в обоих режимах. Настройки раздела «Звук» не меняют фрагменты на дорожках; при выполнении они дополнительно применяются к рабочему миксу. Предпросмотры не запускают «Выполнение».
 
-Рядом с переключателем выберите формат рабочей версии: MP3, WAV или M4A. Без этапа «Звук» это также формат результата; при включении этого этапа создаётся MP3 с настройками раздела «Звук». Пока монтаж не изменён, рабочая версия используется повторно. Правки дорожек, смена режима или формата очищают старые предпросмотры и текст, поскольку таймкоды могли измениться. Обновите их перед «Выполнением». В связанном режиме «Записать в песню» сохраняет текст только в рабочую версию, а «Выполнение» — в итоговый файл. Рабочие файлы временные и удаляются при закрытии приложения; перед выходом выполните обработку или экспорт.
+Рядом с переключателем выберите формат рабочей версии: MP3, WAV или M4A. Без этапа «Звук» это также формат результата; при включении этого этапа создаётся MP3 с настройками раздела «Звук». Пока монтаж не изменён, рабочая версия используется повторно. Правки дорожек, смена режима или формата обновляют аудиопредпросмотры. Введённый текст и таймкоды сохраняются; после изменения длительности монтажа их можно поправить вручную или запустить коррекцию таймингов. В связанном режиме «Записать в песню» сохраняет текст только в рабочую версию, а «Выполнение» — в итоговый файл. Рабочие файлы временные и удаляются при закрытии приложения; перед выходом выполните обработку или экспорт.
 
 ## Аудиоредактор
 
@@ -59,10 +59,12 @@ Windows x64. Сборка рассчитана на Windows 10/11. Устано�
 | --- | --- |
 | Щелчок по фрагменту | Выбирает его и ставит красный курсор — позицию разреза и начала прослушивания |
 | Перетаскивание фрагмента | Меняет его положение, в том числе переносит на другую дорожку; звук не разрезается |
-| Shift + перетаскивание | Выделяет диапазон внутри выбранного фрагмента |
+| Правая кнопка + перетаскивание | Выделяет диапазон внутри выбранного фрагмента |
 | «От», «До», «Выделить» | Задают точные границы от начала фрагмента, в секундах, с шагом 0,001 с |
 | «Начать выделение» | Отмечает курсор как начало; повторное нажатие «Завершить выделение» задаёт конец, в том числе при воспроизведении |
 | «К выделению» | Приближает выбранный диапазон |
+| Ctrl + колесо мыши | Меняет масштаб вокруг указателя на шкале; звук остаётся прежним |
+| «Плавный вход», «Плавный выход» | Отдельно задают длительность обработки начала и конца фрагмента; середина сохраняет громкость |
 | «−», «+», «Вся песня» | Меняют масштаб отображения; звук и длительность не меняются |
 | «Разделить» | Делит выбранный фрагмент у курсора на два |
 | «Удалить выделение» | Вырезает диапазон и соединяет оставшиеся части без паузы, со сглаживанием до 40 мс для уменьшения щелчка |
@@ -72,24 +74,17 @@ Windows x64. Сборка рассчитана на Windows 10/11. Устано�
 
 Счётчик под шкалой — текущая позиция / длина проекта, а не время до окончания обработки. Полосы прокрутки перемещают видимую часть шкалы. Выделение — визуальная область выбранного времени, не отдельная звуковая дорожка.
 
-### Панель выбранного фрагмента
+### Основные инструменты
 
-| Поле | Значение |
-| --- | --- |
-| «Начало», «Конец» | Границы звука в исходном файле; скрытая часть не удаляется из оригинала |
-| «Позиция» | Время начала фрагмента на общей шкале проекта |
-| «Дорожка» | Номер дорожки, начиная с 1 |
-| «Громкость, dB» | Усиление фрагмента: 0 — без изменения, отрицательное — тише, положительное — громче |
-| «Появление, с», «Затухание, с» | Плавное нарастание / уменьшение громкости по краям фрагмента |
-| «Применить правки» | Подтверждает изменения в этой панели; изменённые числа сами по себе не являются экспортом |
+Кнопки показаны иконками: плавное начало, плавный конец, плавный переход, выделение, разделение, удаление. Правый клик по кнопке открывает название и описание. Плавный переход соединяет текущую и следующую песни на той же дорожке с перекрытием до 2 секунд и выравниванием громкости у стыка. Удаление вырезает выделенный диапазон, а без выделения убирает весь фрагмент. Ctrl+Z отменяет действие.
 
 «Прослушать» собирает временный микс с позиции курсора. «Стоп» останавливает звук. «Отменить задачу» прекращает текущую фоновую операцию редактора. Подготовка волновой формы, предпросмотра и экспорта выполняется отдельно от главного интерфейса.
 
-### Вокал, инструменты, черновик и экспорт
+### Вокал, инструменты и экспорт
 
 «Вокал и инструменты» предлагает два варианта: вокал + инструментарий или вокал + ударные + бас + остальное. Выбранный фрагмент заменяется составляющими на отдельных дорожках с общей позицией. Отмена возвращает исходный фрагмент одним действием. Разделение выполняется локальным модулем и может занять несколько минут; примеси инструментов и артефакты возможны. Это не гарантированное восстановление студийных дорожек. Результаты хранятся в пользовательской папке SonicForge/editor-stems.
 
-Меню «Черновик» сохраняет/открывает **.sfproject**: это описание монтажа и пути к исходникам, **не копия аудио**. Не перемещайте и не удаляйте связанные исходники. «Экспорт…» создаёт новый WAV, MP3 или M4A, смешивая включённые дорожки; экспорт редактора использует 44,1 kHz, стерео и ограничение пиков. Существующий выходной файл и исходник не перезаписываются.
+«Экспорт…» создаёт новый WAV, MP3 или M4A, смешивая включённые дорожки; экспорт редактора использует 44,1 kHz, стерео и ограничение пиков. Существующий выходной файл и исходник не перезаписываются.
 
 | Клавиши | Действие |
 | --- | --- |
@@ -98,7 +93,7 @@ Windows x64. Сборка рассчитана на Windows 10/11. Устано�
 | Ctrl+Shift+X | Удалить выделение |
 | Ctrl+D / Delete | Дублировать / удалить фрагмент |
 | Ctrl+Z / Ctrl+Y или Ctrl+Shift+Z | Отменить / повторить |
-| Ctrl+S / Ctrl+O / Ctrl+E | Сохранить черновик / открыть / экспортировать |
+| Ctrl+E | Экспортировать |
 | Ctrl+M | Включить / выключить всю дорожку выбранного клипа |
 | Ctrl+Shift+V / Ctrl+Shift+B | Разделить на 2 / 4 составляющие |
 | Пробел на шкале / Esc | Воспроизведение / остановка и отмена незавершённого выделения или задачи |
@@ -238,7 +233,7 @@ Music2Picture анализирует звук и строит процедурн
 | «Выбрать свою картинку» | Принимает PNG, JPEG, WebP; проверяет изображение, приводит к квадрату выбранного размера |
 | «Использовать генерацию» | Возвращает автоматический источник после выбора своей картинки |
 
-В «Генерируемой» теме цвет и генерация выбираются независимо: доступны девять сочетаний. Цвет M2Pv3 переходит от синего и бирюзового к золотому и оранжевому по измеренной скорости ритма, а не по громкости. Темп оценивается по участкам; возможны ошибки половинного/двойного темпа. Генерация M2Pv3 сохраняет спектральный фон и развитие песни по горизонтали: начало слева, конец справа. «Своя тема» использует вашу палитру с любым из трёх узоров. Классический вариант основан на [закреплённой версии Music2Picture](https://github.com/dumuzeyn/Music2Picture/tree/342013aaa8bdb4cb86c8c14fec0acb038e50b5ca). Исходные поля, изломы и тонкие контуры сохраняются, в том числе у коротких песен. Отдельные шумные пиксели удаляются медианным фильтром 3×3, без общего размытия картинки. Длительность и разнообразие звучания регулируют силу контуров, а не заменяют узор упрощённым шаблоном. Увеличение размера картинки не добавляет новых слоёв или мелкого шума.
+В «Генерируемой» теме цвет и генерация выбираются независимо: доступны девять сочетаний. Цвет M2Pv3 переходит от фиолетового, синего и бирюзового к золотому, оранжевому, красному и кроваво-бордовому по измеренной скорости ритма, а не по громкости. Темп оценивается по участкам; возможны ошибки половинного/двойного темпа. Генерация M2Pv3 сохраняет спектральный фон и развитие песни по горизонтали: начало слева, конец справа. «Своя тема» использует вашу палитру с любым из трёх узоров. Классический вариант основан на [закреплённой версии Music2Picture](https://github.com/dumuzeyn/Music2Picture/tree/342013aaa8bdb4cb86c8c14fec0acb038e50b5ca). Исходные поля, изломы и тонкие контуры сохраняются, в том числе у коротких песен. Отдельные шумные пиксели удаляются медианным фильтром 3×3, без общего размытия картинки. Длительность и разнообразие звучания регулируют силу контуров, а не заменяют узор упрощённым шаблоном. Увеличение размера картинки не добавляет новых слоёв или мелкого шума.
 
 Настроение задаётся внутренней автоматической обработкой: в текущем окне нет поля ручного описания сцены. Своя картинка заменяет генерацию; параметры генератора для неё не применяются, оригинальное изображение не меняется. При «Выполнении» полный PNG сохраняется в папке covers; при включённом встраивании он добавляется к выходному аудио. Предпросмотр ещё не означает, что картинка записана в песню.
 
@@ -255,6 +250,10 @@ Music2Picture анализирует звук и строит процедурн
 При замене только обложки MP3 обновляются только кадры картинки APIC: существующий текст USLT/SYLT, остальные метаданные и звуковые байты сохраняются. Неподдерживаемые или повреждённые заголовки ID3 отклоняются без изменения файла. Отдельно выбранные этапы очистки метаданных или перезаписи текста по-прежнему выполняют свои действия.
 
 ## Текст песни
+
+В разделе текста есть плеер с паузой и перемоткой для обоих режимов источника. F8 ставит метку за 0,1 секунды до текущей позиции и переводит курсор на следующую непустую строку. Распознавание и коррекция также опережают вокал на 0,1 секунды; ручной ввод времени сохраняется точно. Текст и таймкоды сохраняются при переключении вкладок и правках дорожек.
+
+Режим «Коррекция таймингов» сопоставляет аудио с готовыми словами без генерации нового текста. Слова, порядок строк и повторы сохраняются. Старые таймкоды ограничивают поиск ближайшим повтором. Ненайденные или сомнительные строки остаются на старом времени, остальные исправляются. Для одного файла проверьте результат и нажмите «Записать в песню». Для папки используется собственный текст каждой песни из тегов/TXT/LRC, результат сохраняется в выходных копиях, песни без текста пропускаются. Коррекция не режет и не склеивает аудио. Если старые таймкоды противоречат порядку строк, исправьте опорные времена вручную.
 
 Распознавание 2.3.2 идёт с начала песни отрывками по 20 секунд с перекрытием 6 секунд. Слова на стыках объединяются по тексту и времени; пустой отрывок может быть перепроверен независимо от поздних строк. Первую минуту программа не отбрасывает.
 
@@ -329,7 +328,6 @@ Music2Picture анализирует звук и строит процедурн
 - Нет волновой формы: дождитесь фонового чтения; проверьте файл и сообщение ошибки.
 - Кнопки сравнения неактивны: сначала «Создать сравнение» для одного файла.
 - Предпросмотр не изменил песню: это ожидаемо; для копии используйте «Выполнение».
-- В черновике нет звука: восстановите исходные файлы по сохранённым путям.
 - Неверный текст или язык: выберите язык вручную, проверьте результат; не воспринимайте оценку как гарантию.
 - После новой настройки звук старый: создайте сравнение заново.
 - EXE не стартует после переноса: переместите всю портативную папку или установите приложение установщиком.
@@ -437,7 +435,7 @@ If a portable archive is attached, extract the **entire** archive and open **Son
 
 The Link editor button switches workflows. **Off:** editor export is independent and other sections use the selected original. **On:** analysis, artwork, lyrics and Processing use the current mix of all unmuted lanes, without manual export. Export remains available in both modes. Audio-tab settings never alter timeline clips; Processing can apply them to the working mix. Previews do not start Processing.
 
-Choose MP3, WAV or M4A as the working mix format next to the mode button. With Sound disabled, this is also the final audio format; enabling Sound converts to MP3 using the Sound settings. Prepare the mix only once for unchanged edits. Editing the timeline, switching modes or changing the format clears derived previews and lyrics, since their timing may be outdated. Refresh them before running Processing. In linked mode, Save into song writes only to the temporary working mix; Run publishes the final file with the checked text. Session working files are removed when the app closes, so export or run Processing before exiting.
+Choose MP3, WAV or M4A as the working mix format next to the mode button. With Sound disabled, this is also the final audio format; enabling Sound converts to MP3 using the Sound settings. Prepare the mix only once for unchanged edits. Timeline edits, mode switches and format changes refresh audio previews while retaining the entered text and timestamps. If the mix duration changes, adjust the timings manually or run timing correction. In linked mode, Save into song writes only to the temporary working mix; Run publishes the final file with the checked text. Session working files are removed when the app closes, so export or run Processing before exiting.
 
 ## Audio editor
 
@@ -455,7 +453,7 @@ The horizontal axis is project time. Vertical grid marks align moments across tr
 | --- | --- |
 | Click a clip | Selects it and sets the red cursor for a split or playback start |
 | Drag a clip | Moves it in time or to another track, without cutting it |
-| Shift-drag | Selects time inside the selected clip |
+| Right-drag | Selects time inside the selected clip |
 | From, To, Select | Set clip-relative bounds in seconds, with 0.001-second steps |
 | Start selection | Marks the cursor; Finish selection marks the end, including during playback |
 | Zoom selection | Magnifies the selected range |
@@ -468,24 +466,17 @@ The horizontal axis is project time. Vertical grid marks align moments across tr
 
 The counter is current position / total project duration, not processing time remaining. Scrollbars move the timeline view. A highlighted range is a time selection, not a separate track.
 
-### Selected clip inspector
+### Main tools
 
-| Field | Meaning |
-| --- | --- |
-| Start, End | Source-file bounds; hidden parts remain in the original |
-| Position | Clip start on the project timeline |
-| Track | Lane number, starting at 1 |
-| Gain, dB | 0 is neutral, negative is quieter, positive is louder |
-| Fade in / out, seconds | Smooth volume changes at the clip edges |
-| Apply changes | Confirms inspector edits; typing numbers does not export audio |
+Icon buttons: fade in, fade out, crossfade, select, split, delete. Right-click a button for its name and description. Crossfade joins the current song to the next on the same lane with up to 2 seconds of overlap and local loudness matching. Delete removes the selected range, or the entire clip when there is no range. Ctrl+Z undoes the edit.
 
 Play prepares a temporary mix from the cursor. Stop stops playback. Cancel task requests cancellation of the current Editor background operation. Waveforms, previews and exports are prepared outside the main interface loop.
 
-### Vocals, drafts and export
+### Vocals and export
 
 Vocals and instruments offers vocals + accompaniment or vocals + drums + bass + other. The selected clip is replaced by component clips on separate lanes at a common position. One Undo restores the original clip. Separation uses a local worker, may take minutes and can leave bleed or artifacts; it cannot guarantee original studio stems. Stem WAVs are kept in the user's SonicForge/editor-stems folder.
 
-The Draft menu saves/opens **.sfproject** files containing source paths and edits, **not embedded audio**. Keep referenced media in place. Export… writes a new WAV, MP3 or M4A from enabled tracks, using 44.1 kHz, stereo and peak limiting. Existing destinations and source files cannot be overwritten.
+Export… writes a new WAV, MP3 or M4A from enabled tracks, using 44.1 kHz, stereo and peak limiting. Existing destinations and source files cannot be overwritten.
 
 | Shortcut | Action |
 | --- | --- |
@@ -494,7 +485,7 @@ The Draft menu saves/opens **.sfproject** files containing source paths and edit
 | Ctrl+Shift+X | Remove selection |
 | Ctrl+D / Delete | Duplicate / remove clip |
 | Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z | Undo / redo |
-| Ctrl+S / Ctrl+O / Ctrl+E | Save draft / open draft / export |
+| Ctrl+E | Export |
 | Ctrl+M | Enable / disable the selected clip’s whole lane |
 | Ctrl+Shift+V / Ctrl+Shift+B | Separate into 2 / 4 components |
 | Space on timeline / Esc | Play toggle / stop and cancel unfinished selection or task |
@@ -652,7 +643,11 @@ Replacing only MP3 artwork updates the APIC picture frames only: existing USLT/S
 
 ## Lyrics
 
+In Lyrics, choose Timing correction to align supplied words without generating new lyrics. Words, line order and repetitions are preserved. Existing timestamps restrict repeats to the nearest occurrence. Missing or uncertain lines retain their old times while other lines are corrected. Review a single-file result before saving. Folder mode uses each song's own tags/TXT/LRC, writes output copies and skips songs without lyrics. Correction never cuts or joins audio. Inconsistent existing time anchors need manual review.
+
 Recognition in 2.3.2 starts at the beginning with 20-second windows and 6-second overlap. Stitching uses word text and timestamps; an empty excerpt can be retried independently of later lyrics. The first minute is retained.
+
+The Lyrics player supports play, pause and seeking in both source modes. Press F8 to stamp the current line 0.1 seconds before playback position and advance to the next nonempty line. Automatic recognition and timing correction also anticipate vocals by 0.1 seconds; manually entered times stay exact. Text and timestamps survive navigation and editor changes.
 
 Version 2.3.2 imports TXT/LRC and accepts `[00:20.62]line`. Show timestamps toggles the display; insert a time into the current line from the field or audio editor cursor. Recognition first separates vocals using HTDemucs, then runs Whisper; disable separation to recognize the original mix. Review the words: separation does not guarantee accuracy. [Timing, limitations and real-audio verification](docs/LYRICS_TIMING_AND_VOCALS.md).
 
@@ -725,7 +720,6 @@ Troubleshooting:
 - No waveform: wait for background reading and inspect any error.
 - Comparison playback disabled: Create comparison for one file first.
 - Preview did not change the song: expected; use Processing for a copy.
-- Missing draft audio: restore the original media at its saved paths.
 - Wrong lyrics/language: choose language manually and review words; an estimate is not a guarantee.
 - Old sound after editing settings: recreate comparison.
 - EXE fails after being moved: keep the whole portable folder or use the installer.

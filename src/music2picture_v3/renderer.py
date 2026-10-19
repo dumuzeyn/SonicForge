@@ -10,7 +10,7 @@ from music2picture_v2.renderer import (COMPOSITIONS, _artistic_texture, _finish,
 
 from .audio_analysis import SongStructure
 
-GENERATOR_VERSION = 'chronological-organic-v2'
+GENERATOR_VERSION = 'chronological-organic-v3'
 
 
 @dataclass(frozen=True)
@@ -79,10 +79,10 @@ def flowing_timeline(fields, size, phase=0):
         field = np.broadcast_to(field, (size, size))
         return (field[y, left] * (1 - fraction) + field[y, right] * fraction).astype(np.float32)
     spectrum = smooth_field(fields.spectrum, max(2, size * .025), axis=0)
-    return TimelineFields(flow(spectrum, max(3, size * .022)),
-                          flow(fields.level, max(3, size * .035)),
-                          flow(fields.attack, max(3, size * .035)),
-                          flow(fields.drive, max(3, size * .035)))
+    return TimelineFields(flow(spectrum, max(3, size * .055)),
+                          flow(fields.level, max(3, size * .060)),
+                          flow(fields.attack, max(3, size * .055)),
+                          flow(fields.drive, max(3, size * .060)))
 
 
 def render_cover(visual_dna, visual_plan, structure: SongStructure, size=1000,
@@ -94,6 +94,7 @@ def render_cover(visual_dna, visual_plan, structure: SongStructure, size=1000,
     resolved = int.from_bytes(hashlib.sha256(payload.encode('utf-8')).digest()[:8], 'little') & 0x7FFFFFFF
     rng = np.random.default_rng(resolved)
     params = customize_parameters(artistic_parameters(visual_dna, visual_plan, resolved), detail)
+    params = replace(params, vein_strength=params.vein_strength * .72)
     if composition is not None:
         if composition not in COMPOSITIONS:
             raise ValueError('Unknown M2Pv3 composition')

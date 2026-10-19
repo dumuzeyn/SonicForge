@@ -1,7 +1,8 @@
 import re
+from dataclasses import replace
 from pathlib import Path
 
-from .formats import load_sidecar, parse_lrc
+from .formats import load_sidecar, parse_lrc, find_sidecar, timing_input
 from .models import LyricsResult
 from .isolated import IsolatedLyricsProvider
 
@@ -16,8 +17,12 @@ class LyricsService:
         self.provider = provider or IsolatedLyricsProvider()
         self.metadata_reader = metadata_reader
         self._vocal_cache = None
+        self._timing_provider = None
 
     def close(self):
+        if self._timing_provider is not None:
+            self._timing_provider.close()
+            self._timing_provider = None
         close = getattr(self.provider, 'close', None)
         if close is not None:
             close()
@@ -45,10 +50,47 @@ class LyricsService:
             return None
         return self._with_language(result)
 
+    def load_for_timing(self, audio_path):
+        previous = self.load_existing(audio_path)
+        if previous is None:
+            return None
+        raw = None
+        if Path(audio_path).suffix.lower() == '.mp3' and self.metadata_reader is not None:
+            tags = self.metadata_reader(Path(audio_path))
+            raw = tags.get('lyrics') or tags.get('unsyncedlyrics')
+        if not raw:
+            sidecar = find_sidecar(audio_path)
+            raw = sidecar.read_text(encoding='utf-8-sig') if sidecar else previous.text
+        return timing_input(raw, previous)
+
+    def align(self, audio_path, original, cancel_event=None, progress=None, language=None):
+        if not original.text.strip():
+            raise ValueError('Timing correction requires existing lyrics')
+        if cancel_event is not None and cancel_event.is_set():
+            raise InterruptedError('Timing correction was cancelled')
+        if self._timing_provider is None:
+            from .alignment import timing_provider
+            self._timing_provider = timing_provider()
+        prepared = audio_path
+        if self.separate_vocals:
+            from .vocals import VocalCache
+            if self._vocal_cache is None:
+                self._vocal_cache = VocalCache()
+            prepared = self._vocal_cache.prepare(audio_path, cancel_event, progress)
+        detected, _, _ = detect_text_languages(original.text)
+        language = 'ru' if CYRILLIC_RE.search(original.text) else (
+            language if language not in (None, 'auto', 'other_ru', 'other_en', 'unknown') else
+            original.language if original.language not in ('unknown', 'mixed') else detected)
+        language = 'en' if language in ('unknown', 'en/latin', 'mixed') else language
+        corrected = self._timing_provider.align(prepared, original, cancel_event, progress, language)
+        if corrected.text != original.text or [s.text for s in corrected.segments] != [line for line in original.text.splitlines() if line.strip()]:
+            raise ValueError('Timing correction changed the supplied words; result was rejected')
+        return corrected
+
     def recognize(self, audio_path, cancel_event=None, progress=None, language=None, on_segment=None):
         options = dict(cancel_event=cancel_event, progress=progress, language=language)
         if on_segment is not None:
-            options["on_segment"] = on_segment
+            options["on_segment"] = lambda segment: on_segment(replace(segment, start=max(0, segment.start - .1)))
         prepared = audio_path
         if self.separate_vocals:
             from .vocals import VocalCache
@@ -57,6 +99,7 @@ class LyricsService:
             prepared = self._vocal_cache.prepare(audio_path, cancel_event, progress)
         result = self.provider.transcribe(prepared, **options)
         result = self._with_language(result)
+        result = replace(result, segments=tuple(replace(s, start=max(0, s.start - .1)) for s in result.segments))
         if not self.is_usable(result):
             return LyricsResult(
                 text=result.text,

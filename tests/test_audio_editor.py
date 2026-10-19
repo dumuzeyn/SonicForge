@@ -10,7 +10,7 @@ import unittest
 import wave
 from unittest.mock import patch
 
-from audio_editor import AudioSource, Cancelled, Timeline, read_waveform, render, run_ffmpeg
+from audio_editor import AudioSource, Cancelled, Timeline, read_waveform, render, run_ffmpeg, crossfade_audio
 
 
 def make_tone(path, duration=2, hz=220):
@@ -81,6 +81,54 @@ class TimelineTests(unittest.TestCase):
     def test_same_lane_imports_follow_each_other(self):
         self.assertEqual(self.project.add(self.source).position, 10)
         self.assertEqual(self.project.add(self.source, lane=1).position, 0)
+
+    def test_transition_commit_is_one_undo_and_preserves_later_clips(self):
+        second = self.project.add(AudioSource('next.wav', 10), position=15)
+        later = self.project.add(self.source, position=30)
+        before = list(self.project.clips)
+        count = len(self.project._undo)
+        joined = self.project.join(self.clip.id, second.id, AudioSource('transition.wav', 18))
+        self.assertEqual(joined.position, 0)
+        self.assertEqual(joined.duration, 18)
+        self.assertEqual(self.project.get(later.id), later)
+        self.assertEqual(len(self.project._undo), count + 1)
+        self.project.undo()
+        self.assertEqual(self.project.clips, before)
+        self.project.redo()
+        self.assertEqual(len(self.project.clips), 2)
+
+    @unittest.skipUnless(shutil.which('ffmpeg'), 'FFmpeg required')
+    def test_crossfade_matches_join_levels_and_keeps_sources_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first, second = root / 'first.wav', root / 'second.wav'
+            make_tone(first, duration=6, hz=220)
+            make_tone(second, duration=6, hz=330)
+            originals = (first.read_bytes(), second.read_bytes())
+            project = Timeline()
+            a = project.add(read_waveform(first))
+            b = project.add(read_waveform(second))
+            b = project.update(b.id, gain=-12)
+            source = crossfade_audio(project, a.id, b.id, cache_root=root / 'cache')
+            self.assertAlmostEqual(source.duration, 10, places=2)
+            self.assertEqual(len(project.clips), 2)  # Worker only prepares audio.
+            project.join(a.id, b.id, source)
+            output = render(project, root / 'mixed.wav')
+            values, rate = samples(output)
+            level = lambda at: rms(values[round(at * rate):round((at + .1) * rate)])
+            self.assertAlmostEqual(level(4.2) / level(5.6), 1, delta=.15)
+            self.assertGreater(level(.5), level(4.2) * 3)
+            self.assertEqual((first.read_bytes(), second.read_bytes()), originals)
+
+    def test_transition_rejects_nonadjacent_or_other_lane_without_edit(self):
+        second = self.project.add(self.source)
+        third = self.project.add(self.source)
+        other = self.project.add(self.source, lane=1)
+        before = self.project._snapshot()
+        for clip in (third, other):
+            with self.assertRaises(ValueError):
+                self.project.join(self.clip.id, clip.id, AudioSource('transition.wav', 18))
+            self.assertEqual(self.project._snapshot(), before)
 
     def test_split_outside_clip_is_rejected(self):
         for position in (0, 10, 11, -.1):
@@ -181,6 +229,23 @@ class EditorRenderTests(unittest.TestCase):
         partial, partial_rate = samples(render(self.project, self.directory / "partial.wav", start=1, length=.5))
         self.assertAlmostEqual(len(partial) / partial_rate, .5, places=2)
         self.assertGreater(rms(partial[:int(partial_rate * .1)]), 1800)
+
+    def test_fades_leave_middle_samples_at_the_original_volume(self):
+        bare, rate = samples(render(self.project, self.directory / 'bare.wav'))
+        self.project.update(self.clip.id, fade_in=.25, fade_out=.25)
+        faded, _ = samples(render(self.project, self.directory / 'edges.wav'))
+        self.assertEqual(bare[int(rate * .5):int(rate * 1.5)], faded[int(rate * .5):int(rate * 1.5)])
+        partial, _ = samples(render(self.project, self.directory / 'inside-fade.wav', start=.125, length=.5))
+        expected = faded[int(rate * .125):int(rate * .625)]
+        self.assertAlmostEqual(rms(partial) / rms(expected), 1, delta=.002)
+
+    def test_legacy_overlapping_fades_do_not_multiply_across_the_whole_clip(self):
+        from audio_editor import fade_lengths, fade_level
+        clip = self.project.update(self.clip.id, fade_in=1.5, fade_out=1.5)
+        self.assertEqual(fade_lengths(clip), (1, 1))
+        self.assertEqual(fade_level(clip, 1), 1)
+        output, rate = samples(render(self.project, self.directory / 'legacy-fades.wav'))
+        self.assertGreater(rms(output[int(rate * .95):int(rate * 1.05)]), 1950)
 
     def test_export_formats_mp3_and_m4a(self):
         for suffix in (".mp3", ".m4a"):

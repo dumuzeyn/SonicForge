@@ -67,6 +67,46 @@ class CoverMetadataTests(unittest.TestCase):
                 self.assertEqual(covers[0].data, picture.read_bytes())
                 self.assertFalse(list(root.glob('.sonicforge-tags-*')))
 
+    def test_large_artwork_keeps_lyrics_within_voltunizator_tag_limit(self):
+        import numpy as np
+        from cover_tag import COMPATIBLE_TAG_BYTES
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            song, picture = root / 'song.mp3', root / 'cover.png'
+            audio = b'original audio' * 100
+            original = self.tagged_song(song, version=4, audio=audio)
+            pixels = np.random.default_rng(4).integers(0, 256, (640, 640, 3), dtype=np.uint8)
+            Image.fromarray(pixels).save(picture)
+            self.assertGreater(picture.stat().st_size, COMPATIBLE_TAG_BYTES)
+            full_image = picture.read_bytes()
+            music2picture.embed_cover(song, picture)
+            version, offset, frames = read_id3(song)
+            self.assertEqual(version, 4)
+            self.assertLess(offset - 10, COMPATIBLE_TAG_BYTES)
+            self.assertEqual(tuple(f for f in frames if f.name != 'APIC'), tuple(f for f in original if f.name != 'APIC'))
+            self.assertEqual(song.read_bytes()[offset:], audio)
+            self.assertEqual(picture.read_bytes(), full_image)
+            self.assertEqual(ID3(song).getall('APIC')[0].mime, 'image/jpeg')
+
+    def test_saving_lyrics_compacts_an_existing_large_cover(self):
+        import numpy as np
+        from cover_tag import COMPATIBLE_TAG_BYTES
+        from audio_tags import update_id3
+        from lyrics_engine import LyricsResult
+        from lyrics_engine.formats import embed_lyrics
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            song, picture = root / 'song.mp3', root / 'cover.png'
+            audio = b'unchanged MPEG audio'
+            self.tagged_song(song, audio=audio)
+            Image.fromarray(np.random.default_rng(8).integers(0, 256, (640, 640, 3), dtype=np.uint8)).save(picture)
+            update_id3(song, [ID3Frame('APIC', b'\0image/png\0\x03\0' + picture.read_bytes())], remove_names=('APIC',))
+            embed_lyrics(song, LyricsResult(text='Новый текст песни', language='ru'))
+            _, offset, frames = read_id3(song)
+            self.assertLess(offset - 10, COMPATIBLE_TAG_BYTES)
+            self.assertEqual(song.read_bytes()[offset:], audio)
+            self.assertEqual(ID3(song).getall('USLT')[0].text, 'Новый текст песни')
+
     def test_untagged_audio_and_repeated_cover_changes_do_not_duplicate_covers(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

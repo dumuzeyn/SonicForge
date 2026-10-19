@@ -15,5 +15,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 & $StemPython scripts/stem_worker.py --prepare-model build/stem-model
 if ($LASTEXITCODE -ne 0) { throw 'Separation model verification failed' }
+& $StemPython -m pip install -r requirements/alignment.txt
+if ($LASTEXITCODE -ne 0) { throw 'Timing alignment dependencies could not be installed' }
 & $StemPython -m PyInstaller --noconfirm --distpath build/separator --workpath build/separator-work packaging/SonicForgeSeparator.spec
 if ($LASTEXITCODE -ne 0) { throw 'Separation worker build failed' }

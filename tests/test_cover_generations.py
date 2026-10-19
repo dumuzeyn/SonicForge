@@ -103,7 +103,7 @@ class CoverGenerationTests(unittest.TestCase):
             self.assertEqual(data['pattern_generation'], 'M2Pv3')
             self.assertEqual(data['color_generation'], 'M2Pv3')
             self.assertEqual(data['timeline_direction'], 'left_to_right')
-            self.assertEqual(data['color_generator_version'], 'rhythmic-speed-v2')
+            self.assertEqual(data['color_generator_version'], 'rhythmic-speed-v4')
 
 
 if __name__ == '__main__':

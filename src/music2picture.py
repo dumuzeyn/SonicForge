@@ -344,7 +344,8 @@ def generate_text_descriptions(
 
 def embed_cover(mp3_path, image_path):
     """Replace artwork only; retain raw lyric/metadata frames and audio bytes."""
-    from audio_tags import ID3Frame, MAX_TAG_BYTES, update_id3
+    from audio_tags import ID3Frame, MAX_TAG_BYTES, update_id3, read_id3
+    from cover_tag import compact_artwork
     from security import validate_image_file
 
     mp3_path = Path(mp3_path)
@@ -368,7 +369,9 @@ def embed_cover(mp3_path, image_path):
     # APIC: Latin-1 encoding, MIME, front-cover type, empty description, image.
     # No container remux: FFmpeg can drop SYLT/unknown frames or rewrite USLT.
     cover = ID3Frame('APIC', b'\x00' + mime + b'\x00\x03\x00' + data)
-    update_id3(mp3_path, [cover], remove_names=('APIC',))
+    _, _, existing = read_id3(mp3_path)
+    frames = compact_artwork([frame for frame in existing if frame.name != 'APIC'] + [cover])
+    update_id3(mp3_path, [frame for frame in frames if frame.name == 'APIC'], remove_names=('APIC',))
     return True
 
 

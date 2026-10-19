@@ -5,18 +5,78 @@ from .service import LyricsService
 
 
 def recognize_batch(source, staging, output=None, service=None, export_format="txt",
-                    overwrite=False, language="auto", cancel_event=None, progress=None, separate_vocals=None):
+                    overwrite=False, language="auto", cancel_event=None, progress=None, separate_vocals=None,
+                    mode='recognize', supplied_lyrics=None):
     import music_metadata
     owned = service is None
     service = service or LyricsService(metadata_reader=music_metadata.read_all_metadata, separate_vocals=separate_vocals)
     if separate_vocals is not None and isinstance(service, LyricsService):
         service.separate_vocals = bool(separate_vocals)
     try:
+        if mode == 'align':
+            return _align_batch(source, staging, service, export_format, language, cancel_event, progress, supplied_lyrics)
+        if mode != 'recognize':
+            raise ValueError('Unknown lyrics mode')
         return _recognize_batch(source, staging, output, service, export_format, overwrite,
                                 language, cancel_event, progress)
     finally:
         if owned:
             service.close()
+
+def _align_batch(source, staging, service, export_format, language, cancel_event, progress, supplied_lyrics=None):
+    import music_metadata
+    source, staging = Path(source).resolve(), Path(staging).resolve()
+    base = source.parent if source.is_file() else source
+    originals = {p.relative_to(base).with_suffix(''): p for p in music_metadata.audio_files(source)}
+    files = music_metadata.audio_files(staging)
+    lookup = {}
+    counts = dict(saved=0, preserved=0, uncertain=0, failed=0)
+    if progress:
+        progress('started', dict(total=len(files), mode='align'))
+    for index, path in enumerate(files, 1):
+        if cancel_event is not None and cancel_event.is_set():
+            raise InterruptedError('Timing correction was cancelled')
+        data = dict(index=index, total=len(files), file=path.name)
+        def emit(stage, **extra):
+            if progress:
+                progress(stage, dict(data, **extra))
+        try:
+            original = originals.get(path.relative_to(staging).with_suffix(''))
+            existing = supplied_lyrics if supplied_lyrics is not None and len(files) == 1 else (
+                service.load_for_timing(original) if original else None)
+            if existing is None or not existing.text.strip():
+                counts['preserved'] += 1
+                emit('preserved', reason='no_existing_lyrics')
+                print(f'[{index}/{len(files)}] Timing correction skipped: {path.name}: no existing lyrics')
+                continue
+            # Stage the original first, including sidecars. A model error,
+            # cancellation, or uncertain result must never leave words behind.
+            save_lyrics(path, existing, 'lrc' if existing.segments and path.suffix.lower() != '.mp3' else export_format)
+            emit('file_started', mode='align')
+            corrected = service.align(path, existing, cancel_event=cancel_event, progress=lambda stage: emit('progress', step=stage), language=language)
+            if corrected.text != existing.text:
+                raise ValueError('Timing correction cannot replace existing lyrics')
+            if corrected.review_reason:
+                counts['uncertain'] += 1
+                emit('uncertain', reason='alignment')
+                # Retain the supplied lyrics and timestamps, even after other
+                # selected stages transformed the staging container.
+                continue
+            save_lyrics(path, corrected, 'lrc' if path.suffix.lower() != '.mp3' else export_format)
+            lookup[_relative_key(path, staging)] = corrected.text
+            counts['saved'] += 1
+            emit('saved', mode='align', retained=corrected.timings_preserved)
+            print(f'[{index}/{len(files)}] Corrected timings: {path.name}; words retained')
+        except InterruptedError:
+            raise
+        except Exception as exc:
+            counts['failed'] += 1
+            emit('failed', error=str(exc))
+            print(f'[{index}/{len(files)}] Timing correction failed: {path.name}: {exc}')
+    if progress:
+        progress('completed', dict(total=len(files), **counts))
+    return lookup
+
 
 def _recognize_batch(
     source,

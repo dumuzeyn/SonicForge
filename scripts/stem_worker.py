@@ -106,6 +106,7 @@ def main():
     parser.add_argument('--output', type=Path)
     parser.add_argument('--progress', type=Path)
     parser.add_argument('--parent-pid', type=int)
+    parser.add_argument('--alignment-worker', action='store_true')
     args = parser.parse_args()
     if args.prepare_model:
         path = checked_model(args.prepare_model, download=True)
@@ -130,6 +131,12 @@ def main():
             finally:
                 kernel.CloseHandle(handle)
         threading.Thread(target=watch_parent, daemon=True).start()
+    if args.alignment_worker:
+        if not getattr(sys, 'frozen', False):
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+        from lyrics_alignment_backend import worker_main
+        worker_main(args.parent_pid)
+        return
     model_dir = args.model or Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[1] / 'build')) / 'model'
     separate(args.input, args.output, args.progress, model_dir)
 

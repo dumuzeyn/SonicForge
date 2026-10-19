@@ -230,7 +230,7 @@ class EditorPipelineGuiTests(unittest.TestCase):
             self.app.view.set_busy(False)
             editor.project.update(clip.id, gain=-8)
             editor.changed()
-            self.assertEqual(self.app.view.get_lyrics_text(), '')
+            self.assertEqual(self.app.view.get_lyrics_text(), 'Checked manual text')
             self.assertIsNone(self.app._editor_source.current(editor.project, '.mp3'))
 
 

@@ -9,6 +9,7 @@ from app_identity import GITHUB_REPOSITORY_URL, AUTHOR_SUPPORT_URL
 from .theme import COLORS, FONTS, SPACING, SIZES
 from .widgets import ModernScale, RibbonTab, RoundedButton, RoundedMenuButton, SquareCheckbutton, ThemedMenu, ToolTip
 from .editor import AudioEditor
+from .lyrics_player import LyricsPlayer
 from .help_content import PAGES
 from .help_dialog import HelpDialog, HelpPanel
 
@@ -892,8 +893,14 @@ class SonicForgeView(ttk.Frame):
             RoundedButton(timing, command=self.app.insert_lyrics_timestamp), 'lyrics_insert_timestamp')
         self.lyrics_timestamp_button.pack(side=tk.LEFT)
         self.lyrics_cursor_button = self._localize(
-            RoundedButton(timing, command=lambda: self.app.insert_lyrics_timestamp(True)), 'lyrics_cursor_timestamp')
+            RoundedButton(timing, command=lambda: self.app.insert_lyrics_timestamp(True, advance=True)), 'lyrics_cursor_timestamp')
         self.lyrics_cursor_button.pack(side=tk.LEFT, padx=SPACING['sm'])
+        self._localize(ttk.Label(timing, style='SurfaceSecondary.TLabel'), 'lyrics_mode').pack(side=tk.LEFT, padx=(8, 4))
+        self.lyrics_mode_combo = ttk.Combobox(timing, textvariable=self.app.lyrics_mode_var,
+                                             values=self.app.lyrics_mode_values(), state='readonly', width=19)
+        self.lyrics_mode_combo.pack(side=tk.LEFT)
+        self.lyrics_mode_combo.bind('<<ComboboxSelected>>', lambda _e: self.app.lyrics_mode_changed())
+        self._tip(self.lyrics_mode_combo, 'tip_lyrics_mode')
         self._tip(self.lyrics_timestamp_button, 'tip_lyrics_timestamp')
         self._tip(self.lyrics_cursor_button, 'tip_lyrics_cursor_timestamp')
         self._tip(self.load_lyrics_button, "tip_lyrics_load")
@@ -943,6 +950,9 @@ class SonicForgeView(ttk.Frame):
         self.lyrics_editor.configure(yscrollcommand=scrollbar.set)
         self.lyrics_editor.grid(row=0, column=0, sticky="nsew")
         self.lyrics_editor.bind("<Double-Button-1>", self._select_lyrics_word)
+        self.lyrics_editor.bind('<F8>', lambda _e: self.app.insert_lyrics_timestamp(True, advance=True) or 'break')
+        self.lyrics_player = LyricsPlayer(frame, self.app)
+        self.lyrics_player.grid(row=6, column=0, sticky='ew', pady=(8, 0))
         self.lyrics_menu = ThemedMenu(self.lyrics_editor, tearoff=False)
         self.lyrics_menu.add_command(label=self.app.t("copy"),
                                     command=lambda: self.app._copy_widget_text(self.lyrics_editor))
@@ -965,6 +975,7 @@ class SonicForgeView(ttk.Frame):
             self.overwrite_lyrics_check,
             self.import_lyrics_button, self.lyrics_timestamps_check, self.lyrics_vocals_check,
             self.lyrics_timestamp_entry, self.lyrics_timestamp_button, self.lyrics_cursor_button,
+            self.lyrics_mode_combo,
         ]
 
     def _select_all_lyrics(self):
@@ -1095,8 +1106,12 @@ class SonicForgeView(ttk.Frame):
         stage = self.lyrics_execution_stage
         keys = {"started": "waiting", "file_started": "preparing"}
         key = "lyrics_batch_" + keys.get(stage, stage)
-        values = dict(total=0, index=0, file="", saved=0, preserved=0, uncertain=0, failed=0, error="")
+        values = dict(total=0, index=0, file="", saved=0, preserved=0, uncertain=0, failed=0, error="", retained=0)
         values.update(self.lyrics_execution_data)
+        if stage == 'progress':
+            key = 'lyrics_batch_' + values.get('step', 'preparing')
+        if self.app.lyrics_mode_key() == 'align' and stage in ('saved', 'uncertain', 'failed', 'preserved'):
+            key = 'lyrics_timing_batch_' + stage
         self.lyrics_execution_status.set(self.app.t(key).format(**values))
 
     def _build_log(self, parent):
@@ -1210,6 +1225,10 @@ class SonicForgeView(ttk.Frame):
         self.cover_pattern_combo.configure(values=self.app.cover_choice_values('pattern'))
         self.update_cover_source()
         self.lyrics_language.configure(values=self.app.lyrics_language_values())
+        mode = self.app.lyrics_mode_key()
+        self.lyrics_mode_combo.configure(values=self.app.lyrics_mode_values())
+        self.app.lyrics_mode_var.set(self.app.t('lyrics_mode_align' if mode == 'align' else 'lyrics_mode_recognize'))
+        self.app.lyrics_mode_changed()
         self.audio_profile_combo.configure(values=self.app.audio_profile_values())
         self.log_menu.entryconfigure(0, label=self.app.t("copy"))
         self.log_menu.entryconfigure(1, label=self.app.t("select_all"))
@@ -1254,6 +1273,9 @@ class SonicForgeView(ttk.Frame):
         self.lyrics_format.configure(state="disabled" if busy else "readonly")
         self.lyrics_language.configure(state="disabled" if busy else "readonly")
         self.overwrite_lyrics_check.configure(state=state)
+        self.lyrics_mode_combo.configure(state='disabled' if busy else 'readonly')
+        if self.app.lyrics_mode_key() == 'align':
+            self.overwrite_lyrics_check.configure(state='disabled')
         for control in (self.import_lyrics_button, self.lyrics_timestamps_check, self.lyrics_vocals_check,
                         self.lyrics_timestamp_entry, self.lyrics_timestamp_button, self.lyrics_cursor_button):
             control.configure(state=state)

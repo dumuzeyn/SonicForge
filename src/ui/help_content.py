@@ -58,14 +58,14 @@ PAGES = {
     "editor": (
         "1. Добавьте аудио кнопкой или перетащите файл из Проводника. Бросок ниже последней дорожки создаёт новую; число дорожек не ограничено.\n"
         "2. Щелчок выбирает фрагмент и курсор. Обычное перетаскивание переносит весь фрагмент, в том числе между дорожками. На одной дорожке фрагменты не наслаиваются.\n"
-        "3. Shift + перетаскивание выделяет участок. Поля «От» / «До» задают время от начала фрагмента с шагом 1 мс; «Выделить» подтверждает его. «Начать выделение» отмечает красный курсор, «Завершить выделение» — конец; работает и при прослушивании. Esc отменяет незавершённый выбор. «К выделению» приближает участок. «Удалить выделение» соединяет оставшиеся части без паузы, со сглаживанием до 40 мс. Отмена возвращает исходный звук. «Разделить» режет у курсора.\n"
+        "3. Правая кнопка мыши + перетаскивание выделяет участок. Ctrl + колесо меняет масштаб. Поля «От» / «До» задают время от начала фрагмента с шагом 1 мс; «Выделить» подтверждает его. «Начать выделение» отмечает красный курсор, «Завершить выделение» — конец; работает и при прослушивании. Esc отменяет незавершённый выбор. «К выделению» приближает участок. «Удалить выделение» соединяет оставшиеся части без паузы, со сглаживанием до 40 мс. Отмена возвращает исходный звук. «Разделить» режет у курсора.\n"
         "4. «Вокал и инструменты» заменяет выбранный фрагмент на 2 или 4 составляющие на отдельных дорожках. Процесс локальный, может занять минуты; возможны примеси и артефакты. Отмена возвращает исходный фрагмент.\n"
-        "5. Прослушайте результат и экспортируйте в новый WAV, MP3 или M4A. Черновик сохраняет пути и правки. Редактор независим от «Выполнения»; исходники не меняются.",
+        "5. Прослушайте результат и экспортируйте в новый WAV, MP3 или M4A. Редактор независим от «Выполнения»; исходники не меняются.",
         "1. Add audio with the button or drop files from Explorer. Drop below the last lane to create another; there is no fixed lane limit.\n"
         "2. Click to select a clip and cursor. Normal dragging moves the entire clip, including between lanes. Clips on one lane do not overlap.\n"
-        "3. Shift-drag a range, or enter clip-relative From / To times with a 1 ms step and click Select. Start selection marks the red cursor, Finish selection marks the end; works during playback. Esc cancels the unfinished choice. Zoom selection magnifies the range. Remove selection joins the remaining parts without a gap, using a crossfade of up to 40 ms. Undo restores the original. Split cuts at the cursor; normal dragging never cuts audio.\n"
+        "3. Right-drag a range; Ctrl + wheel zooms, or enter clip-relative From / To times with a 1 ms step and click Select. Start selection marks the red cursor, Finish selection marks the end; works during playback. Esc cancels the unfinished choice. Zoom selection magnifies the range. Remove selection joins the remaining parts without a gap, using a crossfade of up to 40 ms. Undo restores the original. Split cuts at the cursor; normal dragging never cuts audio.\n"
         "4. Vocals and instruments replaces the selected clip with 2 or 4 components on separate lanes. Local processing may take minutes and leave audio bleed. Undo restores the original clip.\n"
-        "5. Listen and export a new WAV, MP3 or M4A. Drafts save paths and edits. The editor is independent of Processing; originals remain intact."),
+        "5. Listen and export a new WAV, MP3 or M4A. The editor is independent of Processing; originals remain intact."),
     "metadata": ("Поля записываются в готовые копии при этапе «Метаданные». «Прочитать» заполняет их из выбранного файла. При обычном обновлении пустые поля сохраняют существующие значения; перезапись всех метаданных удаляет прежние теги. Комментарий — тег, а не ручное описание обложки.", "Fields are written to completed copies in the Metadata stage. Read fills them from the selected file. Normal updates retain existing values for empty fields; replacing all metadata removes old tags. Comment is a tag, not a manual cover prompt."),
     "audio": ("1. Выберите желаемый результат и интенсивность. Ползунки меняют громкость, высокие частоты, бас и ширину стерео. Блок «Что именно изменится» показывает реальные значения.\n2. «Анализировать» измеряет запись; рекомендация применяется отдельно.\n3. «Создать сравнение» подготавливает оригинал и результат с одинаковой воспринимаемой громкостью.\n4. Готовые копии создаёт только этап «Звук» во вкладке «Выполнение». Эти настройки не влияют на редактор.\n\n0% не означает обход всей обработки: остаётся нормализация; дополнительные эффекты и фильтры управляются отдельно.", "1. Choose a profile and strength. Sliders adjust loudness, treble, bass and stereo width. Exactly what changes shows actual values.\n2. Analyze measures the recording; apply recommendations separately.\n3. Create comparison prepares loudness-matched original and processed versions.\n4. Final copies are made by the Sound stage in Processing only. These settings do not affect the editor.\n\n0% is not full bypass: normalization remains; advanced effects and filters are independent."),
     "cover": ("Создайте обложку автоматически или выберите свой PNG, JPEG либо WebP. Современный узор следует ритму, тембру и активности песни. В «Своём стиле» слева на палитре — спокойствие, справа — драйв; контрастные участки песни дают небольшие акценты. Перетаскивайте маркеры; для перекрывающихся выберите цвет в списке. ←/→ меняют позицию на 1%, с Shift — на 0,1%. «Применить» запоминает настройки между запусками. Предпросмотр не меняет исходник; встраивание происходит при выполнении этапа обложки.", "Generate artwork automatically or choose your own PNG, JPEG or WebP. Modern patterns follow rhythm, timbre and musical activity. In Custom style the left palette means calm and the right means driven; contrasting sections create small accents. Drag stops; select overlapping ones in the list. ←/→ adjust by 1%, or 0.1% with Shift. Apply remembers settings between launches. Preview leaves the source unchanged; artwork is embedded during the Cover stage."),
@@ -90,9 +90,9 @@ PAGES['editor'] = (
 )
 PAGES['processing'] = (
     PAGES['processing'][0].replace('Редактор сюда не входит: он экспортирует отдельно.',
-        'При включённой связи с редактором источником становится текущий монтаж всех включённых дорожек. После изменения монтажа предпросмотры и распознанный текст нужно обновить.'),
+        'При включённой связи с редактором источником становится текущий монтаж всех включённых дорожек. После изменения монтажа обновляются предпросмотры. Введённый текст и таймкоды сохраняются.'),
     PAGES['processing'][1].replace('The editor is not a stage and exports separately.',
-        'When linked, the current mix of all unmuted editor lanes is the source. After editing, refresh previews and recognize lyrics again.'),
+        'When linked, the current mix of all unmuted editor lanes is the source. Edits refresh audio previews while retaining text and timestamps.'),
 )
 
 
@@ -106,3 +106,12 @@ def add_help_strings(translations):
     for key, values in EXTRA.items():
         for index, language in enumerate(("ru", "en")):
             translations[language][key] = values[index]
+
+PAGES['editor'] = (
+    PAGES['editor'][0] + '\nКнопки без подписей: плавное начало, плавный конец, переход, выделение, разделение, удаление. Правый клик показывает название и описание. Переход соединяет текущую и следующую песни на той же дорожке с перекрытием до 2 секунд и выравниванием громкости у стыка. Удаление учитывает выделенный диапазон. Ctrl+Z отменяет правку.',
+    PAGES['editor'][1] + '\nIcon buttons: fade in, fade out, crossfade, select, split, delete. Right-click for names and descriptions. Crossfade joins the current song to the next on the same lane with up to 2 seconds of overlap and loudness matching at the join. Delete acts on the selected range. Ctrl+Z undoes the edit.',
+)
+PAGES['lyrics'] = (
+    PAGES['lyrics'][0] + '\nПлеер позволяет слушать песню или микс, ставить на паузу и перематывать. F8 ставит метку за 0,1 секунды до текущей позиции и переводит курсор на следующую непустую строку. Автоматические метки также опережают вокал на 0,1 секунды; ручное время сохраняется точно. Правки дорожек и переключение вкладок не стирают текст.',
+    PAGES['lyrics'][1] + '\nUse the player to listen to the song or mix, pause and seek. F8 stamps 0.1 seconds before the current position and advances to the next nonempty line. Automatic cues also anticipate vocals by 0.1 seconds; manual times stay exact. Track edits and navigation retain text.',
+)

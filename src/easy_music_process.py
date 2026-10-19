@@ -181,11 +181,16 @@ def process_music(
     genre_progress=None,
     preserve_lyrics=False,
     lyrics_separate_vocals=None,
+    lyrics_mode='recognize',
 ):
     from security import validate_output_directory, validate_source
 
     source_path, _validated_files = validate_source(source)
     output_path = validate_output_directory(source_path, output)
+    if lyrics_mode not in ('recognize', 'align'):
+        raise ValueError('Unknown lyrics mode')
+    if lyrics_mode == 'align':
+        preserve_lyrics = True
     if not 128 <= int(cover_size) <= 4096:
         raise ValueError("cover_size must be between 128 and 4096 pixels")
     output_parent = output_path.resolve().parent
@@ -328,7 +333,7 @@ def process_music(
             print("\nОбложки оставлены без изменений")
 
         check_cancelled(cancel_event)
-        if "lyrics" in steps and edited_lyrics_result is not None:
+        if "lyrics" in steps and edited_lyrics_result is not None and lyrics_mode != 'align':
             from lyrics_engine import save_lyrics
             files = music_metadata.audio_files(staging_path)
             if len(files) != 1:
@@ -343,7 +348,7 @@ def process_music(
                 lyrics_progress('saved', data)
                 lyrics_progress('completed', dict(total=1, saved=1, preserved=0, uncertain=0, failed=0))
         elif "lyrics" in steps:
-            print("\nРаспознавание текста песен")
+            print("\nКоррекция таймингов существующего текста" if lyrics_mode == 'align' else "\nРаспознавание текста песен")
             from lyrics_engine import recognize_batch
 
             lyrics_lookup = recognize_batch(
@@ -357,6 +362,8 @@ def process_music(
                 cancel_event=cancel_event,
                 progress=lyrics_progress,
                 separate_vocals=lyrics_separate_vocals,
+                mode=lyrics_mode,
+                supplied_lyrics=edited_lyrics_result if lyrics_mode == 'align' else None,
             )
 
         check_cancelled(cancel_event)
@@ -427,6 +434,7 @@ def main():
     parser.add_argument("--change-cover", dest="change_cover", action="store_true", default=True, help="Generate and embed a new cover. Enabled by default.")
     parser.add_argument("--no-change-cover", dest="change_cover", action="store_false", help="Do not generate or embed a new cover.")
     parser.add_argument("--lyrics-format", choices=("txt", "lrc"), default="txt")
+    parser.add_argument('--lyrics-mode', choices=('recognize', 'align'), default='recognize', help='Align only supplied lyrics; preserve words and existing repeat anchors.')
     parser.add_argument("--no-vocal-separation", action="store_true", help="Recognize the original mix instead of separating vocals first.")
     parser.add_argument("--lyrics-language", default="auto", help="auto, ru, en, other_en, other_ru, or an ISO language code. Other modes approximate sounds in English/Russian letters for other detected languages.")
     parser.add_argument("--overwrite-lyrics", action="store_true")
@@ -493,6 +501,7 @@ def main():
         process_steps=None if args.steps == "all" else {args.steps},
         metadata_mode=args.metadata_mode,
         lyrics_format=args.lyrics_format,
+        lyrics_mode=args.lyrics_mode,
         lyrics_language=args.lyrics_language,
         overwrite_lyrics=args.overwrite_lyrics,
         lyrics_separate_vocals=not args.no_vocal_separation,

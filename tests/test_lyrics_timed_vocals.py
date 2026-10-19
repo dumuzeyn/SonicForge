@@ -148,7 +148,7 @@ class VocalPreparationTests(unittest.TestCase):
         self.assertTrue(all(call.args[0].name == 'vocals.wav' for call in provider.transcribe.call_args_list))
         self.assertEqual(len([event for event in events if event[0] == 'separating_vocals']), 2)
         self.assertEqual(events[-1][1]['saved'], 2)
-        self.assertIn('[00:02.00]one two three', (root / 'second.lrc').read_text())
+        self.assertIn('[00:01.90]one two three', (root / 'second.lrc').read_text())
 
 
 if __name__ == '__main__':

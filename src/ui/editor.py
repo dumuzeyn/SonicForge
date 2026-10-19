@@ -12,22 +12,25 @@ from tkinter import filedialog, messagebox, ttk
 from tkinterdnd2 import DND_FILES, COPY, REFUSE_DROP
 from PIL import Image, ImageTk
 
-from audio_editor import Cancelled, Timeline, read_waveform, render, remove_audio_selection
+from audio_editor import Cancelled, Timeline, read_waveform, render, remove_audio_selection, crossfade_audio, fade_level, fade_lengths
 from .theme import COLORS, FONTS, TRACK_COLORS
+from .keyboard import alt_pressed
+from .windowing import show_centered
 from .widgets import RoundedButton, RoundedMenuButton, ThemedMenu, ToolTip
 
 
 TEXT = {
     "ru": {
         "title": "Аудиоредактор", "intro": "Соберите звук на дорожках. Оригиналы не меняются; результат сохраняется отдельно.",
-        "add": "＋ Добавить аудио", "undo": "↶ Отмена", "redo": "↷ Повтор", "draft": "Черновик ▾",
-        "open_draft": "Открыть черновик…", "save_draft": "Сохранить черновик…",
-        "new": "Новый проект", "new_confirm": "Начать новый проект? Сохраните черновик, если хотите вернуться к правкам.",
+        "add": "＋ Добавить аудио", "undo": "↶ Отмена", "redo": "↷ Повтор",
+        "new": "Новый проект", "new_confirm": "Начать новый проект? Текущие правки будут сброшены.",
         "play": "▶ Прослушать", "stop": "■ Стоп", "export": "Экспорт…", "cancel": "Отменить задачу",
         "split": "Разделить", "duplicate": "Дублировать", "delete": "Удалить фрагмент",
         "fit": "Вся песня", "zoom": "Масштаб", "lane": "Дорожка", "mute": "Без звука",
         "start": "Начало, с", "end": "Конец, с", "position": "Позиция, с",
-        "gain": "Громкость, dB", "fade_in": "Появление, с", "fade_out": "Затухание, с",
+        "gain": "Громкость, dB", "fade_in": "Плавный вход", "fade_out": "Плавный выход",
+        "seconds": "с", "fade_duration": "Длительность, с · максимум {maximum:.3f}",
+        "fade_disable": "Отключить", "fade_range_error": "Длительность должна помещаться во фрагменте без перекрытия входа и выхода.",
         "apply": "Применить правки", "selection": "Фрагмент",
         "bounds": "Границы в исходнике", "placement": "Положение в проекте", "sound": "Звук фрагмента",
         "range_title": "Выделение", "range_start": "От, с", "range_end": "До, с",
@@ -48,7 +51,7 @@ TEXT = {
         "hint": "Щелчок — курсор и выбор • Потяните фрагмент — перенос • Shift + потяните — диапазон обрезки",
         "timeline": "Шкала и фрагменты",
         "shortcuts": "Горячие клавиши",
-        "shortcuts_tip": "Ctrl+I — добавить аудио; Ctrl+K — разделить; Ctrl+Shift+X — обрезать выделение; Ctrl+D — дублировать; Delete — удалить фрагмент; Ctrl+Z — отменить; Ctrl+Y / Ctrl+Shift+Z — повторить; Ctrl+S / Ctrl+O — сохранить / открыть черновик; Ctrl+E — экспорт. Ctrl+Shift+V — вокал и инструментарий; Ctrl+Shift+B — четыре составляющие. На шкале: пробел — прослушать / остановить, Esc — остановить и отменить задачу. Сочетания работают в русской и английской раскладках; в полях остаётся обычное редактирование текста.",
+        "shortcuts_tip": "Ctrl+I — добавить аудио; Ctrl+K — разделить; Ctrl+Shift+X — обрезать выделение; Ctrl+D — дублировать; Delete — удалить фрагмент; Ctrl+Z — отменить; Ctrl+Y / Ctrl+Shift+Z — повторить; Ctrl+E — экспорт. Ctrl+Shift+V — вокал и инструментарий; Ctrl+Shift+B — четыре составляющие. На шкале: пробел — прослушать / остановить, Esc — остановить и отменить задачу. Сочетания работают в русской и английской раскладках; в полях остаётся обычное редактирование текста.",
         "trim": "Удалить выделение", "ready": "Готово", "importing": "Читаю аудио и строю волну…",
         "cutting": "Удаляю выделение и сглаживаю стык…",
         "rendering": "Собираю звук…", "saved": "Сохранено: {path}", "playing": "Воспроизведение: {time}",
@@ -56,34 +59,35 @@ TEXT = {
         "preview": "Прослушивание начинается с курсора. Первый запуск собирает звук в фоне; повторный использует готовую копию.",
         "export_tip": "Смешивает включённые дорожки в новый WAV, MP3 или M4A. Общий лимитер защищает от перегруза. Не относится к «Выполнению».",
         "add_tip": "Добавляет каждую песню на отдельную дорожку с начала шкалы. Перетащите файл на нужное место шкалы для точного размещения. Исходники не изменяются.",
-        "draft_tip": "Черновик хранит пути и правки, не копии аудио. Исходные файлы должны оставаться на месте.",
         "split_tip": "Разрезает выбранный фрагмент в позиции курсора. Исходный файл остаётся целым.",
         "duplicate_tip": "Создаёт копию выбранного фрагмента сразу после него на той же дорожке.",
-        "delete_tip": "Удаляет только фрагмент из проекта. Файл на диске не удаляется. Можно отменить.",
-        "trim_tip": "Удаляет из выбранного фрагмента диапазон, выделенный Shift + перетаскиванием, и соединяет оставшиеся части без паузы. Короткий перекрёстный переход до 40 мс уменьшает щелчки. Музыкальный переход зависит от места разреза. Остальные фрагменты и исходный файл не меняются. Можно отменить.",
+        "delete_tip": "Удаляет выделенный диапазон со сглаживанием стыка; без выделения удаляет весь фрагмент. Файл на диске не меняется. Ctrl+Z отменяет правку.",
+        "trim_tip": "Удаляет из выбранного фрагмента диапазон, выделенный правой кнопкой мыши, и соединяет оставшиеся части без паузы. Короткий перекрёстный переход до 40 мс уменьшает щелчки. Музыкальный переход зависит от места разреза. Остальные фрагменты и исходный файл не меняются. Можно отменить.",
         "lane_tip": "Выбор дорожки для нового файла или переноса выбранного фрагмента. Отключённая дорожка не звучит и не экспортируется.",
         "start_tip": "Откуда брать звук в исходном файле, в секундах. Для обрезки увеличьте начало или уменьшите конец.",
         "end_tip": "Где закончить звук в исходном файле. Должно быть позже начала и не длиннее оригинала.",
         "position_tip": "Когда фрагмент начинается в проекте. Фрагменты на разных дорожках могут звучать одновременно.",
         "gain_tip": "0 dB — исходная громкость; +6 dB — примерно вдвое больше амплитуда, −6 dB — вдвое меньше. Не нормализация.",
-        "fade_in_tip": "Плавный рост от тишины до громкости фрагмента. 0 отключает. Время не длиннее фрагмента.",
-        "fade_out_tip": "Плавное затухание в конце фрагмента. 0 отключает. Время не длиннее фрагмента.",
+        "fade_in_tip": "Меняет только начало выбранного фрагмента. Середина сохраняет громкость. Длительность в секундах; 0 отключает вход. Отменяется через Ctrl+Z.",
+        "fade_out_tip": "Меняет только конец выбранного фрагмента. Середина сохраняет громкость. Длительность в секундах; 0 отключает выход. Отменяется через Ctrl+Z.",
         "apply_tip": "Применяет поля к выбранному фрагменту. Изменения слышны в следующем прослушивании и экспорте.",
         "undo_tip": "Отменяет последнюю правку проекта, включая удаление и выключение дорожки. Не отменяет экспорт файла.",
         "redo_tip": "Возвращает отменённую правку. Новая правка очищает историю повтора.",
-        "fit_tip": "Показывает всю длительность проекта. Масштаб меняет только отображение, не звук.",
+        "fit_tip": "Показывает всю длительность проекта. Ctrl + колесо мыши меняет масштаб вокруг указателя. Масштаб меняет только отображение, не звук.",
         "stop_tip": "Останавливает прослушивание. Не меняет фрагменты или файлы.",
         "cancel_tip": "Прерывает чтение или сборку аудио. Незавершённый выходной файл удаляется.",
     },
     "en": {
         "title": "Audio editor", "intro": "Arrange audio on lanes. Originals stay intact; export creates a separate file.",
-        "add": "＋ Add audio", "undo": "↶ Undo", "redo": "↷ Redo", "draft": "Draft ▾",
-        "open_draft": "Open draft…", "save_draft": "Save draft…", "new": "New project",
-        "new_confirm": "Start a new project? Save a draft first if you want to return to these edits.",
+        "add": "＋ Add audio", "undo": "↶ Undo", "redo": "↷ Redo",
+        "new": "New project",
+        "new_confirm": "Start a new project? Current edits will be cleared.",
         "play": "▶ Listen", "stop": "■ Stop", "export": "Export…", "cancel": "Cancel task",
         "split": "Split", "duplicate": "Duplicate", "delete": "Remove clip", "fit": "Fit song", "zoom": "Zoom",
         "lane": "Lane", "mute": "Mute", "start": "Start, s", "end": "End, s",
-        "position": "Position, s", "gain": "Volume, dB", "fade_in": "Fade in, s", "fade_out": "Fade out, s",
+        "position": "Position, s", "gain": "Volume, dB", "fade_in": "Fade in", "fade_out": "Fade out",
+        "seconds": "s", "fade_duration": "Duration, s · maximum {maximum:.3f}",
+        "fade_disable": "Disable", "fade_range_error": "The duration must fit the clip without overlapping the opposite fade.",
         "apply": "Apply edits", "selection": "Clip",
         "bounds": "Source boundaries", "placement": "Project placement", "sound": "Clip sound",
         "range_title": "Selection", "range_start": "From, s", "range_end": "To, s",
@@ -104,7 +108,7 @@ TEXT = {
         "hint": "Click: cursor / selection • Drag clip: move • Shift + drag: trim range",
         "timeline": "Timeline and clips",
         "shortcuts": "Keyboard shortcuts",
-        "shortcuts_tip": "Ctrl+I: add audio; Ctrl+K: split; Ctrl+Shift+X: trim selection; Ctrl+D: duplicate; Delete: remove clip; Ctrl+Z: undo; Ctrl+Y / Ctrl+Shift+Z: redo; Ctrl+S / Ctrl+O: save / open draft; Ctrl+E: export. Ctrl+Shift+V: vocals and instrumental; Ctrl+Shift+B: four components. On the timeline: Space to play / stop, Esc to stop and cancel the task. Shortcuts work in Russian and English layouts; input fields retain normal text editing.",
+        "shortcuts_tip": "Ctrl+I: add audio; Ctrl+K: split; Ctrl+Shift+X: trim selection; Ctrl+D: duplicate; Delete: remove clip; Ctrl+Z: undo; Ctrl+Y / Ctrl+Shift+Z: redo; Ctrl+E: export. Ctrl+Shift+V: vocals and instrumental; Ctrl+Shift+B: four components. On the timeline: Space to play / stop, Esc to stop and cancel the task. Shortcuts work in Russian and English layouts; input fields retain normal text editing.",
         "trim": "Remove selection", "ready": "Ready", "importing": "Reading audio and building waveform…",
         "cutting": "Removing selection and smoothing the join…",
         "rendering": "Rendering audio…", "saved": "Saved: {path}", "playing": "Playing: {time}",
@@ -112,22 +116,21 @@ TEXT = {
         "preview": "Playback starts at the cursor. First playback renders in the background; repeats reuse the cached mix.",
         "export_tip": "Mixes unmuted lanes into a new WAV, MP3 or M4A. A final limiter protects peaks. Independent of Processing.",
         "add_tip": "Adds each song to a separate lane at the start of the timeline. Drop a file onto a specific timeline position for precise placement. Originals stay intact.",
-        "draft_tip": "Drafts store paths and edits, not audio copies. Keep the original files in place.",
         "split_tip": "Splits the selected clip at the cursor without changing its source file.",
         "duplicate_tip": "Copies the selected clip immediately after it on the same lane.",
-        "delete_tip": "Removes a clip from the project only, not its source file. Undo is available.",
-        "trim_tip": "Removes the Shift-drag range from the selected clip and joins the remaining parts without a gap. A short crossfade of up to 40 ms reduces clicks. Musical continuity depends on the cut position. Other clips and the source file remain unchanged. Undo is available.",
+        "delete_tip": "Removes the selected range with a smoothed join, or the entire clip when no range is selected. The source file stays intact. Undo with Ctrl+Z.",
+        "trim_tip": "Removes the right-drag range from the selected clip and joins the remaining parts without a gap. A short crossfade of up to 40 ms reduces clicks. Musical continuity depends on the cut position. Other clips and the source file remain unchanged. Undo is available.",
         "lane_tip": "Lane for imports or moving the selected clip. Muted lanes are excluded from playback and export.",
         "start_tip": "Starting time in the source file. Increase start or decrease end to trim.",
         "end_tip": "Ending time in the source file, after the start and within the original duration.",
         "position_tip": "Starting time on the project timeline. Different lanes can play simultaneously.",
         "gain_tip": "0 dB keeps original volume. +6 dB roughly doubles amplitude; −6 dB halves it. Not normalization.",
-        "fade_in_tip": "Gradual volume rise from silence. 0 disables. Must fit within the clip.",
-        "fade_out_tip": "Gradual volume drop at the end. 0 disables. Must fit within the clip.",
+        "fade_in_tip": "Changes only the beginning of the selected clip. The middle retains its volume. Duration is in seconds; 0 disables. Undo with Ctrl+Z.",
+        "fade_out_tip": "Changes only the end of the selected clip. The middle retains its volume. Duration is in seconds; 0 disables. Undo with Ctrl+Z.",
         "apply_tip": "Updates the selected clip. Edits affect the next playback and export.",
         "undo_tip": "Undoes a timeline change, including removal or mute. Does not undo exported files.",
         "redo_tip": "Restores an undone edit. A new edit clears redo history.",
-        "fit_tip": "Displays the full project. Zoom affects display only, not audio.",
+        "fit_tip": "Displays the full project. Ctrl + mouse wheel zooms around the pointer. Zoom affects display only, not audio.",
         "stop_tip": "Stops playback without changing clips or files.",
         "cancel_tip": "Cancels decoding or rendering and removes incomplete output.",
     },
@@ -146,6 +149,22 @@ TEXT['en'].update(track_on='Disable track', track_off='Enable track',
 
 def clock(seconds):
     return f"{int(seconds) // 60:02d}:{seconds % 60:05.2f}"
+
+
+ICONS = dict(add='＋', undo='↶', redo='↷', stems='♫', play='▶', stop='■',
+             export='⇧', cancel='×', fit='↔', fade_in='◿', fade_out='◺',
+             crossfade='⋈', begin_range='⌖', finish_range='✓', split='✂',
+             delete='⌫', trim='⌦', duplicate='⧉', set_range='✓', zoom_range='⊕',
+             track_on='◉', track_off='○', apply='✓')
+TEXT['ru'].update(crossfade='Плавный переход',
+    fade_in='Плавное начало', fade_out='Плавный конец',
+    crossfade_tip='Соединяет выбранную песню со следующей на той же дорожке. Перекрытие до 2 секунд, выравнивание громкости у стыка. Ctrl+Z возвращает обе песни.',
+    crossfade_missing='Добавьте следующую песню на ту же дорожку.',
+    hint='Правая кнопка + движение — выделить • Ctrl + колесо — масштаб • Потяните фрагмент — перенос')
+TEXT['en'].update(crossfade='Crossfade',
+    crossfade_tip='Join the selected song to the next on the same lane. Up to 2 seconds of overlap with loudness matching at the join. Ctrl+Z restores both songs.',
+    crossfade_missing='Add the next song to the same lane.',
+    hint='Right-drag: select • Ctrl + wheel: zoom • Drag clip: move')
 
 
 class AudioEditor(ttk.Frame):
@@ -175,8 +194,6 @@ class AudioEditor(ttk.Frame):
         self.localized = []
         self.controls = []
         self.tips = []
-        self.fields = {}
-        self.inspector_controls = []
         self.selection_controls = []
         self.selection_fields = {key: tk.StringVar(value="0.000") for key in ('start', 'end')}
         self._selection_clip = None
@@ -212,18 +229,22 @@ class AudioEditor(ttk.Frame):
 
     def tip(self, widget, key):
         title_key = 'play' if key == 'preview' else ('timeline' if key == 'hint' else key.removesuffix('_tip'))
+        if key == 'cursor_range_tip':
+            title_key = 'range_title'
         shortcuts = {'add_tip': 'Ctrl+I', 'split_tip': 'Ctrl+K', 'trim_tip': 'Ctrl+Shift+X',
                      'duplicate_tip': 'Ctrl+D', 'delete_tip': 'Delete', 'undo_tip': 'Ctrl+Z',
                      'redo_tip': 'Ctrl+Y / Ctrl+Shift+Z', 'export_tip': 'Ctrl+E',
-                     'stems_tip': 'Ctrl+Shift+V / Ctrl+Shift+B', 'preview': 'Space',
-                     'draft_tip': 'Ctrl+S / Ctrl+O'}
+                     'stems_tip': 'Ctrl+Shift+V / Ctrl+Shift+B', 'preview': 'Space'}
         suffix = '\n\n' + shortcuts[key] if key in shortcuts else ''
         self.tips.append(ToolTip(widget, lambda: self.tr(key) + suffix,
                                 title_provider=lambda: TEXT[self.app.language].get(title_key, self.tr('title'))))
         return widget
 
     def button(self, parent, key, command, primary=False, tip=None):
-        button = RoundedButton(parent, text=self.tr(key), command=command, primary=primary)
+        button = RoundedButton(parent, text=ICONS.get(key, self.tr(key)), command=command, primary=primary, width=3)
+        button.font.configure(size=15)
+        button.minimum_width = 56
+        button.configure(text=ICONS.get(key, self.tr(key)))
         self.localized.append((button, key))
         self.controls.append(button)
         self.tip(button, tip or key + "_tip")
@@ -231,7 +252,7 @@ class AudioEditor(ttk.Frame):
 
     def _build(self):
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(3, weight=1)
+        self.rowconfigure(3, weight=0)
         header = self.header_parent if self.header_parent is not None else self
         header.columnconfigure(0, weight=1)
         self.label(header, "title", style="Title.TLabel").grid(row=0, column=0, sticky="w")
@@ -242,7 +263,7 @@ class AudioEditor(ttk.Frame):
         self.undo_button.pack(side=tk.LEFT, padx=(0, 4))
         self.redo_button = self.button(toolbar, "redo", lambda: self.history(True))
         self.redo_button.pack(side=tk.LEFT)
-        self.stems_button = RoundedMenuButton(toolbar, text=self.tr('stems'))
+        self.stems_button = RoundedMenuButton(toolbar, text=ICONS['stems'])
         self.stems_button.pack(side=tk.LEFT, padx=(12, 0))
         self.controls.append(self.stems_button)
         self.localized.append((self.stems_button, 'stems'))
@@ -252,17 +273,9 @@ class AudioEditor(ttk.Frame):
         for mode, key in (('two', 'stems_two'), ('four', 'stems_four')):
             self.stems_menu.add_command(label=self.tr(key), accelerator='Ctrl+Shift+' + ('V' if mode == 'two' else 'B'),
                                         command=lambda selected=mode: self.separate_stems(selected))
-        draft = RoundedMenuButton(toolbar, text=self.tr("draft"))
-        draft.pack(side=tk.RIGHT)
-        self.controls.append(draft)
-        self.localized.append((draft, "draft"))
-        self.tip(draft, "draft_tip")
-        self.menu = ThemedMenu(draft, tearoff=False)
-        draft.configure(menu=self.menu)
-        for key, command in (("new", self.new), ("open_draft", self.open_draft), ("save_draft", self.save_draft)):
-            self.menu.add_command(label=self.tr(key), command=command)
 
-        canvas_frame = ttk.Frame(self, style="Surface.TFrame")
+        canvas_frame = ttk.Frame(self, style="Surface.TFrame", height=230)
+        canvas_frame.grid_propagate(False)
         canvas_frame.grid(row=3, column=0, sticky="nsew")
         canvas_frame.columnconfigure(0, weight=1)
         canvas_frame.rowconfigure(0, weight=1)
@@ -278,13 +291,17 @@ class AudioEditor(ttk.Frame):
         self.canvas.bind("<Button-1>", self._press)
         self.canvas.bind("<B1-Motion>", self._motion)
         self.canvas.bind("<ButtonRelease-1>", self._release)
-        self.canvas.bind('<MouseWheel>', lambda event: self._scroll_y('scroll', -1 if event.delta > 0 else 1, 'units'))
+        self.canvas.bind('<MouseWheel>', self._wheel)
+        self.canvas.bind('<Shift-MouseWheel>', self._wheel)
+        self.canvas.bind('<Control-MouseWheel>', self._wheel)
+        self.canvas.bind('<Button-3>', self._right_press)
+        self.canvas.bind('<B3-Motion>', self._motion)
+        self.canvas.bind('<ButtonRelease-3>', self._release)
         self.canvas.drop_target_register(DND_FILES)
         self.canvas.dnd_bind('<<DropEnter>>', self._drop_enter)
         self.canvas.dnd_bind('<<DropPosition>>', self._drop_enter)
         self.canvas.dnd_bind('<<DropLeave>>', self._drop_leave)
         self.canvas.dnd_bind('<<Drop>>', self._drop_files)
-        self.tip(self.canvas, "hint")
 
         navigation = ttk.Frame(self, style="Surface.TFrame")
         navigation.grid(row=4, column=0, sticky="ew", pady=(8, 4))
@@ -298,11 +315,19 @@ class AudioEditor(ttk.Frame):
 
         tools = ttk.Frame(self, style="Surface.TFrame")
         tools.grid(row=6, column=0, sticky="ew", pady=(6, 6))
-        for key in ("split", "trim", "duplicate", "delete"):
-            button = self.button(tools, key, lambda operation=key: self.edit(operation))
+        self.main_tools = []
+        for key, command in (
+                ('fade_in', lambda: self.open_fade_tool('fade_in')),
+                ('fade_out', lambda: self.open_fade_tool('fade_out')),
+                ('crossfade', self.crossfade),
+                ('begin_range', self.toggle_cursor_selection),
+                ('split', lambda: self.edit('split')),
+                ('delete', self.delete_selection)):
+            button = self.button(tools, key, command, tip='cursor_range_tip' if key == 'begin_range' else None)
             button.pack(side=tk.LEFT, padx=(0, 6))
-            if key == 'trim':
-                self.trim_button = button
+            self.main_tools.append((key, button))
+            if key == 'begin_range':
+                self.cursor_selection_button = button
 
         selection = ttk.Frame(self, style="Surface.TFrame")
         selection.grid(row=5, column=0, sticky="ew", pady=(4, 0))
@@ -319,55 +344,11 @@ class AudioEditor(ttk.Frame):
         select_button = self.button(selection, 'set_range', self.set_selection)
         select_button.pack(side=tk.LEFT)
         self.selection_controls.append(select_button)
-        self.cursor_selection_button = self.button(selection, 'begin_range', self.toggle_cursor_selection, tip='cursor_range_tip')
-        # Reserve the longer caption in both languages so toggling never shifts
-        # fields or neighbouring buttons.
-        self.cursor_selection_button.minimum_width = max(
-            self.cursor_selection_button.font.measure(TEXT[language][key]) + 32
-            for language in ('ru', 'en') for key in ('begin_range', 'finish_range'))
-        self.cursor_selection_button.configure(text=self.tr('begin_range'))
-        self.cursor_selection_button.pack(side=tk.LEFT, padx=(6, 0))
+        self.trim_button = self.button(selection, 'trim', lambda: self.edit('trim'))
+        self.trim_button.pack(side=tk.LEFT, padx=(6, 0))
         self.zoom_range_button = self.button(selection, 'zoom_range', self.zoom_selection)
         self.zoom_range_button.pack(side=tk.LEFT, padx=6)
         ttk.Label(selection, textvariable=self.selection_length, style="SurfaceSecondary.TLabel").pack(side=tk.RIGHT)
-
-        inspector = ttk.Labelframe(self, text=self.tr("selection"), padding=8, style="Surface.TLabelframe")
-        inspector.grid(row=7, column=0, sticky="ew")
-        self.inspector = inspector
-        self.inspector_groups = []
-        for column, (title, keys) in enumerate((('bounds', ('start', 'end')),
-                                               ('placement', ('position', 'lane')),
-                                               ('sound', ('gain', 'fade_in', 'fade_out')))):
-            inspector.columnconfigure(column, weight=1, uniform="groups")
-            group = ttk.Frame(inspector, style="Surface.TFrame")
-            group.grid(row=0, column=column, sticky="nsew", padx=(0 if column == 0 else 12, 0))
-            group.columnconfigure(1, weight=1)
-            self.inspector_groups.append(group)
-            self.label(group, title, style="Surface.TLabel", font=FONTS['section']).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
-            for row, key in enumerate(keys, 1):
-                self.label(group, key, style="SurfaceSecondary.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=2)
-                if key == 'lane':
-                    spin = ttk.Entry(group, textvariable=self.lane, width=10)
-                else:
-                    variable = tk.StringVar(value="0.000")
-                    self.fields[key] = variable
-                    spin = ttk.Spinbox(group, textvariable=variable, from_=-60 if key == "gain" else 0,
-                                       to=18 if key == "gain" else 14400, increment=.1 if key == 'gain' else .001,
-                                       format="%.3f", width=9)
-                spin.grid(row=row, column=1, sticky="ew", pady=2)
-                self.controls.append(spin)
-                self.inspector_controls.append(spin)
-                self.tip(spin, key + "_tip")
-                spin.bind('<Return>', lambda _event: self.apply())
-        ttk.Label(self.inspector_groups[0], textvariable=self.clip_length, style="SurfaceSecondary.TLabel").grid(
-            row=3, column=0, columnspan=2, sticky='w', pady=2)
-        apply_button = self.button(self.inspector_groups[1], "apply", self.apply, primary=True)
-        apply_button.grid(row=3, column=0, columnspan=2, sticky='e', pady=2)
-        self.inspector_controls.append(apply_button)
-        self.track_toggle_button = self.button(self.inspector_groups[1], 'track_on', self.toggle_track,
-                                               tip='track_toggle_tip')
-        self.track_toggle_button.grid(row=4, column=0, columnspan=2, sticky='e', pady=2)
-        self.inspector_controls.append(self.track_toggle_button)
 
         transport = ttk.Frame(self, style="Surface.TFrame")
         transport.grid(row=8, column=0, sticky="ew", pady=(8, 0))
@@ -375,7 +356,7 @@ class AudioEditor(ttk.Frame):
         self.stop_button = self.button(transport, "stop", self.stop)
         self.stop_button.pack(side=tk.LEFT)
         self.button(transport, "export", self.export, True).pack(side=tk.RIGHT)
-        self.cancel_button = RoundedButton(transport, text=self.tr("cancel"), command=self.cancel_task, state="disabled")
+        self.cancel_button = RoundedButton(transport, text=ICONS['cancel'], command=self.cancel_task, state="disabled")
         self.localized.append((self.cancel_button, "cancel"))
         self.cancel_button.pack(side=tk.RIGHT, padx=8)
         self.tip(self.cancel_button, "cancel_tip")
@@ -387,7 +368,7 @@ class AudioEditor(ttk.Frame):
     def _shortcut(self, event):
         widget = event.widget
         if (self.app.view.active_tab != 'editor' or widget.winfo_toplevel() is not self.app
-                or event.state & (0x8 | 0x20000)):
+                or alt_pressed(event.state)):
             return None
         control, shift = bool(event.state & 4), bool(event.state & 1)
         letter = str(event.keysym).lower()
@@ -400,9 +381,7 @@ class AudioEditor(ttk.Frame):
                   'cyrillic_yeru': 's', 'cyrillic_shcha': 'o', 'cyrillic_u': 'e',
                   'cyrillic_em': 'v', 'cyrillic_i': 'b', 'cyrillic_softsign': 'm'}.get(letter, letter)
         if isinstance(widget, (tk.Entry, tk.Text, ttk.Entry, ttk.Spinbox, ttk.Combobox)):
-            # Undo/redo in the editor's numeric inspector is project history,
-            # including after Apply. Other text shortcuts remain native.
-            numeric_editor_field = widget in self.inspector_controls + self.selection_controls
+            numeric_editor_field = widget in self.selection_controls
             if not (numeric_editor_field and control and letter in ('z', 'y')):
                 return None
         if not control and letter == 'escape':
@@ -418,12 +397,10 @@ class AudioEditor(ttk.Frame):
             (True, False, 'k'): lambda: self.edit('split'),
             (True, True, 'x'): lambda: self.edit('trim'),
             (True, False, 'd'): lambda: self.edit('duplicate'),
-            (False, False, 'delete'): lambda: self.edit('delete'),
+            (False, False, 'delete'): self.delete_selection,
             (True, False, 'z'): lambda: self.history(False),
             (True, True, 'z'): lambda: self.history(True),
             (True, False, 'y'): lambda: self.history(True),
-            (True, False, 's'): self.save_draft,
-            (True, False, 'o'): self.open_draft,
             (True, False, 'e'): self.export,
             (True, False, 'm'): self.toggle_track,
             (True, True, 'v'): lambda: self.separate_stems('two'),
@@ -440,9 +417,7 @@ class AudioEditor(ttk.Frame):
 
     def apply_language(self):
         for widget, key in self.localized:
-            widget.configure(text=self.tr(key))
-        for index, key in enumerate(("new", "open_draft", "save_draft")):
-            self.menu.entryconfigure(index, label=self.tr(key))
+            widget.configure(text=ICONS.get(key, self.tr(key)))
         for index, key in enumerate(('stems_two', 'stems_four')):
             self.stems_menu.entryconfigure(index, label=self.tr(key))
         self.status.set(self.tr("ready") if not self.is_busy else self.tr("rendering"))
@@ -481,7 +456,7 @@ class AudioEditor(ttk.Frame):
         self.stop()
         self.cancel.clear()
         self._set_busy(True)
-        self.status.set(self.tr("importing" if operation in {"import", "draft"} else "rendering"))
+        self.status.set(self.tr("importing" if operation == "import" else "rendering"))
         if operation == 'stems':
             self.status.set(self.tr('separating'))
         elif operation == 'cut':
@@ -559,13 +534,14 @@ class AudioEditor(ttk.Frame):
                 self.changed()
                 self.fit()
                 self.status.set(self.tr('ready'))
-            elif operation == "draft":
-                self.project = result
-                self.selected = self.project.clips[0].id if self.project.clips else None
-                self.cursor = 0
+            elif operation == 'crossfade':
+                source, first, second = result
+                if self.project.get(first.id) != first or self.project.get(second.id) != second:
+                    raise ValueError('Clips changed during transition rendering')
+                self.selected = self.project.join(first.id, second.id, source).id
                 self.changed()
                 self.fit()
-                self.status.set(self.tr("ready"))
+                self.status.set(self.tr('ready'))
             elif operation == "preview":
                 path, signature, start = result
                 self._preview_cache = (signature, start, path)
@@ -677,25 +653,13 @@ class AudioEditor(ttk.Frame):
             self._cursor_selection = None
             self.range = None
             self._range_clip_id = None
-        if self.selected:
-            clip = self.project.get(self.selected)
-            name = Path(clip.source).name
-            self.inspector.configure(text=name[:72])
-            for key, var in self.fields.items():
-                var.set(f"{getattr(clip, key):.3f}")
-            self.lane.set(clip.lane + 1)
-            self.clip_length.set(self.tr('length').format(value=clip.duration))
-        else:
-            self.inspector.configure(text=self.tr("selection"))
-            self.clip_length.set('—')
         field_state = 'normal' if self.selected and not self.is_busy else 'disabled'
-        muted = self.selected and self.project.get(self.selected).lane in self.project.muted
-        self.track_toggle_button.configure(text=self.tr('track_off' if muted else 'track_on'))
-        for widget in self.inspector_controls:
-            widget.configure(state=field_state)
         for widget in self.selection_controls:
             widget.configure(state=field_state if not self._cursor_selection else 'disabled')
-        self.cursor_selection_button.configure(text=self.tr('finish_range' if self._cursor_selection else 'begin_range'), state=field_state)
+        self.cursor_selection_button.configure(text=ICONS['finish_range' if self._cursor_selection else 'begin_range'], state=field_state)
+        for key, button in self.main_tools:
+            if key != 'begin_range':
+                button.configure(state=field_state)
         self._sync_selection_fields()
         self.undo_button.configure(state="normal" if self.project._undo and not self.is_busy else "disabled")
         self.redo_button.configure(state="normal" if self.project._redo and not self.is_busy else "disabled")
@@ -795,8 +759,15 @@ class AudioEditor(ttk.Frame):
                 at = clip.start + (x - x1) / scale
                 peak_index = min(len(source.peaks) - 1, int(at / source.duration * len(source.peaks)))
                 peak = source.peaks[peak_index] if source.peaks else 0
-                amp = max(1, min(18, peak * 18 * 10 ** (clip.gain / 20)))
+                amp = max(0, min(18, peak * 18 * 10 ** (clip.gain / 20) * fade_level(clip, at - clip.start)))
                 canvas.create_line(x, top + 43 - amp, x, top + 43 + amp, fill=COLORS["accent"], tags=(tag,))
+            incoming, outgoing = fade_lengths(clip)
+            for kind, seconds in (('fade_in', incoming), ('fade_out', outgoing)):
+                if seconds:
+                    edge = x1 if kind == 'fade_in' else x2
+                    inner = min(x2, x1 + seconds * scale) if kind == 'fade_in' else max(x1, x2 - seconds * scale)
+                    canvas.create_line(edge, top + 61, inner, top + 24, fill=COLORS['text'], width=2,
+                                       tags=(tag, 'fade-envelope'))
         if not self.project.clips:
             canvas.create_text(max(150, canvas.winfo_width() / 2), 70, text=self.tr("empty"), fill=COLORS["secondary"], font=FONTS["body"])
         bounds = self._trim_range()
@@ -874,6 +845,11 @@ class AudioEditor(ttk.Frame):
         self._drag = (self._time(event), clip, selecting)
         self.refresh()
 
+    def _right_press(self, event):
+        from types import SimpleNamespace
+        self._press(SimpleNamespace(x=event.x, y=event.y, state=event.state | 1))
+        return 'break'
+
     def _motion(self, event):
         if not self._drag or self.is_busy:
             return
@@ -919,18 +895,6 @@ class AudioEditor(ttk.Frame):
                 self.status.set(self.tr("error").format(error=exc))
         self.schedule_draw()
 
-    def apply(self):
-        if not self.selected or self.is_busy:
-            return
-        try:
-            changes = {key: float(var.get().replace(",", ".")) for key, var in self.fields.items()}
-            changes["lane"] = self.lane.get() - 1
-            self.project.update(self.selected, **changes)
-            self.changed()
-            self.status.set(self.tr("ready"))
-        except (ValueError, tk.TclError) as exc:
-            self.status.set(self.tr("error").format(error=exc))
-
     def toggle_track(self, lane=None):
         if self.is_busy or (lane is None and not self.selected):
             return
@@ -963,6 +927,22 @@ class AudioEditor(ttk.Frame):
             self.changed()
         except (ValueError, StopIteration) as exc:
             self.status.set(self.tr("error").format(error=exc))
+
+    def delete_selection(self):
+        self.edit('trim' if self._trim_range() else 'delete')
+
+    def crossfade(self):
+        if not self.selected or self.is_busy:
+            return
+        clip = self.project.get(self.selected)
+        following = sorted((c for c in self.project.clips if c.lane == clip.lane
+                            and c.position >= clip.position + clip.duration - 1e-9), key=lambda c: c.position)
+        if not following:
+            self.status.set(self.tr('crossfade_missing'))
+            return
+        second = following[0]
+        project = copy.deepcopy(self.project)
+        self._task('crossfade', lambda: (crossfade_audio(project, clip.id, second.id, self.cancel), clip, second))
 
     def _trim_range(self):
         if not self.range or not self.selected or self._range_clip_id != self.selected:
@@ -1071,6 +1051,85 @@ class AudioEditor(ttk.Frame):
         self.zoom = max(1, min(4096, self.zoom * multiplier))
         self.schedule_draw()
 
+    def _wheel(self, event):
+        if not event.delta:
+            return 'break'
+        if event.state & (1 | 4):
+            old_scale = self._scale()
+            anchor = min(self.canvas.winfo_width(), max(85, event.x))
+            at = max(0, (self.canvas.canvasx(anchor) - 85) / old_scale)
+            steps = min(4, max(-4, event.delta / 120))
+            self.zoom = max(1, min(4096, self.zoom * 1.25 ** steps))
+            self.draw()
+            width = float(self.canvas.cget('scrollregion').split()[2])
+            left = 85 + at * self._scale() - anchor
+            self.canvas.xview_moveto(max(0, left) / width)
+            self.schedule_draw()
+        else:
+            self._scroll_y('scroll', -1 if event.delta > 0 else 1, 'units')
+        return 'break'
+
+    def apply_fade(self, kind, seconds, identifier=None):
+        if kind not in ('fade_in', 'fade_out') or self.is_busy:
+            return False
+        identifier = identifier or self.selected
+        if not identifier:
+            return False
+        try:
+            clip = self.project.get(identifier)
+            other = clip.fade_out if kind == 'fade_in' else clip.fade_in
+            if not math.isfinite(seconds) or not 0 <= seconds <= max(0, clip.duration - other):
+                raise ValueError(self.tr('fade_range_error'))
+            self.project.update(identifier, **{kind: seconds})
+            self.changed()
+            self.status.set(self.tr('ready'))
+            return True
+        except (ValueError, StopIteration) as exc:
+            self.status.set(self.tr('error').format(error=exc))
+            return False
+
+    def open_fade_tool(self, kind):
+        if not self.selected or self.is_busy:
+            return
+        clip = self.project.get(self.selected)
+        other = clip.fade_out if kind == 'fade_in' else clip.fade_in
+        maximum = max(0, clip.duration - other)
+        dialog = tk.Toplevel(self.app)
+        dialog.withdraw()
+        dialog.title(self.tr(kind))
+        dialog.configure(bg=COLORS['surface'])
+        dialog.transient(self.app)
+        frame = ttk.Frame(dialog, padding=16, style='Surface.TFrame')
+        frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(frame, text=self.tr(kind + '_tip'), wraplength=390,
+                  style='Surface.TLabel').pack(fill=tk.X, pady=(0, 12))
+        value = tk.StringVar(dialog, f'{getattr(clip, kind) or min(2, clip.duration * .1, maximum):.3f}')
+        duration = ttk.Spinbox(frame, textvariable=value, from_=0, to=maximum, increment=.05, format='%.3f')
+        duration.pack(fill=tk.X)
+        ttk.Label(frame, text=self.tr('fade_duration').format(maximum=maximum), style='SurfaceSecondary.TLabel').pack(pady=8)
+        error = tk.StringVar(dialog)
+        ttk.Label(frame, textvariable=error, wraplength=390, style='SurfaceSecondary.TLabel').pack(fill=tk.X)
+        def apply(reset=False):
+            try:
+                seconds = 0 if reset else float(value.get().replace(',', '.'))
+                if self.apply_fade(kind, seconds, clip.id):
+                    dialog.destroy()
+                else:
+                    error.set(self.status.get())
+            except ValueError:
+                error.set(self.tr('fade_range_error'))
+        actions = ttk.Frame(frame, style='Surface.TFrame')
+        actions.pack(fill=tk.X, pady=(12, 0))
+        RoundedButton(actions, text=self.tr('fade_disable'), command=lambda: apply(True)).pack(side=tk.LEFT)
+        RoundedButton(actions, text=self.tr('apply'), command=apply, primary=True).pack(side=tk.RIGHT)
+        duration.bind('<Return>', lambda _e: apply())
+        dialog.bind('<Escape>', lambda _e: dialog.destroy())
+        self.app.set_window_icon(dialog)
+        show_centered(dialog, 440, 265, parent=self.app)
+        dialog.grab_set()
+        duration.focus_set()
+        self.fade_dialog = dialog
+
     def preview(self):
         if self.is_busy or not self.project.clips:
             return
@@ -1092,6 +1151,7 @@ class AudioEditor(ttk.Frame):
         self._task("preview", lambda: (render(project, target, self.cancel, start=start), signature, start))
 
     def _play(self, path, start):
+        self.app.view.lyrics_player.stop()
         try:
             import winsound
             winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
@@ -1153,24 +1213,6 @@ class AudioEditor(ttk.Frame):
         self.selected = None
         self.cursor = 0
         self.changed()
-
-    def save_draft(self):
-        path = filedialog.asksaveasfilename(parent=self, defaultextension=".sfproject", filetypes=[("Sonic Forge project", "*.sfproject")])
-        if path:
-            try:
-                self.project.save(path)
-                self.status.set(self.tr("saved").format(path=path))
-            except OSError as exc:
-                self.status.set(self.tr("error").format(error=exc))
-
-    def open_draft(self):
-        if self.is_busy:
-            return
-        if self.project.clips and not messagebox.askyesno(self.tr("title"), self.tr("new_confirm"), parent=self):
-            return
-        path = filedialog.askopenfilename(parent=self, filetypes=[("Sonic Forge project", "*.sfproject")])
-        if path:
-            self._task("draft", lambda: Timeline.load(path, self.cancel))
 
     def _on_destroy(self, event):
         if event.widget is self:

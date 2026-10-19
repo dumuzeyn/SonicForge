@@ -21,6 +21,7 @@ notices are next to the font files. This inventory does not replace those texts.
 | psutil | Task/process control | BSD-3-Clause; [source](https://github.com/giampaolo/psutil) |
 | tkinterdnd2 / tkdnd | File drag-and-drop | MIT / BSD-style upstream notices; [source](https://github.com/pmgagne/tkinterdnd2) |
 | Demucs / HTDemucs | Separate local stem worker | MIT; [source and checkpoint](../packaging/SEPARATION_ENGINE.txt) |
+| stable-ts-whisperless 2.19.1 | Align supplied lyric words to audio in the separate CPU helper | MIT; [source](https://github.com/jianfch/stable-ts); original terms bundled in helper licenses |
 | PyTorch / torchaudio | Separate stem runtime | BSD-style upstream licenses; [source](https://github.com/pytorch/pytorch), [torchaudio](https://github.com/pytorch/audio) |
 | Noto Sans, Noto Serif, Oswald, Unbounded | Cover lettering | SIL OFL-1.1; [bundled notices](../assets/fonts/README.md) |
 | FFmpeg executable | Independent command-line media tool, called through subprocess arguments | GPL-3.0; unmodified separate executable, not linked into original SonicForge code. [Distributor](https://www.gyan.dev/ffmpeg/builds/), [exact FFmpeg source revision](https://github.com/FFmpeg/FFmpeg/commit/38e89fe502). Its original LICENSE and build README are bundled in `licenses/ffmpeg`. GPL rights apply to this tool, not the noncommercial project license. |
