@@ -6,9 +6,27 @@
     "size": 83994361
   },
   "speech": {
+    "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-q5_0.bin",
+    "file": "ggml-large-v3-q5_0.bin",
+    "sha256": "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1",
+    "size": 1081140203
+  },
+  "speech_fast": {
     "file": "ggml-large-v3-turbo-q5_0.bin",
     "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin",
     "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
     "size": 574041195
+  },
+  "alignment_ru": {
+    "url": "https://huggingface.co/onnx-community/wav2vec2-large-xlsr-53-russian-ONNX/resolve/df5ba1d9e0f9a34c44eec437b441f4ae43c842eb/onnx/model_quantized.onnx",
+    "file": "ctc-ru.onnx",
+    "sha256": "027f226a26c4ad2bb8cd6e4f56038b9013afc3cf6ccf2cdf9aecb092c3726344",
+    "size": 317349970
+  },
+  "alignment_en": {
+    "url": "https://huggingface.co/onnx-community/wav2vec2-base-960h-ONNX/resolve/729c1a6730fb549c20a1c73a3d3f96f11020225e/onnx/model_quantized.onnx",
+    "file": "ctc-en.onnx",
+    "sha256": "1d9a366c27b2966625cd5035ac3db8847c53bba617169912bb251b42975a3a22",
+    "size": 95212816
   }
 }

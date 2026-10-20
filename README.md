@@ -1,8 +1,8 @@
-# SonicForge 3.0
+# SonicForge 3.1
 
 Музыкальный редактор для Windows: монтаж на дорожках, обработка звука, метаданные, обложки и синхронизированный текст. Интерфейс и логика приложения переписаны на **C++20 / Qt 6**. Распознавание, разделение на инструменты и определение жанров работают локально через нативные библиотеки. Python для запуска не требуется.
 
-[Скачать установщик](https://github.com/dumuzeyn/SonicForge/releases/download/v3.0.0/SonicForge-Setup.exe) · [Портативная версия](https://github.com/dumuzeyn/SonicForge/releases/download/v3.0.0/SonicForge-windows-x64.zip) · [Все релизы](https://github.com/dumuzeyn/SonicForge/releases)
+[Скачать установщик](https://github.com/dumuzeyn/SonicForge/releases/download/v3.1.0/SonicForge-Setup.exe) · [Портативная версия](https://github.com/dumuzeyn/SonicForge/releases/download/v3.1.0/SonicForge-windows-x64.zip) · [Все релизы](https://github.com/dumuzeyn/SonicForge/releases)
 
 ![Компактный редактор](docs/images/editor-native.png)
 
@@ -12,14 +12,16 @@
 - Основные инструменты: плавное начало, плавный конец, переход к следующей песне той же дорожки, выделение, разделение и удаление. Переход использует перекрытие до двух секунд, измерение громкости у стыка и плавное смешивание.
 - Собственные векторные иконки, подготовленные для разных масштабов экрана. Правый клик по кнопке открывает её название и описание.
 - Выделение правой кнопкой мыши, масштабирование Ctrl + колесо. Дополнительные действия с фрагментом доступны через кнопку с регуляторами.
+- Громкость и скорость фрагмента от 0 до 400%, трёхполосный эквалайзер. Перемещение красной линии сразу меняет позицию проигрывания.
 - Экспорт WAV, MP3 и M4A. Исходники монтажа сохраняются; обработка создаёт копии в выбранной папке.
 - Метаданные MP3/ID3, FLAC, M4A, Ogg и Opus; встроенные обложки, сохранение существующего текста, запись TXT/LRC отдельно.
-- Двухпроходная нормализация громкости, лимитер, эквалайзер, компрессор, фильтры, шумоподавление, скорость, высота тона, стереобаза, реверберация и A/B-прослушивание.
+- Двухпроходная нормализация громкости, лимитер, эквалайзер, компрессор, фильтры, шумоподавление, скорость, высота тона, стереобаза и реверберация. Ползунки и два плеера: оригинал и автоматически обновляемый результат. Свёрнутые настройки участвуют в обработке и рекомендациях.
 - Три семейства процедурных обложек, пользовательская палитра с перемещаемыми точками градиента, загрузка изображения и сохранение PNG.
-- Редактор текста с плеером и перемоткой. **F8** ставит метку на 0,1 секунды раньше текущего звука и переходит к следующей строке. Ручное время сохраняется точно.
+- Редактор текста с плеером и перемоткой. **F8** ставит метку на 45 мс раньше текущего звука и переходит к следующей строке. Ручное время сохраняется точно.
 - Текст и таймкоды сохраняются при смене вкладок, переключении связи с редактором и правке дорожек. При коррекции таймингов сохраняются исходные слова и повторы; сопоставление использует времена слов.
-- Whisper large-v3-turbo, HTDemucs для двух/четырёх составляющих и MSD musicnn для жанров. Модели включены в выпуск, их контрольные суммы проверяются.
+- Whisper Large v3 с отдельным выравниванием русских и английских строк; режим Turbo для меньшего расхода памяти. HTDemucs для двух/четырёх составляющих и MSD musicnn для жанров. Модели включены в выпуск, их контрольные суммы проверяются.
 - Русский и английский интерфейс. Настроенная палитра версии 2 переносится при первом запуске.
+- Закрытие окна отменяет задачи и завершает дочерние процессы. Обложки анализируются потоком, разделение на инструменты обрабатывает ограниченные блоки; объём аудио в оперативной памяти не растёт с длиной песни.
 
 ![Текст и прослушивание](docs/images/lyrics-native.png)
 
@@ -33,13 +35,13 @@ Windows 10/11 x64. Распакуйте портативный архив цел
 
 ## Сборка из исходников
 
-Нужны Git, Windows x64 и FFmpeg с `ffmpeg.exe` / `ffprobe.exe`. Основная сборка использует Qt 6.10.0 и MinGW 13.1.0. Скрипт загружает закреплённые версии движков в `build/native-deps`, собирает C++ и запускает QtTest:
+Нужны Git, Windows x64, CMake 3.24+, Ninja и FFmpeg с `ffmpeg.exe` / `ffprobe.exe`. Установите Qt 6.10.0 MinGW 13.1 x64 с модулями Qt Multimedia, SVG и Image Formats в `build/qt/6.10.0/mingw_64`, компилятор — в `build/qt/Tools/mingw1310_64`. CMake и Ninja должны быть доступны через PATH либо в `build/native-tools/cmake/bin` и `build/native-tools/bin`. Скрипт загружает закреплённые версии движков в `build/native-deps`, собирает C++ и запускает QtTest:
 
 ```powershell
 .\scripts\build_native.ps1
 ```
 
-Если локальный SDK ещё не подготовлен, скрипт использует Python только как инструмент установки `aqtinstall`, CMake и Ninja в `build/native-tools`. Можно указать его явный путь через `-Python`. Приложение и нейронные рабочие процессы Python не запускают. Все обработчики рабочих процессов находятся в том же `SonicForge.exe`.
+Сборка использует самостоятельные исполняемые файлы CMake, Ninja и компилятора. Python не требуется ни для сборки, ни для запуска. Все обработчики рабочих процессов находятся в том же `SonicForge.exe`.
 
 Полная сборка с обновлением единственной папки приложения, установщиком Inno Setup 6 и ZIP:
 
@@ -51,7 +53,7 @@ Windows 10/11 x64. Распакуйте портативный архив цел
 
 Исходники интерфейса: `native/window.cpp` и `native/timeline.cpp`; обработка: `native/core.cpp`, `metadata.cpp`, `covers.cpp`, `neural.cpp`; оригинальные SVG-иконки: `native/icons.cpp`. Модели и движки закреплены контрольными суммами и ревизиями в `native/resources/models.json` и `native/dependencies.json`.
 
-Архив Python-версии 2 находится в `legacy/python-v2` и не участвует в сборке и запуске версии 3. История предыдущих изменений сохранена в Git.
+Исходники прежней Python-версии удалены из текущей ветки. Они доступны в истории Git и теге `v3.0.0`; в текущем дереве файлов Python нет.
 
 ## Проверки
 
@@ -66,7 +68,7 @@ QtTest проверяет монтаж, запрет пересечений, LRC
 
 ## English
 
-SonicForge 3.0 is a native C++20 / Qt 6 audio editor for Windows. It combines a compact multitrack editor, audio processing, metadata, procedural cover artwork and timed lyrics with playback. Recognition, stem separation and genre inference use native local engines; no Python runtime is shipped. Use right drag to select, Ctrl + wheel to zoom, and F8 in Lyrics to place a cue 100 ms before playback. Right-click an editor icon for its name and description.
+SonicForge 3.1 is a native C++20 / Qt 6 audio editor for Windows. It combines a compact multitrack editor, audio processing, metadata, procedural cover artwork and timed lyrics with playback. Recognition, stem separation and genre inference use native local engines; no Python runtime is shipped. Use right drag to select, Ctrl + wheel to zoom, and F8 in Lyrics to place a cue 45 ms before playback. Right-click an editor icon for its name and description.
 
 ## Лицензия
 

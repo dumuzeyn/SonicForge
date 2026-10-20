@@ -1,0 +1,15 @@
+SonicForge uses quantized ONNX conversions of the following acoustic models for local CTC alignment.
+
+Russian: jonatasgrosman/wav2vec2-large-xlsr-53-russian
+Original model: https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-russian
+ONNX conversion: https://huggingface.co/onnx-community/wav2vec2-large-xlsr-53-russian-ONNX/tree/df5ba1d9e0f9a34c44eec437b441f4ae43c842eb
+License: Apache 2.0
+
+English: facebook/wav2vec2-base-960h
+Original model: https://huggingface.co/facebook/wav2vec2-base-960h
+ONNX conversion: https://huggingface.co/onnx-community/wav2vec2-base-960h-ONNX/tree/729c1a6730fb549c20a1c73a3d3f96f11020225e
+License: Apache 2.0
+
+The vocabulary JSON files are copied from these pinned conversions. Weight files are included unchanged. URLs, byte sizes and SHA-256 hashes are recorded in models/manifest.json. The CTC inference and alignment implementation in SonicForge is original C++ code, using the ONNX Runtime C API; no Python framework is required.
+
+The Apache 2.0 license is included in Wav2Vec2-Apache-2.0.txt.

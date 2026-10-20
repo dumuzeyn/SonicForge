@@ -1,4 +1,5 @@
 #include "core.h"
+#include "speech.h"
 #ifndef _MSC_VER
 #ifndef _Return_type_success_
 #define _Return_type_success_(X)
@@ -103,20 +104,33 @@ static QList<Lyric> readResult(const QString& file) {
     }
     return lines;
 }
+static QString speechModel(bool fast, const QString& language, const Cancel& cancel,
+                           Progress progress) {
+    auto model = ensureModel(fast ? "speech_fast" : "speech", cancel, progress);
+    if (language != "en")
+        ensureModel("alignment_ru", cancel, progress);
+    if (language != "ru")
+        ensureModel("alignment_en", cancel, progress);
+    return model;
+}
 QList<Lyric> recognize(const QString& audio, const QString& language, const Cancel& cancel,
-                       Progress progress) {
-    QString model = ensureModel("speech", cancel, progress), result = uniqueFile(".json");
-    process(QCoreApplication::applicationFilePath(),
-            {"--speech-worker", "--audio", audio, "--model", model, "--language", language,
-             "--result", result},
-            cancel, progress);
+                       Progress progress, const QString& reference, bool fast) {
+    QString model = speechModel(fast, language, cancel, progress), result = uniqueFile(".json");
+    auto cleanup = qScopeGuard([&] { QFile::remove(result); });
+    QStringList arguments{"--speech-worker", "--audio", audio,      "--model", model,
+                          "--language",      language,  "--result", result,    "--reference",
+                          reference};
+    if (fast)
+        arguments << "--fast";
+    process(QCoreApplication::applicationFilePath(), arguments, cancel, progress);
     auto lines = readResult(result);
     QFile::remove(result);
     return lines;
 }
 QList<Lyric> alignLyrics(const QString& audio, const QString& text, const QString& language,
-                         const Cancel& cancel, Progress progress) {
-    QString model = ensureModel("speech", cancel, progress), result = uniqueFile(".json"),
+                         const Cancel& cancel, Progress progress, const QString& reference,
+                         bool fast) {
+    QString model = speechModel(fast, language, cancel, progress), result = uniqueFile(".json"),
             input = uniqueFile(".txt");
     QFile file(input);
     if (!file.open(QIODevice::WriteOnly))
@@ -124,10 +138,13 @@ QList<Lyric> alignLyrics(const QString& audio, const QString& text, const QStrin
     file.write(text.toUtf8());
     file.close();
     try {
-        process(QCoreApplication::applicationFilePath(),
-                {"--speech-worker", "--audio", audio, "--model", model, "--language", language,
-                 "--result", result, "--align", input},
-                cancel, progress);
+        QStringList arguments{
+            "--speech-worker", "--audio",  audio,  "--model", model, "--language",
+            language,          "--result", result, "--align", input, "--reference",
+            reference};
+        if (fast)
+            arguments << "--fast";
+        process(QCoreApplication::applicationFilePath(), arguments, cancel, progress);
         auto lines = readResult(result);
         QFile::remove(result);
         QFile::remove(input);
@@ -179,8 +196,41 @@ static double similarity(const QString& a, const QString& b) {
 }
 static QList<Lyric> speechWindow(whisper_context* context, const QVector<float>& audio,
                                  double origin, const QString& language, const QString& prompt = {},
-                                 QList<Lyric>* words = nullptr) {
-    whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+                                 QList<Lyric>* words = nullptr, bool splitSilence = true) {
+    if (splitSilence) {
+        QList<QPair<int, int>> ranges;
+        int first = -1, last = -1;
+        for (int offset = 0; offset + 160 <= audio.size(); offset += 160) {
+            double power = 0;
+            for (int i = 0; i < 160; ++i)
+                power += audio[offset + i] * audio[offset + i];
+            if (power / 160 <= 1e-10)
+                continue;
+            if (first >= 0 && offset - last > 32000) {
+                ranges << qMakePair(first, last + 160);
+                first = -1;
+            }
+            if (first < 0)
+                first = offset;
+            last = offset;
+        }
+        if (first >= 0)
+            ranges << qMakePair(first, last + 160);
+        if (ranges.isEmpty())
+            return {};
+        if (ranges.size() <= 4 && (ranges.size() > 1 || ranges.first().first > 8000 ||
+                                   ranges.last().second < audio.size() - 8000)) {
+            QList<Lyric> result;
+            for (auto range : ranges) {
+                int left = qMax(0, range.first - 3200),
+                    right = qMin(int(audio.size()), range.second + 3200);
+                result << speechWindow(context, audio.mid(left, right - left),
+                                       origin + left / 16000., language, prompt, words, false);
+            }
+            return result;
+        }
+    }
+    whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
     params.n_threads = qBound(1, int(std::thread::hardware_concurrency() / 2), 4);
     params.translate = false;
     params.print_realtime = false;
@@ -191,10 +241,24 @@ static QList<Lyric> speechWindow(whisper_context* context, const QVector<float>&
     params.no_context = true;
     params.suppress_blank = true;
     params.suppress_nst = true;
-    params.no_speech_thold = .65f;
+    params.no_speech_thold = .85f;
     params.temperature = 0;
-    params.temperature_inc = 0;
-    params.greedy.best_of = 1;
+    params.temperature_inc = .2f;
+    params.greedy.best_of = 3;
+    params.beam_search.beam_size = 3;
+    params.max_initial_ts = float(audio.size() / 16000.);
+    QVector<float> adjusted = audio;
+    double energy = 0, maximum = 0;
+    for (float sample : adjusted) {
+        energy += sample * sample;
+        maximum = qMax(maximum, std::abs(double(sample)));
+    }
+    const double rms = std::sqrt(energy / qMax(qsizetype(1), adjusted.size()));
+    if (rms < .00002)
+        return {};
+    const double gain = qMin(qBound(.25, .1 / rms, 12.), .98 / qMax(.0001, maximum));
+    for (float& sample : adjusted)
+        sample = float(sample * gain);
     QByteArray lang = language.toUtf8(), hint = prompt.toUtf8();
     if (language == "other_ru" || language == "other_en" || language == "auto" ||
         language.isEmpty())
@@ -203,7 +267,7 @@ static QList<Lyric> speechWindow(whisper_context* context, const QVector<float>&
         params.language = lang.constData();
     if (!prompt.isEmpty())
         params.initial_prompt = hint.constData();
-    if (whisper_full(context, params, audio.constData(), int(audio.size())) != 0)
+    if (whisper_full(context, params, adjusted.constData(), int(adjusted.size())) != 0)
         throw Error("Распознавание не завершено");
     QList<Lyric> lines;
     for (int i = 0; i < whisper_full_n_segments(context); ++i) {
@@ -221,8 +285,13 @@ static QList<Lyric> speechWindow(whisper_context* context, const QVector<float>&
             }
         }
         confidence /= qMax(1, count);
-        if (text.isEmpty() || normalized(text).size() < 2 || confidence < .25 ||
-            whisper_full_get_segment_no_speech_prob(context, i) > .8f)
+        const double noSpeech = whisper_full_get_segment_no_speech_prob(context, i);
+        static const QRegularExpression annotation(
+            "^[\\s\\[\\(]*(music|музыка|песня|instrumental|applause|аплодисменты)[\\s\\]\\)!.]*$",
+            QRegularExpression::CaseInsensitiveOption);
+        if (text.isEmpty() || normalized(text).isEmpty() || (confidence < .12 && noSpeech > .65) ||
+            (noSpeech > .95 && confidence < .8) ||
+            (annotation.match(text).hasMatch() && noSpeech > .25))
             continue;
         if (words) {
             QByteArray bytes;
@@ -230,7 +299,14 @@ static QList<Lyric> speechWindow(whisper_context* context, const QVector<float>&
             int tokens = 0;
             auto flush = [&] {
                 QString word = QString::fromUtf8(bytes).trimmed();
-                if (!normalized(word).isEmpty() && begin >= 0) {
+                const int left = qBound(0, int((begin - .06) * 16000), int(adjusted.size()));
+                const int right = qBound(left, int((begin + .18) * 16000), int(adjusted.size()));
+                double activity = 0;
+                for (int sample = left; sample < right; ++sample)
+                    activity += adjusted[sample] * adjusted[sample];
+                const bool audible = right > left && std::sqrt(activity / (right - left)) > .00001;
+                if (!normalized(word).isEmpty() && begin >= 0 && audible &&
+                    begin < adjusted.size() / 16000.) {
                     if (language == "other_ru" || language == "other_en") {
                         const char* detected = whisper_lang_str(whisper_full_lang_id(context));
                         QString spoken = QString::fromLatin1(detected ? detected : "en");
@@ -238,8 +314,10 @@ static QList<Lyric> speechWindow(whisper_context* context, const QVector<float>&
                             word =
                                 soundSpelling(word, language == "other_ru" ? "ru" : "en", spoken);
                     }
-                    words->append(Lyric{qMax(0., origin + begin - .1), origin + qMax(begin, finish),
-                                        word, probability / qMax(1, tokens)});
+                    words->append(
+                        Lyric{qMax(0., origin + begin - LyricLead),
+                              origin + qMin(adjusted.size() / 16000., qMax(begin, finish)), word,
+                              probability / qMax(1, tokens)});
                 }
                 bytes.clear();
                 begin = finish = -1;
@@ -271,7 +349,7 @@ static QList<Lyric> speechWindow(whisper_context* context, const QVector<float>&
         }
         double start = first >= 0 ? first : whisper_full_get_segment_t0(context, i) * .01;
         double end = whisper_full_get_segment_t1(context, i) * .01;
-        lines << Lyric{qMax(0., origin + start - .1), origin + end, text, confidence};
+        lines << Lyric{qMax(0., origin + start - LyricLead), origin + end, text, confidence};
     }
     return lines;
 }
@@ -300,6 +378,96 @@ static std::optional<QPair<Lyric, int>> matchWords(const QString& text, const QL
     }
     return result;
 }
+static QList<Lyric> transcribeWindow(whisper_context* context, const QString& audio,
+                                     const QString& reference, double at, double length,
+                                     const QString& language, const QString& prompt,
+                                     QList<Lyric>* words) {
+    auto result =
+        speechWindow(context, decode(audio, 16000, 1, at, length), at, language, prompt, words);
+    double certainty = 0, gap = 0, previous = at;
+    for (const auto& word : *words) {
+        certainty += word.confidence;
+        gap = qMax(gap, word.start - previous);
+        previous = word.end;
+    }
+    gap = qMax(gap, at + length - previous);
+    certainty /= qMax(qsizetype(1), words->size());
+    if (!reference.isEmpty() && reference != audio &&
+        (words->isEmpty() || certainty < .4 || gap > 6)) {
+        QList<Lyric> alternativeWords;
+        auto alternatives = speechWindow(context, decode(reference, 16000, 1, at, length), at,
+                                         language, prompt, &alternativeWords);
+        if (words->isEmpty()) {
+            *words = alternativeWords;
+            result = alternatives;
+        }
+        for (const auto& word : alternativeWords) {
+            if (word.confidence < .4)
+                continue;
+            const double center = (word.start + word.end) / 2;
+            bool covered = false;
+            for (const auto& existing : *words)
+                if (center >= existing.start - .55 && center <= existing.end + .55) {
+                    covered = true;
+                    break;
+                }
+            if (!covered)
+                words->append(word);
+        }
+        std::stable_sort(words->begin(), words->end(),
+                         [](const Lyric& a, const Lyric& b) { return a.start < b.start; });
+    }
+    // Recheck uncovered intervals in shorter contexts so a dominant language or intro
+    // cannot suppress a short sung phrase in the same window.
+    QList<QPair<double, double>> gaps;
+    previous = at;
+    for (const auto& word : *words) {
+        if (word.start - previous > 5)
+            gaps << qMakePair(previous, word.start + LyricLead);
+        previous = qMax(previous, word.end);
+    }
+    if (at + length - previous > 5)
+        gaps << qMakePair(previous, at + length);
+    int budget = 3;
+    for (auto gap : gaps) {
+        for (double begin = gap.first; begin < gap.second - .5 && budget > 0; begin += 9) {
+            --budget;
+            QList<Lyric> recovered;
+            auto snippet = decode(audio, 16000, 1, begin, qMin(11., gap.second - begin));
+            double peak = 0;
+            for (float sample : snippet)
+                peak = qMax(peak, std::abs(double(sample)));
+            int active = 0;
+            for (qsizetype offset = 0; offset + 160 <= snippet.size(); offset += 160) {
+                double energy = 0;
+                for (int sample = 0; sample < 160; ++sample)
+                    energy += snippet[offset + sample] * snippet[offset + sample];
+                active += std::sqrt(energy / 160) > qMax(.0001, peak * .03);
+            }
+            if (active < 12)
+                continue;
+            speechWindow(context, snippet, begin,
+                         language == "ru" || language == "en" ? QString("auto") : language, {},
+                         &recovered);
+            for (const auto& word : recovered) {
+                if (word.confidence < .3)
+                    continue;
+                bool duplicate = false;
+                for (const auto& existing : *words)
+                    if (normalized(word.text) == normalized(existing.text) &&
+                        std::abs(word.start - existing.start) < .75) {
+                        duplicate = true;
+                        break;
+                    }
+                if (!duplicate)
+                    words->append(word);
+            }
+        }
+    }
+    std::stable_sort(words->begin(), words->end(),
+                     [](const Lyric& a, const Lyric& b) { return a.start < b.start; });
+    return result;
+}
 int neuralWorker(const QStringList& arguments) {
     auto option = [&](const QString& key) {
         int i = arguments.indexOf(key);
@@ -308,50 +476,119 @@ int neuralWorker(const QStringList& arguments) {
     QString result = option("--result");
     try {
         if (arguments.contains("--stems-worker")) {
-            auto values = decode(option("--audio"), 44100, 2);
-            if (values.isEmpty())
-                throw Error("Нет звука");
-            Eigen::MatrixXf audio(2, values.size() / 2);
-            for (qsizetype i = 0; i < values.size() / 2; ++i) {
-                audio(0, i) = values[i * 2];
-                audio(1, i) = values[i * 2 + 1];
-            }
-            values.clear();
-            values.squeeze();
+            const auto source = readSource(option("--audio"));
+            QStorageInfo disk(option("--out"));
+            const qint64 required =
+                qint64(std::ceil(source.duration * 44100 * 2 * 2 * 4)) + 64 * 1024 * 1024;
+            if (disk.isValid() && disk.bytesAvailable() < required)
+                throw Error("Недостаточно места для четырёх WAV-файлов");
             auto model = std::make_unique<demucscpp::demucs_model>();
             QByteArray path = option("--model").toUtf8();
             if (!demucscpp::load_demucs_model(path.toStdString(), model.get()))
                 throw Error("Не удалось загрузить HTDemucs");
-            auto targets =
-                demucscpp::demucs_inference(*model, audio, [](float value, const std::string&) {
-                    std::cerr << "progress=" << value << std::endl;
-                });
             QStringList names{"drums", "bass", "other", "vocals"};
-            for (int stem = 0; stem < 4; ++stem) {
-                QVector<float> samples(audio.cols() * 2);
-                for (int i = 0; i < audio.cols(); ++i) {
-                    samples[i * 2] = targets(stem, 0, i);
-                    samples[i * 2 + 1] = targets(stem, 1, i);
+            std::vector<std::unique_ptr<WavWriter>> writers;
+            for (const auto& name : names)
+                writers.push_back(
+                    std::make_unique<WavWriter>(option("--out") + "/" + name + ".wav", 44100, 2));
+            QVector<float> tails[4];
+            const double blockSeconds =
+                option("--segment-seconds").isEmpty()
+                    ? 60
+                    : qBound(2., option("--segment-seconds").toDouble(), 60.);
+            constexpr double overlapSeconds = 2;
+            for (double at = 0; at < source.duration; at += blockSeconds) {
+                auto values = decode(source.path, 44100, 2, at,
+                                     qMin(blockSeconds + overlapSeconds, source.duration - at));
+                const qsizetype frames = values.size() / 2;
+                if (!frames)
+                    break;
+                Eigen::MatrixXf audio(2, frames);
+                for (qsizetype i = 0; i < frames; ++i) {
+                    audio(0, i) = values[i * 2];
+                    audio(1, i) = values[i * 2 + 1];
                 }
-                writeWav(option("--out") + "/" + names[stem] + ".wav", samples, 44100, 2);
+                values.clear();
+                values.squeeze();
+                auto targets = demucscpp::demucs_inference(
+                    *model, audio,
+                    [at, blockSeconds, total = source.duration](float value, const std::string&) {
+                        std::cerr << "progress=" << qMin(1., (at + blockSeconds * value) / total)
+                                  << std::endl;
+                    });
+                const qsizetype writeFrames = qMin(frames, qsizetype(blockSeconds * 44100));
+                for (int stem = 0; stem < 4; ++stem) {
+                    QVector<float> block(writeFrames * 2);
+                    for (qsizetype i = 0; i < writeFrames; ++i)
+                        for (int channel = 0; channel < 2; ++channel) {
+                            float sample = targets(stem, channel, i);
+                            if (i * 2 + channel < tails[stem].size()) {
+                                double weight =
+                                    double(i) / qMax(qsizetype(1), tails[stem].size() / 2 - 1);
+                                sample = float(tails[stem][i * 2 + channel] * (1 - weight) +
+                                               sample * weight);
+                            }
+                            block[i * 2 + channel] = sample;
+                        }
+                    writers[stem]->append(block.constData(), block.size());
+                    tails[stem].resize((frames - writeFrames) * 2);
+                    for (qsizetype i = writeFrames; i < frames; ++i)
+                        for (int channel = 0; channel < 2; ++channel)
+                            tails[stem][(i - writeFrames) * 2 + channel] =
+                                targets(stem, channel, i);
+                }
             }
+            for (auto& writer : writers)
+                writer->finish();
             return 0;
         }
         if (!arguments.contains("--speech-worker"))
             return -1;
+        if (arguments.contains("--ctc-only")) {
+            QFile text(option("--align"));
+            if (!text.open(QIODevice::ReadOnly))
+                throw Error(text.errorString());
+            auto supplied = QString::fromUtf8(text.readAll());
+            auto lines = parseLyrics(supplied, false);
+            if (lines.isEmpty())
+                for (const auto& line : plainLyrics(supplied).split('\n', Qt::SkipEmptyParts))
+                    lines << Lyric{-1, -1, line.trimmed(), 0};
+            lines = refineSpeechTiming(
+                option("--audio"), lines, QFileInfo(option("--model")).absolutePath(),
+                option("--reference"), !arguments.contains("--verify-recognition"));
+            QJsonArray output;
+            for (const auto& line : lines) {
+                if (line.start < 0)
+                    throw Error("Текст не найден в звуке");
+                output << QJsonObject{{"start", line.start},
+                                      {"end", line.end},
+                                      {"text", line.text},
+                                      {"confidence", line.confidence}};
+            }
+            QSaveFile file(result);
+            if (!file.open(QIODevice::WriteOnly))
+                throw Error(file.errorString());
+            file.write(QJsonDocument(QJsonObject{{"lines", output}}).toJson());
+            if (!file.commit())
+                throw Error(file.errorString());
+            return 0;
+        }
         auto params = whisper_context_default_params();
         params.use_gpu = false;
         params.flash_attn = false;
         params.dtw_token_timestamps = true;
-        params.dtw_aheads_preset = WHISPER_AHEADS_LARGE_V3_TURBO;
+        params.dtw_aheads_preset = option("--model").contains("turbo")
+                                       ? WHISPER_AHEADS_LARGE_V3_TURBO
+                                       : WHISPER_AHEADS_LARGE_V3;
         QByteArray path = option("--model").toUtf8();
         std::unique_ptr<whisper_context, decltype(&whisper_free)> context(
             whisper_init_from_file_with_params(path.constData(), params), &whisper_free);
         if (!context)
             throw Error("Не удалось загрузить модель Whisper");
         auto source = readSource(option("--audio"));
+        const QString reference = option("--reference");
         QString language = option("--language");
-        QList<Lyric> lines;
+        QList<Lyric> lines, traceWords;
         QString align = option("--align");
         if (!align.isEmpty()) {
             QFile textFile(align);
@@ -360,6 +597,8 @@ int neuralWorker(const QStringList& arguments) {
             QString supplied = QString::fromUtf8(textFile.readAll());
             auto anchors = parseLyrics(supplied, false);
             QStringList textLines = plainLyrics(supplied).split('\n', Qt::SkipEmptyParts);
+            for (auto& line : textLines)
+                line = line.trimmed();
             if (anchors.size() == textLines.size() && !anchors.isEmpty()) {
                 for (int i = 0; i < anchors.size(); ++i) {
                     double left = qMax(0., anchors[i].start - 4),
@@ -369,11 +608,12 @@ int neuralWorker(const QStringList& arguments) {
                     if (i + 1 < anchors.size())
                         right = qMin(right, anchors[i + 1].start + 8);
                     Lyric value = anchors[i];
+                    value.confidence = 0;
                     if (right > left) {
-                        auto decoded = decode(source.path, 16000, 1, left, right - left);
                         QList<Lyric> words;
-                        auto candidates = speechWindow(context.get(), decoded, left, language,
-                                                       value.text, &words);
+                        auto candidates =
+                            transcribeWindow(context.get(), source.path, reference, left,
+                                             right - left, language, value.text, &words);
                         auto matched = matchWords(value.text, words, 0, value.start);
                         if (matched)
                             value = matched->first;
@@ -389,25 +629,21 @@ int neuralWorker(const QStringList& arguments) {
                         }
                     }
                     lines << value;
-                    std::cerr << "progress=" << double(i + 1) / anchors.size() << std::endl;
+                    std::cerr << "progress=" << .8 * double(i + 1) / anchors.size() << std::endl;
                 }
             } else {
                 QList<Lyric> detected;
                 QList<Lyric> allWords;
                 for (double at = 0; at < source.duration; at += 20) {
-                    auto decoded =
-                        decode(source.path, 16000, 1, at, qMin(26., source.duration - at));
                     QList<Lyric> words;
-                    auto found = speechWindow(context.get(), decoded, at, language,
-                                              supplied.left(500), &words);
-                    for (auto& candidate : found)
-                        if (detected.isEmpty() || candidate.start >= detected.last().end - .2)
-                            detected << candidate;
-                    double lastEnd = allWords.isEmpty() ? -1 : allWords.last().end;
-                    for (const auto& word : words)
-                        if (word.start >= lastEnd - .02)
-                            allWords << word;
+                    transcribeWindow(context.get(), source.path, reference, at,
+                                     qMin(26., source.duration - at), language, supplied.left(500),
+                                     &words);
+                    appendSpeechWindow(allWords, words, at == 0 ? 0 : at + 3, at + 23);
+                    std::cerr << "progress=" << .8 * qMin(1., (at + 20) / source.duration)
+                              << std::endl;
                 }
+                detected = speechLines(allWords);
                 int previous = 0;
                 int previousWord = 0;
                 for (auto& line : textLines) {
@@ -429,9 +665,10 @@ int neuralWorker(const QStringList& arguments) {
                             index = i;
                         }
                     }
-                    if (index < 0 || best < .4)
-                        throw Error("Не все строки найдены в аудио. Исходный текст сохранён; "
-                                    "добавьте начальные таймкоды для точной коррекции.");
+                    if (index < 0 || best < .4) {
+                        lines << Lyric{-1, -1, line, 0};
+                        continue;
+                    }
                     Lyric value = detected[index];
                     value.text = line;
                     lines << value;
@@ -439,7 +676,8 @@ int neuralWorker(const QStringList& arguments) {
                 }
             }
             for (int i = 1; i < lines.size(); ++i)
-                if (lines[i].start < lines[i - 1].start) {
+                if (lines[i].start >= 0 && lines[i - 1].start >= 0 &&
+                    lines[i].start < lines[i - 1].start) {
                     if (i < anchors.size()) {
                         lines[i] = anchors[i];
                         for (int j = i - 1; j >= 0 && lines[j].start > lines[j + 1].start; --j)
@@ -448,25 +686,24 @@ int neuralWorker(const QStringList& arguments) {
                         throw Error("Порядок строк не подтверждён");
                 }
         } else {
+            QList<Lyric> allWords;
             for (double at = 0; at < source.duration; at += 20) {
-                auto decoded = decode(source.path, 16000, 1, at, qMin(26., source.duration - at));
-                auto detected = speechWindow(context.get(), decoded, at, language);
-                for (auto value : detected) {
-                    if (!lines.isEmpty() && value.start < lines.last().end) {
-                        if (similarity(value.text, lines.last().text) > .6)
-                            continue;
-                        if (value.end <= lines.last().end)
-                            continue;
-                    }
-                    if (!lines.isEmpty() &&
-                        normalized(value.text) == normalized(lines.last().text) &&
-                        value.start - lines.last().end < 1)
-                        continue;
-                    lines << value;
-                }
-                std::cerr << "progress=" << qMin(1., (at + 20) / source.duration) << std::endl;
+                QList<Lyric> words;
+                transcribeWindow(context.get(), source.path, reference, at,
+                                 qMin(26., source.duration - at), language, {}, &words);
+                appendSpeechWindow(allWords, words, at == 0 ? 0 : at + 3, at + 23);
+                std::cerr << "progress=" << .8 * qMin(1., (at + 20) / source.duration) << std::endl;
             }
+            lines = speechLines(allWords);
+            traceWords = allWords;
         }
+        context.reset(); // Never hold Whisper and the alignment model in memory together.
+        lines = refineSpeechTiming(source.path, lines, QFileInfo(option("--model")).absolutePath(),
+                                   reference, !align.isEmpty());
+        for (const auto& line : lines)
+            if (line.start < 0)
+                throw Error("Не все строки удалось сопоставить со звуком. Исходный текст сохранён; "
+                            "добавьте примерные метки для непонятных строк.");
         QJsonArray array;
         for (auto& line : lines)
             array << QJsonObject{{"start", line.start},
@@ -476,7 +713,17 @@ int neuralWorker(const QStringList& arguments) {
         QSaveFile out(result);
         if (!out.open(QIODevice::WriteOnly))
             throw Error(out.errorString());
-        out.write(QJsonDocument(QJsonObject{{"lines", array}}).toJson());
+        QJsonObject payload{{"lines", array}};
+        if (arguments.contains("--trace-words")) {
+            QJsonArray words;
+            for (const auto& word : traceWords)
+                words << QJsonObject{{"start", word.start},
+                                     {"end", word.end},
+                                     {"text", word.text},
+                                     {"confidence", word.confidence}};
+            payload["words"] = words;
+        }
+        out.write(QJsonDocument(payload).toJson());
         if (!out.commit())
             throw Error(out.errorString());
         return 0;

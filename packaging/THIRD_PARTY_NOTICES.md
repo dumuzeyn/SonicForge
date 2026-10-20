@@ -1,4 +1,4 @@
-# SonicForge 3.0: third-party components
+# SonicForge 3.1: third-party components
 
 SonicForge's own code and original vector tool icons remain under the repository's LICENSE. Each dependency retains its own license. This document does not change those licenses.
 
@@ -6,7 +6,8 @@ SonicForge's own code and original vector tool icons remain under the repository
 |---|---|---|
 | Qt Core, Gui, Widgets, Network, Concurrent, Multimedia, Svg | 6.10.0, dynamically linked, unmodified official MinGW binaries | LGPL 3.0 (included); alternative upstream licenses remain available |
 | whisper.cpp / ggml | revision in `dependencies.json` | MIT |
-| OpenAI Whisper large-v3-turbo weights, Q5_0 conversion | pinned model URL and SHA-256 in `models/manifest.json` | MIT |
+| OpenAI Whisper large-v3 and large-v3-turbo weights, Q5_0 conversions | pinned model URLs and SHA-256 in `models/manifest.json` | MIT |
+| Wav2Vec2 base-960h and large-xlsr-53-russian, quantized ONNX conversions | pinned models in `models/manifest.json`, vocabularies in `native/resources/ctc-*.json`; sources below | Apache 2.0, included |
 | demucs.cpp | revision in `dependencies.json` | MIT |
 | HTDemucs weights, F16 conversion | pinned model URL and SHA-256 in `models/manifest.json` | MIT |
 | Eigen | revision in `dependencies.json`, MPL2-only build | MPL 2.0 |

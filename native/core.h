@@ -8,12 +8,25 @@
 #include <stdexcept>
 
 namespace sf {
+inline constexpr double LyricLead = .045;
 struct Error : std::runtime_error {
     explicit Error(const QString& message) : std::runtime_error(message.toUtf8().constData()) {}
 };
 using Cancel = std::shared_ptr<std::atomic_bool>;
 using Progress = std::function<void(QString, double)>;
 void checkpoint(const Cancel& cancel);
+void adoptChild(QProcess& process);
+void shutdownWorkers();
+class WavWriter {
+    QSaveFile file;
+    int rate, channels;
+    qint64 bytes = 0;
+
+  public:
+    WavWriter(const QString& path, int rate, int channels);
+    void append(const float* samples, qsizetype count);
+    void finish();
+};
 QString executable(const QString& name);
 QString cacheDirectory();
 QString uniqueFile(const QString& suffix = QStringLiteral(".wav"));
@@ -33,8 +46,9 @@ struct Clip {
     QString id, source;
     int lane = 0;
     double start = 0, end = 0, position = 0, gain = 0, fadeIn = 0, fadeOut = 0;
+    double volume = 1, speed = 1, bass = 0, mid = 0, treble = 0;
     double duration() const {
-        return end - start;
+        return (end - start) / (speed > 0 ? speed : 1);
     }
 };
 struct Project {
@@ -59,7 +73,7 @@ Source cutAudio(const Project& project, const Clip& clip, double a, double b,
                 const Cancel& cancel = {});
 Source crossfade(const Project& project, const Clip& first, const Clip& next,
                  const Cancel& cancel = {}, double seconds = 2);
-QString timestamp(double seconds);
+QString timestamp(double seconds, int decimals = 2);
 double parseTime(const QString& stamp);
 struct Lyric {
     double start = 0, end = 0;
@@ -100,7 +114,7 @@ QList<std::complex<double>> fft(QList<std::complex<double>> input);
 struct CoverOptions {
     int size = 1000, seed = 0, pattern = 2, colorSource = 2, detail = 50, contrast = 100,
         saturation = 100, softness = 0;
-    bool title = true, artist = false;
+    bool title = true, artist = false, symbol = true;
     QString mood;
     QList<QColor> palette{QColor("#30206d"), QColor("#cc4ba0"), QColor("#ffb45d")};
     QList<double> stops{0, .5, 1};
@@ -111,9 +125,10 @@ QIcon icon(const QString& name, const QColor& color = QColor("#6550b9"));
 QString iconSvg(const QString& name, const QColor& color = QColor("#6550b9"));
 QString genre(const QString& path, const Cancel& cancel = {}, Progress progress = {});
 QList<Lyric> recognize(const QString& path, const QString& language, const Cancel& cancel = {},
-                       Progress progress = {});
+                       Progress progress = {}, const QString& reference = {}, bool fast = false);
 QList<Lyric> alignLyrics(const QString& audio, const QString& text, const QString& language,
-                         const Cancel& cancel = {}, Progress progress = {});
+                         const Cancel& cancel = {}, Progress progress = {},
+                         const QString& reference = {}, bool fast = false);
 QStringList separate(const QString& audio, bool two, const Cancel& cancel = {},
                      Progress progress = {});
 int neuralWorker(const QStringList& arguments);

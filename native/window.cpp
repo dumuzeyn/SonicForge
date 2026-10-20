@@ -3,7 +3,11 @@
 #include <QDesktopServices>
 #include <algorithm>
 #include <cmath>
+#include <thread>
 #include <utility>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 
 namespace {
 void enableAction(QAbstractButton* control, bool enabled) {
@@ -81,8 +85,11 @@ QString Window::localize(const QString& text) const {
 void Window::retranslate() {
     const QStringList keys{"tab_editor", "tab_metadata",   "tab_audio", "tab_cover",
                            "tab_lyrics", "tab_processing", "tab_help",  "tab_settings"};
-    for (int i = 0; i < keys.size(); ++i)
+    for (int i = 0; i < keys.size(); ++i) {
         tabs->setTabText(i, t(keys[i]));
+        if (navigation)
+            navigation->setTabText(i, t(keys[i]));
+    }
     auto translated = [this](QObject* object, const QString& current, const char* field) {
         QByteArray original = QByteArray("sfOriginal_") + field;
         QByteArray rendered = QByteArray("sfRendered_") + field;
@@ -144,6 +151,10 @@ void Window::loadLanguage() {
 QWidget* Window::page(const QString& name) {
     auto* widget = new QWidget;
     tabs->addTab(widget, t(name));
+    widget->setProperty("sfHelpTitle", t(name));
+    widget->setProperty("sfHelpKey", name);
+    if (navigation)
+        navigation->addTab(t(name));
     return widget;
 }
 QGroupBox* Window::group(QBoxLayout* parent, const QString& name) {
@@ -156,6 +167,8 @@ QPushButton* Window::button(QBoxLayout* parent, const QString& name, std::functi
     auto* b = new QPushButton(name);
     b->setProperty("primary", primary);
     b->setMinimumHeight(34);
+    b->setProperty("sfHelpTitle", name);
+    b->setProperty("sfHelpKey", name);
     parent->addWidget(b);
     if (b->window() == this)
         controls << b;
@@ -214,8 +227,18 @@ QDoubleSpinBox* Window::number(QFormLayout* layout, const QString& key, const QS
     spin->setSingleStep(step);
     spin->setValue(value);
     spin->setMinimumHeight(30);
-    layout->addRow(label, spin);
     numbers[key] = spin;
+    spin->setAccessibleName(label);
+    spin->setProperty("sfHelpTitle", label);
+    spin->setProperty("sfHelpKey", key);
+    if (audioSliders) {
+        double scale = QStringList{"gain", "width", "speed", "reverb"}.contains(key) ? 100 : 1;
+        auto* panel = valueSlider(spin, scale == 100 ? "%" : QString(), scale);
+        panel->setProperty("sfHelpTitle", label);
+        panel->setProperty("sfHelpKey", key);
+        layout->addRow(label, panel);
+    } else
+        layout->addRow(label, spin);
     return spin;
 }
 QCheckBox* Window::check(QBoxLayout* parent, const QString& key, const QString& label, bool value) {
@@ -223,6 +246,8 @@ QCheckBox* Window::check(QBoxLayout* parent, const QString& key, const QString& 
     box->setChecked(value);
     parent->addWidget(box);
     checks[key] = box;
+    box->setProperty("sfHelpTitle", label);
+    box->setProperty("sfHelpKey", key);
     return box;
 }
 QComboBox* Window::choice(QFormLayout* layout, const QString& key, const QString& label,
@@ -233,6 +258,8 @@ QComboBox* Window::choice(QFormLayout* layout, const QString& key, const QString
     combo->setMinimumHeight(30);
     layout->addRow(label, combo);
     choices[key] = combo;
+    combo->setProperty("sfHelpTitle", label);
+    combo->setProperty("sfHelpKey", key);
     return combo;
 }
 Window::Window() {
@@ -240,10 +267,10 @@ Window::Window() {
     QCoreApplication::setApplicationName("SonicForge");
     loadPreferences();
     loadLanguage();
-    setWindowTitle("SonicForge 3.0");
+    setWindowTitle("SonicForge 3.1");
     resize(1120, 760);
     setMinimumSize(920, 700);
-    setWindowIcon(QIcon(QCoreApplication::applicationDirPath() + "/assets/sonic_forge_mark.ico"));
+    setWindowIcon(QIcon(":/assets/sonic_forge_mark.ico"));
     setStyleSheet(
         "QMainWindow,QWidget{background:#f7f6fb;color:#272232;font-family:'Segoe "
         "UI','Noto "
@@ -271,12 +298,23 @@ Window::Window() {
         "eee9fb;}"
         "QDoubleSpinBox::up-arrow{image:url(:/chevron-up.svg);width:10px;height:10px;}"
         "QDoubleSpinBox::down-arrow{image:url(:/chevron-down.svg);width:10px;height:10px;}"
-        "QToolButton[sfActionEnabled=false]{background:#f2eff7;border-color:transparent;}");
+        "QToolButton[sfActionEnabled=false]{background:#f2eff7;border-color:transparent;}"
+        "QCheckBox::indicator{width:18px;height:18px;border:2px solid "
+        "#a395c5;border-radius:4px;background:white;}"
+        "QCheckBox::indicator:checked{border-color:#6750bd;background:#6750bd;image:url(:/"
+        "check.svg);}"
+        "QTabBar{background:#6650b7;}QTabBar::tab{padding:12px 10px;}");
     auto* root = new QWidget;
     setCentralWidget(root);
     auto* layout = new QVBoxLayout(root);
     layout->setContentsMargins(18, 12, 18, 12);
     layout->setSpacing(10);
+    navigation = new QTabBar;
+    navigation->setExpanding(true);
+    navigation->setDrawBase(false);
+    navigation->setUsesScrollButtons(false);
+    navigation->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    layout->addWidget(navigation);
     paths = new QWidget;
     auto* pathLayout = new QGridLayout(paths);
     pathLayout->setContentsMargins(0, 0, 0, 0);
@@ -322,17 +360,22 @@ Window::Window() {
     layout->addWidget(paths);
     auto* mode = row(layout);
     linked = new QCheckBox("Связь с редактором");
+    linked->setProperty("sfHelpTitle", "Связь с редактором");
+    linked->setProperty("sfHelpKey", "Связь с редактором");
     mode->addWidget(linked);
     mode->addSpacing(12);
     mode->addWidget(new QLabel("Формат монтажа"));
     mixFormat = new QComboBox;
+    mixFormat->setProperty("sfHelpTitle", "Формат монтажа");
+    mixFormat->setProperty("sfHelpKey", "Формат монтажа");
     mixFormat->addItems({"MP3", "WAV", "M4A"});
     mode->addWidget(mixFormat);
     mode->addStretch();
-    auto* native = new QLabel("3.0");
+    auto* native = new QLabel("3.1");
     native->setStyleSheet("color:#90869f;font-size:9pt;");
     mode->addWidget(native);
     tabs = new QTabWidget;
+    tabs->tabBar()->hide();
     layout->addWidget(tabs, 1);
     buildEditor(page("tab_editor"));
     buildMetadata(page("tab_metadata"));
@@ -399,16 +442,32 @@ Window::Window() {
         player->setSource({});
         playerContext.clear();
         source->setEnabled(!value);
-        mixFormat->setEnabled(value);
+        mixFormat->setEnabled(!busy);
         workingSignature.clear();
     });
-    mixFormat->setEnabled(linked->isChecked());
+    mixFormat->setEnabled(true);
+    connect(mixFormat, &QComboBox::currentIndexChanged, this, [this] { workingSignature.clear(); });
+    connect(navigation, &QTabBar::currentChanged, tabs, &QTabWidget::setCurrentIndex);
+    connect(tabs, &QTabWidget::currentChanged, navigation, &QTabBar::setCurrentIndex);
     connect(tabs, &QTabWidget::currentChanged, this,
             [this](int index) { paths->setVisible(index != 0); });
     paths->setVisible(false);
     qApp->installEventFilter(this);
     auto* helpShortcut = new QShortcut(QKeySequence(Qt::Key_F1), this);
     connect(helpShortcut, &QShortcut::activated, this, [this] { tabs->setCurrentIndex(6); });
+    source->setProperty("sfHelpTitle", "Источник");
+    output->setProperty("sfHelpTitle", "Папка назначения");
+    for (auto* widget : findChildren<QWidget*>()) {
+        if (widget->property("sfHelpTitle").isValid() || widget->property("sfAction").isValid())
+            continue;
+        QString title;
+        if (auto* button = qobject_cast<QAbstractButton*>(widget))
+            title = button->text();
+        else if (auto* label = qobject_cast<QLabel*>(widget))
+            title = label->text();
+        if (!title.isEmpty() && title.size() < 100 && !title.contains('<'))
+            widget->setProperty("sfHelpTitle", title);
+    }
     retranslate();
     updateState();
 }
@@ -445,7 +504,7 @@ void Window::buildEditor(QWidget* page) {
     tool(imports, "settings", "Действия с фрагментом",
          "Громкость, обрезка, положение, копирование и новый проект.", [this] {
              QMenu menu;
-             auto* gain = menu.addAction(localize("Громкость фрагмента…"));
+             auto* gain = menu.addAction(localize("Громкость, скорость и эквалайзер…"));
              auto* trim = menu.addAction(localize("Оставить выделение"));
              auto* position = menu.addAction(localize("Положение фрагмента…"));
              auto* duplicate = menu.addAction(localize("Дублировать"));
@@ -468,6 +527,10 @@ void Window::buildEditor(QWidget* page) {
                  edit("duplicate");
                  return;
              }
+             if (chosen == gain) {
+                 fragmentSettings();
+                 return;
+             }
              auto clip = timeline->project.get(timeline->selected);
              if (chosen == trim) {
                  if (!timeline->selection)
@@ -480,8 +543,9 @@ void Window::buildEditor(QWidget* page) {
                      return;
                  remember();
                  auto& current = timeline->project.get(clip.id);
-                 current.start += a - clip.position;
-                 current.end = clip.start + b - clip.position;
+                 double rate = clip.speed > 0 ? clip.speed : 1;
+                 current.start += (a - clip.position) * rate;
+                 current.end = clip.start + (b - clip.position) * rate;
                  current.position = a;
                  current.fadeIn = qMin(current.fadeIn, current.duration());
                  current.fadeOut = qMin(current.fadeOut, current.duration() - current.fadeIn);
@@ -574,10 +638,7 @@ void Window::buildEditor(QWidget* page) {
          [this] { exportAudio(); });
     layout->addStretch(1);
     connect(timeline, &Timeline::imported, this, &Window::importAudio);
-    connect(timeline, &Timeline::editStarted, this, [this] {
-        stop();
-        dragSnapshot = timeline->project;
-    });
+    connect(timeline, &Timeline::editStarted, this, [this] { dragSnapshot = timeline->project; });
     connect(timeline, &Timeline::changed, this, [this] {
         undoHistory << dragSnapshot;
         redoHistory.clear();
@@ -585,6 +646,8 @@ void Window::buildEditor(QWidget* page) {
     });
     connect(timeline, &Timeline::stateChanged, this, &Window::updateState);
     connect(timeline, &Timeline::cursorChanged, this, [this](double value) {
+        if (player && playerContext == "editor" && !player->source().isEmpty())
+            player->setPosition(qRound64(value * 1000));
         if (selectionArmed)
             timeline->selection = qMakePair(selectionStart, value);
         updateState();
@@ -637,6 +700,8 @@ void Window::buildMetadata(QWidget* page) {
         for (auto* field : metadataFields)
             field->clear();
     });
+    check(actions, "overwrite_genre", "Перезаписать жанр", false);
+    check(actions, "overwrite_metadata", "Перезаписать все метаданные", false);
     actions->addStretch();
     auto* box = group(layout, "Метаданные");
     auto* form = new QFormLayout(box);
@@ -655,31 +720,36 @@ void Window::buildMetadata(QWidget* page) {
                                                     {"copyright", "Авторские права"}}) {
         auto* field = new QLineEdit;
         metadataFields[pair.first] = field;
+        field->setProperty("sfHelpTitle", pair.second);
+        field->setProperty("sfHelpKey", pair.first);
+        if (pair.first == "title")
+            field->setPlaceholderText("Если пусто — название из тегов, иначе имя файла");
+        if (pair.first == "genre")
+            field->setPlaceholderText(
+                "Если пусто — сохранится жанр из тегов или определится по звуку");
         form->addRow(pair.second, field);
     }
-    check(layout, "overwrite_genre", "Перезаписывать жанр", false);
-    check(layout, "overwrite_metadata", "Перезаписывать все метаданные", false);
-    check(layout, "preserve_lyrics", "Не трогать текст песни и таймкоды", true);
+    auto* preserved =
+        new QLabel("Текст песни и таймкоды всегда сохраняются при изменении метаданных.");
+    preserved->setWordWrap(true);
+    preserved->setStyleSheet("color:#8b819c;");
+    layout->addWidget(preserved);
     layout->addStretch();
 }
 void Window::buildAudio(QWidget* page) {
     QVBoxLayout* layout;
     scrollContent(page, layout);
+    audioSliders = true;
     auto* actions = row(layout);
     button(actions, "Анализировать", [this] { analyzeAudio(); }, true);
     button(actions, "Применить рекомендацию", [this] {
-        numbers["lufs"]->setValue(-14);
-        numbers["peak"]->setValue(-1.5);
+        numbers["lufs"]->setValue(measurements.value("suggestedLufs").toDouble(-14));
+        numbers["peak"]->setValue(measurements.value("suggestedTruePeak").toDouble(-1.5));
         checks["limiter"]->setChecked(true);
-    });
-    button(actions, "Создать сравнение", [this] { compareAudio(); });
-    button(actions, "Оригинал", [this] {
-        if (!lastOriginal.isEmpty())
-            playFile(lastOriginal, false, "comparison");
-    });
-    button(actions, "Результат", [this] {
-        if (!lastProcessed.isEmpty())
-            playFile(lastProcessed, false, "comparison");
+        checks["auto_noise"]->setChecked(true);
+        checks["denoise"]->setChecked(measurements["flatness"].toDouble() > .35 &&
+                                      measurements["rmsDb"].toDouble() < -25);
+        numbers["highpass"]->setValue(measurements["bassFraction"].toDouble() > .8 ? 30 : 0);
     });
     actions->addStretch();
     analysisLabel = new QLabel("Анализ ещё не выполнен");
@@ -693,7 +763,7 @@ void Window::buildAudio(QWidget* page) {
     number(form, "lufs", "Громкость, LUFS", -14, -30, -5, .1);
     number(form, "peak", "Пиковый уровень, dBTP", -1.5, -9, 0, .1);
     number(form, "lra", "Диапазон громкости, LU", 11, 1, 20, .1);
-    number(form, "gain", "Итоговое усиление", 1, .1, 4, .01);
+    number(form, "gain", "Итоговая громкость", 1, 0, 4, .01);
     number(form, "bass", "Бас, dB", 0, -18, 18, .1);
     number(form, "mid", "Средние частоты, dB", 0, -18, 18, .1);
     number(form, "treble", "Высокие частоты, dB", 0, -18, 18, .1);
@@ -711,7 +781,8 @@ void Window::buildAudio(QWidget* page) {
             [applyProfile](int) { applyProfile(); });
     connect(numbers["intensity"], qOverload<double>(&QDoubleSpinBox::valueChanged), this,
             [applyProfile](double) { applyProfile(); });
-    auto* advanced = group(layout, "Фильтры и эффекты");
+    auto* advanced = disclosure(layout, "Фильтры и эффекты · дополнительные настройки");
+    advanced->setObjectName("audioAdvanced");
     auto* effects = new QVBoxLayout(advanced);
     auto* flags = row(effects);
     check(flags, "denoise", "Убирать шум", false);
@@ -739,6 +810,47 @@ void Window::buildAudio(QWidget* page) {
     choice(right, "rate", "Частота дискретизации", {"Как в оригинале", "44100", "48000", "96000"});
     choice(right, "channels", "Каналы", {"Как в оригинале", "Моно", "Стерео"});
     choice(right, "quality", "Качество MP3", {"Максимальное", "Высокое", "Стандартное"});
+    audioSliders = false;
+    originalPane = new AudioPane("Оригинал");
+    layout->addWidget(originalPane);
+    originalPane->message->setText("Выберите песню или включите связь с редактором");
+    processedPane = new AudioPane("Изменённый");
+    layout->addWidget(processedPane);
+    processedPane->hide();
+    comparisonTimer = new QTimer(this);
+    comparisonTimer->setSingleShot(true);
+    comparisonTimer->setInterval(650);
+    connect(comparisonTimer, &QTimer::timeout, this, &Window::compareAudio);
+    for (auto it = numbers.begin(); it != numbers.end(); ++it)
+        connect(it.value(), qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this] {
+            audioDirty = true;
+            scheduleComparison();
+        });
+    for (auto it = checks.begin(); it != checks.end(); ++it)
+        if (QStringList{"denoise", "auto_noise", "limiter", "compressor"}.contains(it.key()))
+            connect(it.value(), &QCheckBox::toggled, this, [this] {
+                audioDirty = true;
+                scheduleComparison();
+            });
+    for (const auto& key : {"rate", "channels", "quality"})
+        connect(choices[key], &QComboBox::currentIndexChanged, this, [this] {
+            audioDirty = true;
+            scheduleComparison();
+        });
+    connect(source, &QLineEdit::textChanged, this, [this] { scheduleComparison(); });
+    connect(linked, &QCheckBox::toggled, this, [this] { scheduleComparison(); });
+    connect(tabs, &QTabWidget::currentChanged, this, [this](int i) {
+        if (i == 2)
+            scheduleComparison();
+    });
+    for (auto* pane : {originalPane, processedPane})
+        connect(pane->media, &QMediaPlayer::playbackStateChanged, this,
+                [this, pane](QMediaPlayer::PlaybackState state) {
+                    if (state == QMediaPlayer::PlayingState) {
+                        player->pause();
+                        (pane == originalPane ? processedPane : originalPane)->media->pause();
+                    }
+                });
     layout->addStretch();
 }
 void Window::buildCover(QWidget* page) {
@@ -776,6 +888,11 @@ void Window::buildCover(QWidget* page) {
            {"M2Pv1", "M2Pv2", "M2Pv3 — скорость ритма", "Своя палитра"}, coverOptions.colorSource);
     number(form, "cover_size", "Размер, px", coverOptions.size, 128, 4096, 1);
     number(form, "cover_seed", "Seed", coverOptions.seed, 0, 2147483647, 1);
+    auto* advancedLayout = new QVBoxLayout;
+    form->addRow(advancedLayout);
+    auto* advanced = disclosure(advancedLayout, "Дополнительные настройки обложки");
+    advanced->setObjectName("coverAdvanced");
+    form = new QFormLayout(advanced);
     number(form, "cover_detail", "Детализация", coverOptions.detail, 0, 100, 1);
     number(form, "cover_contrast", "Контраст, %", coverOptions.contrast, 50, 150, 1);
     number(form, "cover_saturation", "Насыщенность, %", coverOptions.saturation, 0, 150, 1);
@@ -784,6 +901,7 @@ void Window::buildCover(QWidget* page) {
     form->addRow(flags);
     check(flags, "cover_title", "Писать название", true);
     check(flags, "cover_artist", "Писать исполнителя", false);
+    check(flags, "cover_symbol", "Показывать символ", coverOptions.symbol);
     check(flags, "embed_cover", "Встраивать обложку", true);
     check(flags, "keep_cover", "Не менять обложку", false);
     button(flags, "Настроить палитру…", [this] { coverSettings(); });
@@ -839,6 +957,14 @@ void Window::buildLyrics(QWidget* page) {
     lyricMode = new QComboBox;
     lyricMode->addItems({"Распознавание", "Коррекция таймингов"});
     options->addWidget(lyricMode);
+    lyricQuality = new QComboBox;
+    lyricQuality->addItems({"Точнее", "Быстрее"});
+    lyricQuality->setProperty("sfHelpTitle", "Качество распознавания");
+    lyricQuality->setProperty("sfHelpKey", "speech_quality");
+    lyricQuality->setCurrentIndex(QSettings().value("lyrics/quality", 0).toInt() == 1 ? 1 : 0);
+    connect(lyricQuality, &QComboBox::currentIndexChanged, this,
+            [](int value) { QSettings().setValue("lyrics/quality", value); });
+    options->addWidget(lyricQuality);
     options->addStretch();
     auto* flags = row(layout);
     overwriteLyrics = check(flags, "overwrite_lyrics", "Перезаписать готовый текст", false);
@@ -846,7 +972,7 @@ void Window::buildLyrics(QWidget* page) {
     separateVocals = check(flags, "vocals_first", "Отделять вокал перед распознаванием", true);
     flags->addStretch();
     auto* timing = row(layout);
-    timing->addWidget(new QLabel("Время mm:ss.xx"));
+    timing->addWidget(new QLabel("Время mm:ss.xxx"));
     stamp = new QLineEdit("00:00.00");
     stamp->setFixedWidth(110);
     timing->addWidget(stamp);
@@ -918,18 +1044,33 @@ void Window::buildHelp(QWidget* page) {
     auto* layout = new QVBoxLayout(page);
     auto* help = new QTextBrowser;
     help->setOpenExternalLinks(true);
+    help->setStyleSheet(
+        "QTextBrowser{background:white;border:1px solid #e1dcec;border-radius:12px;padding:20px;}");
+    help->document()->setDefaultStyleSheet(
+        "body{color:#393047;font-size:11pt;line-height:1.5} h2{color:#6550b9;font-size:24pt} "
+        "h3{color:#6550b9;font-size:14pt;margin-top:24px;} "
+        "p{margin-top:16px;margin-bottom:18px} a{color:#6750bd} b{color:#6550b9}");
     help->setHtml(
-        "<h2>SonicForge · Справка</h2><p>Редактор: добавьте аудио, выберите фрагмент. Удерживайте "
+        "<h2>SonicForge · Справка</h2><p>Монтаж, обработка и оформление вашей "
+        "музыки.</p><h3>Монтаж на дорожках</h3><p>Добавьте аудио, выберите фрагмент. Удерживайте "
         "правую кнопку мыши для выделения. Ctrl + колесо меняет масштаб. Основные инструменты: "
         "плавное начало, плавный конец, переход к следующей песне той же дорожки, выделение, "
-        "разделение, удаление. Правый клик по иконке показывает название и описание.</p><p>Ctrl+Z "
+        "разделение, удаление. Правый клик по иконке или настройке показывает название и "
+        "описание.</p><p>Ctrl+Z "
         "— отмена, Ctrl+Y — повтор, Ctrl+K — разделение, Delete — удалить, Ctrl+E — экспорт. "
-        "Пробел на дорожке — воспроизведение.</p><p>Связь с редактором включает текущий монтаж как "
+        "Пробел на дорожке — воспроизведение. Перемещение красной линии сразу перематывает "
+        "звук.</p><h3>Один источник для всех разделов</h3><p>Связь с редактором включает текущий "
+        "монтаж как "
         "источник для остальных разделов. Текст и вручную изменённые таймкоды при правках не "
-        "стираются.</p><p>В разделе текста слушайте песню и нажимайте F8 в начале строки: метка "
-        "ставится на 0,1 секунды раньше звука, затем курсор переходит на следующую строку. Ручной "
+        "стираются.</p><h3>Текст и таймкоды</h3><p>В разделе текста слушайте песню и нажимайте F8 "
+        "в начале строки: метка "
+        "ставится на 45 мс раньше звука, затем курсор переходит на следующую строку. Ручной "
         "ввод времени сохраняется точно. Коррекция таймингов сохраняет ваши слова и "
-        "повторы.</p><p>Метаданные, звук, текст и обложка применяются к копиям в разделе "
+        "повторы.</p><h3>Звук и оформление</h3><p>Ползунки меняют звук; ниже настроек можно "
+        "послушать оригинал и обновлённый результат. Свёрнутые фильтры продолжают работать. "
+        "Дополнительные настройки обложки позволяют отключить надпись и "
+        "символ.</p><h3>Сохранение</h3><p>Метаданные, звук, текст и обложка применяются к копиям в "
+        "разделе "
         "«Выполнение». Исходные аудиофайлы не изменяются. Запись текста отдельной кнопкой изменяет "
         "текстовый тег выбранной песни.</p><p>Модели работают локально и включены в выпуск. "
         "При отсутствии Whisper или HTDemucs модель загружается с проверкой контрольной суммы. "
@@ -942,8 +1083,10 @@ void Window::buildHelp(QWidget* page) {
 }
 void Window::buildSettings(QWidget* page) {
     auto* layout = new QVBoxLayout(page);
-    auto* form = new QFormLayout;
-    layout->addLayout(form);
+    layout->setContentsMargins(20, 20, 20, 20);
+    layout->setSpacing(18);
+    auto* appearance = group(layout, "Интерфейс");
+    auto* form = new QFormLayout(appearance);
     auto* languageBox = new QComboBox;
     languageBox->addItems({"Русский", "English"});
     languageBox->setCurrentIndex(language == "en" ? 1 : 0);
@@ -958,13 +1101,28 @@ void Window::buildSettings(QWidget* page) {
         retranslate();
         savePreferences();
     });
-    auto* about = new QLabel("SonicForge 3.0\nНативный интерфейс и обработка на C++20 / Qt "
-                             "6.\nWhisper.cpp · HTDemucs · ONNX Runtime · FFmpeg");
+    auto* about =
+        new QLabel("<h1 style='color:#6550b9'>SonicForge</h1><p>Музыка, монтаж и оформление — в "
+                   "одном месте.</p><p style='color:#8b819c'>Обработка выполняется на вашем "
+                   "компьютере. Аудиозаписи не отправляются на сервер.</p>");
     about->setWordWrap(true);
     layout->addWidget(about);
-    auto* links = row(layout);
+    auto* resources = group(layout, "Проект и поддержка");
+    auto* card = new QVBoxLayout(resources);
+    auto* links = row(card);
     button(links, "GitHub",
            [] { QDesktopServices::openUrl(QUrl("https://github.com/dumuzeyn/SonicForge")); });
+    button(links, "Обновления", [] {
+        QDesktopServices::openUrl(QUrl("https://github.com/dumuzeyn/SonicForge/releases"));
+    });
+    button(
+        links, "Поддержать автора",
+        [] { QDesktopServices::openUrl(QUrl("https://pay.cloudtips.ru/p/53cc3806")); }, true);
+    auto* notice = new QLabel(
+        "Поддержка автора добровольная. Все возможности приложения доступны без пожертвования.");
+    notice->setWordWrap(true);
+    notice->setStyleSheet("color:#8b819c;");
+    card->addWidget(notice);
     links->addStretch();
     layout->addStretch();
 }
@@ -984,6 +1142,8 @@ void Window::startTask(const QString& name, std::function<WorkResult(sf::Progres
                        std::function<void(const WorkResult&)> finished) {
     if (busy)
         return;
+    comparisonTimer->stop();
+    comparisonCancel->store(true);
     stop();
     busy = true;
     cancel = std::make_shared<std::atomic_bool>(false);
@@ -1025,7 +1185,7 @@ void Window::startTask(const QString& name, std::function<WorkResult(sf::Progres
         for (auto* control : controls)
             enableAction(control, true);
         linked->setEnabled(true);
-        mixFormat->setEnabled(linked->isChecked());
+        mixFormat->setEnabled(true);
         lyrics->setReadOnly(false);
         cancelButton->setEnabled(false);
         progressBar->setRange(0, 1000);
@@ -1046,8 +1206,11 @@ void Window::startTask(const QString& name, std::function<WorkResult(sf::Progres
         }
         updateState();
     });
-    watcher->setFuture(QtConcurrent::run([work, progress] {
+    auto previousComparison =
+        comparisonWatcher ? comparisonWatcher->future() : QFuture<WorkResult>();
+    watcher->setFuture(QtConcurrent::run([work, progress, previousComparison]() mutable {
         try {
+            previousComparison.waitForFinished();
             return work(progress);
         } catch (const std::exception& e) {
             WorkResult result;
@@ -1067,6 +1230,7 @@ void Window::remember() {
     redoHistory.clear();
 }
 void Window::projectChanged() {
+    scheduleComparison();
     stop();
     if (player) {
         playingTimeline = false;
@@ -1220,6 +1384,7 @@ void Window::edit(const QString& operation) {
                     c.source = replacement.path;
                     c.start = 0;
                     c.end = replacement.duration;
+                    c.speed = 1;
                     double total = c.fadeIn + c.fadeOut;
                     if (total > c.duration()) {
                         c.fadeIn *= c.duration() / total;
@@ -1296,6 +1461,8 @@ void Window::transition() {
             joined.start = 0;
             joined.end = source.duration;
             joined.gain = joined.fadeIn = joined.fadeOut = 0;
+            joined.volume = joined.speed = 1;
+            joined.bass = joined.mid = joined.treble = 0;
             timeline->project.clips.removeIf(
                 [&](const sf::Clip& c) { return c.id == first.id || c.id == second.id; });
             timeline->project.clips << joined;
@@ -1421,6 +1588,10 @@ void Window::preview(bool editor) {
         [this, editor](const WorkResult& result) { playFile(result.file, editor); });
 }
 void Window::stop() {
+    if (originalPane)
+        originalPane->media->pause();
+    if (processedPane)
+        processedPane->media->pause();
     pendingSeek.reset();
     if (player)
         player->pause();
@@ -1507,44 +1678,34 @@ void Window::analyzeAudio() {
     auto snapshot = timeline->project;
     bool link = linked->isChecked();
     QString original = source->text(), format = mixFormat->currentText().toLower();
+    const auto options = audioOptions();
     startTask(
         "Измеряю звук…",
-        [this, snapshot, link, original, format](sf::Progress) {
+        [this, snapshot, link, original, format, options](sf::Progress) {
             WorkResult result;
-            result.data = sf::analyze(prepare(snapshot, link, original, format), cancel);
+            auto input = prepare(snapshot, link, original, format);
+            result.data = sf::analyze(input, cancel);
+            const QString edited = sf::uniqueFile();
+            try {
+                sf::normalize(input, edited, options, cancel);
+                result.data["modified"] = sf::analyze(edited, cancel);
+                QFile::remove(edited);
+            } catch (...) {
+                QFile::remove(edited);
+                throw;
+            }
             return result;
         },
         [this](const WorkResult& result) {
+            measurements = result.data;
             analysisLabel->setText(
-                QString("Средняя энергия: %1 dBFS  ·  Пики: %2 dBFS  ·  Тихие участки: %3%")
+                QString("Средняя энергия: %1 dBFS  ·  Пики: %2 dBFS  ·  Тихие участки: "
+                        "%3%\nОригинал: %4 LUFS  →  С настройками: %5 LUFS")
                     .arg(result.data["rmsDb"].toDouble(), 0, 'f', 1)
                     .arg(result.data["peakDb"].toDouble(), 0, 'f', 1)
-                    .arg(result.data["quietFraction"].toDouble() * 100, 0, 'f', 1));
-        });
-}
-void Window::compareAudio() {
-    auto snapshot = timeline->project;
-    bool link = linked->isChecked();
-    QString original = source->text(), format = mixFormat->currentText().toLower();
-    auto options = audioOptions();
-    startTask(
-        "Подготавливаю сравнение…",
-        [this, snapshot, link, original, format, options](sf::Progress p) {
-            auto input = prepare(snapshot, link, original, format);
-            QString excerpt = sf::uniqueFile(), before = sf::uniqueFile(), after = sf::uniqueFile();
-            sf::ffmpeg({"-i", input, "-t", "25", "-vn", "-c:a", "pcm_s16le", excerpt}, cancel);
-            sf::AudioOptions neutral;
-            sf::normalize(excerpt, before, neutral, cancel, p);
-            sf::normalize(excerpt, after, options, cancel, p);
-            QFile::remove(excerpt);
-            WorkResult result;
-            result.files = {before, after};
-            return result;
-        },
-        [this](const WorkResult& result) {
-            lastOriginal = result.files[0];
-            lastProcessed = result.files[1];
-            status->setText("Сравнение готово: «Оригинал» / «Результат»");
+                    .arg(result.data["quietFraction"].toDouble() * 100, 0, 'f', 1)
+                    .arg(result.data["integratedLufs"].toString())
+                    .arg(result.data["modified"].toObject()["integratedLufs"].toString()));
         });
 }
 void Window::generateCover() {
@@ -1553,6 +1714,7 @@ void Window::generateCover() {
     QString original = source->text(), format = mixFormat->currentText().toLower();
     auto metadata = metadataValues();
     auto options = coverOptions;
+    options.symbol = checks["cover_symbol"]->isChecked();
     options.size = qRound(numbers["cover_size"]->value());
     options.seed = qRound(numbers["cover_seed"]->value());
     options.pattern = choices["cover_pattern"]->currentIndex();
@@ -1716,20 +1878,21 @@ void Window::loadLyrics() {
 void Window::recognizeLyrics() {
     auto snapshot = timeline->project;
     bool link = linked->isChecked(), vocals = separateVocals->isChecked(),
-         align = lyricMode->currentIndex() == 1;
+         align = lyricMode->currentIndex() == 1, fast = lyricQuality->currentIndex() == 1;
     QString original = source->text(), format = mixFormat->currentText().toLower(),
             lang = lyricLanguage->currentData().toString(), text = lyrics->toPlainText();
     if (align && sf::plainLyrics(text).isEmpty())
         throw sf::Error("Сначала введите или импортируйте текст");
     startTask(
         align ? "Исправляю тайминги готового текста…" : "Распознаю текст…",
-        [this, snapshot, link, vocals, align, original, format, lang, text](sf::Progress p) {
+        [this, snapshot, link, vocals, align, fast, original, format, lang, text](sf::Progress p) {
             QString input = prepare(snapshot, link, original, format);
+            QString reference = vocals ? input : QString();
             if (vocals)
                 input = sf::separate(input, true, cancel, p).first();
             WorkResult result;
-            result.lyrics = align ? sf::alignLyrics(input, text, lang, cancel, p)
-                                  : sf::recognize(input, lang, cancel, p);
+            result.lyrics = align ? sf::alignLyrics(input, text, lang, cancel, p, reference, fast)
+                                  : sf::recognize(input, lang, cancel, p, reference, fast);
             return result;
         },
         [this](const WorkResult& result) {
@@ -1774,14 +1937,14 @@ void Window::insertStamp(bool live, bool advance) {
                             : timeline->cursor)
                      : sf::parseTime(stamp->text());
     if (live)
-        at = qMax(0., at - .1);
-    QString value = sf::timestamp(at);
+        at = qMax(0., at - sf::LyricLead);
+    QString value = sf::timestamp(at, 3);
     QTextCursor cursor = lyrics->textCursor();
     cursor.beginEditBlock();
     cursor.movePosition(QTextCursor::StartOfBlock);
     cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
     QString line = cursor.selectedText();
-    line.remove(QRegularExpression("^(?:\\[\\d{1,3}:\\d{2}(?:[.:]\\d{1,3})?\\])+"));
+    line.remove(QRegularExpression("^(?:\\[\\d{1,6}:\\d{2}(?:[.:]\\d{1,3})?\\])+"));
     cursor.insertText("[" + value + "]" + line);
     cursor.endEditBlock();
     if (advance) {
@@ -1814,17 +1977,18 @@ void Window::processFiles() {
     auto metadata = metadataValues();
     auto audio = audioOptions();
     QString supplied = lyrics->toPlainText(), language = lyricLanguage->currentData().toString();
-    bool timing = lyricMode->currentIndex() == 1, overwrite = overwriteLyrics->isChecked(),
-         vocals = separateVocals->isChecked(), tags = checks["process_metadata"]->isChecked(),
+    bool timing = lyricMode->currentIndex() == 1, fastSpeech = lyricQuality->currentIndex() == 1,
+         overwrite = overwriteLyrics->isChecked(), vocals = separateVocals->isChecked(),
+         tags = checks["process_metadata"]->isChecked(),
          sound = checks["process_audio"]->isChecked(),
          words = checks["process_lyrics"]->isChecked(), art = checks["process_cover"]->isChecked(),
-         replace = checks["overwrite_metadata"]->isChecked(),
-         keepLyrics = checks["preserve_lyrics"]->isChecked(),
+         replace = checks["overwrite_metadata"]->isChecked(), keepLyrics = true,
          replaceGenre = checks["overwrite_genre"]->isChecked(),
          keepCover = checks["keep_cover"]->isChecked(), embed = checks["embed_cover"]->isChecked();
     if (!tags && !sound && !words && !art)
         throw sf::Error("Выберите хотя бы один этап");
     auto cover = coverOptions;
+    cover.symbol = checks["cover_symbol"]->isChecked();
     cover.size = qRound(numbers["cover_size"]->value());
     cover.seed = qRound(numbers["cover_seed"]->value());
     cover.pattern = choices["cover_pattern"]->currentIndex();
@@ -1903,6 +2067,10 @@ void Window::processFiles() {
                     throw sf::Error("Не удалось скопировать исходник");
                 if (tags) {
                     auto values = metadata;
+                    if (values.value("title").isEmpty())
+                        values["title"] = originalTags.values.value("title").isEmpty()
+                                              ? QFileInfo(input).completeBaseName()
+                                              : originalTags.values.value("title");
                     if (!replaceGenre && !originalTags.values.value("genre").isEmpty() &&
                         values.value("genre").isEmpty())
                         values["genre"] = originalTags.values.value("genre");
@@ -1910,6 +2078,8 @@ void Window::processFiles() {
                         QString recognized = sf::genre(input, cancel, progress);
                         if (!recognized.isEmpty())
                             values["genre"] = recognized;
+                        else
+                            values["genre"] = originalTags.values.value("genre");
                     }
                     sf::writeMetadata(staged, values, replace, keepLyrics, {}, false, cancel);
                 }
@@ -1931,8 +2101,8 @@ void Window::processFiles() {
                             QString speech = input;
                             if (vocals)
                                 speech = sf::separate(input, true, cancel, progress).first();
-                            auto aligned =
-                                sf::alignLyrics(speech, text, language, cancel, progress);
+                            auto aligned = sf::alignLyrics(speech, text, language, cancel, progress,
+                                                           vocals ? input : QString(), fastSpeech);
                             text = sf::lrc(aligned);
                             sf::saveLyrics(staged, text,
                                            QFileInfo(staged).suffix() == "mp3" ? "embedded" : "lrc",
@@ -1948,7 +2118,8 @@ void Window::processFiles() {
                         QString speech = input;
                         if (vocals)
                             speech = sf::separate(input, true, cancel, progress).first();
-                        auto recognized = sf::recognize(speech, language, cancel, progress);
+                        auto recognized = sf::recognize(speech, language, cancel, progress,
+                                                        vocals ? input : QString(), fastSpeech);
                         if (!recognized.isEmpty())
                             sf::saveLyrics(staged, sf::lrc(recognized),
                                            QFileInfo(staged).suffix() == "mp3" ? "embedded" : "lrc",
@@ -2020,6 +2191,7 @@ void Window::processFiles() {
 void Window::loadPreferences() {
     QSettings settings;
     language = settings.value("language", "ru").toString();
+    coverOptions.symbol = settings.value("cover/symbol", true).toBool();
     QJsonObject options =
         QJsonDocument::fromJson(settings.value("cover/options").toByteArray()).object();
     if (options.isEmpty()) {
@@ -2073,6 +2245,8 @@ void Window::loadPreferences() {
 void Window::savePreferences() {
     QSettings settings;
     settings.setValue("language", language);
+    if (checks.contains("cover_symbol"))
+        settings.setValue("cover/symbol", checks["cover_symbol"]->isChecked());
     QStringList palette;
     QVariantList stops;
     for (auto& color : coverOptions.palette)
@@ -2092,16 +2266,72 @@ void Window::savePreferences() {
     settings.setValue("cover/options", QJsonDocument(options).toJson(QJsonDocument::Compact));
 }
 void Window::closeEvent(QCloseEvent* event) {
+    QElapsedTimer elapsed;
+    elapsed.start();
+#ifdef Q_OS_WIN
+    std::thread([] {
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+        TerminateProcess(GetCurrentProcess(), 0);
+    }).detach();
+#endif
+    comparisonTimer->stop();
+    comparisonCancel->store(true);
+    cancel->store(true);
+    sf::shutdownWorkers();
+    if (comparisonWatcher)
+        comparisonWatcher->waitForFinished();
     if (busy) {
         cancel->store(true);
         if (watcher)
             watcher->waitForFinished();
     }
     stop();
+    player->stop();
+    player->setSource({});
+    originalPane->media->stop();
+    originalPane->media->setSource({});
+    processedPane->media->stop();
+    processedPane->media->setSource({});
     savePreferences();
+    if (property("sfCloseReport").isValid()) {
+        QFile report(property("sfCloseReport").toString());
+        if (report.open(QIODevice::WriteOnly))
+            report.write(
+                QJsonDocument(QJsonObject{{"complete", true},
+                                          {"milliseconds", elapsed.elapsed()},
+                                          {"task_finished", !watcher || watcher->isFinished()},
+                                          {"comparison_finished",
+                                           !comparisonWatcher || comparisonWatcher->isFinished()}})
+                    .toJson());
+    }
     event->accept();
+    qApp->quit();
 }
 bool Window::eventFilter(QObject* object, QEvent* event) {
+    if (event->type() == QEvent::ContextMenu) {
+        if (object->property("sfAction").isValid())
+            return false;
+        auto* context = static_cast<QContextMenuEvent*>(event);
+        if (object == navigation) {
+            const int index = navigation->tabAt(context->pos());
+            if (index >= 0)
+                showContextHelp(navigation, navigation->tabText(index),
+                                tabs->widget(index)->property("sfHelpKey").toString(),
+                                context->pos());
+            return true;
+        }
+        for (auto* widget = qobject_cast<QWidget*>(object); widget;
+             widget = widget->parentWidget()) {
+            if (widget->property("sfHelpTitle").isValid()) {
+                showContextHelp(widget, widget->property("sfHelpTitle").toString(),
+                                widget->property("sfHelpKey").toString(),
+                                widget->mapFromGlobal(context->globalPos()));
+                return true;
+            }
+            if (qobject_cast<QMenu*>(widget))
+                break;
+        }
+    }
     if (event->type() != QEvent::KeyPress || !tabs || tabs->currentIndex() != 0 ||
         QApplication::activeModalWidget() || busy)
         return QMainWindow::eventFilter(object, event);
@@ -2157,6 +2387,7 @@ bool Window::eventFilter(QObject* object, QEvent* event) {
     return true;
 }
 bool Window::smokeTest(const QString& directory) {
+    setProperty("sfTesting", true);
     QDir().mkpath(directory);
     QJsonObject report;
     try {
@@ -2186,12 +2417,36 @@ bool Window::smokeTest(const QString& directory) {
         timeline->selected = first;
         timeline->cursor = 9.75;
         timeline->refresh();
+        auto clipDialog = std::make_shared<bool>(false);
+        QTimer::singleShot(30, this, [=] {
+            if (auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
+                auto values = dialog->findChildren<QDoubleSpinBox*>();
+                auto sliders = dialog->findChildren<QSlider*>();
+                *clipDialog = values.size() == 5 && sliders.size() == 5 &&
+                              values[0]->value() == 1 && values[1]->value() == 1 &&
+                              values[0]->minimum() == 0 && values[0]->maximum() == 4 &&
+                              values[1]->minimum() == 0 && values[1]->maximum() == 4;
+                dialog->grab().save(directory + "/fragment-settings.png");
+                if (*clipDialog) {
+                    values[0]->setValue(2);
+                    values[1]->setValue(2);
+                    values[2]->setValue(3);
+                }
+                dialog->accept();
+            }
+        });
+        fragmentSettings();
+        report["fragment_sliders_and_ripple"] =
+            *clipDialog && timeline->project.get(first).volume == 2 &&
+            timeline->project.get(first).speed == 2 && timeline->project.get(first).bass == 3 &&
+            timeline->project.clips[1].position == 45;
+        history(false);
         lyrics->setPlainText("Первая строка\nВторая строка");
         QTextCursor cursor = lyrics->textCursor();
         cursor.setPosition(0);
         lyrics->setTextCursor(cursor);
         insertStamp(true, true);
-        report["cue_lead_100ms"] = lyrics->toPlainText().startsWith("[00:09.65]");
+        report["cue_lead_45ms"] = lyrics->toPlainText().startsWith("[00:09.705]");
         report["next_line"] = lyrics->textCursor().blockNumber() == 1;
         QString text = lyrics->toPlainText();
         for (int i = 0; i < tabs->count(); ++i)
@@ -2203,6 +2458,15 @@ bool Window::smokeTest(const QString& directory) {
         history(false);
         report["text_survives_tabs_and_edits"] = lyrics->toPlainText() == text;
         report["timeline_compact"] = timeline->height() == 225;
+        report["navigation_full_width"] = navigation->width() >= centralWidget()->width() - 40;
+        report["navigation_above_controls"] =
+            navigation->mapTo(this, QPoint(0, 0)).y() < linked->mapTo(this, QPoint(0, 0)).y();
+        linked->setChecked(false);
+        report["format_enabled_unlinked"] = mixFormat->isEnabled();
+        linked->setChecked(true);
+        report["audio_sliders"] = numbers["gain"]->parentWidget()->property("sfSlider").toBool();
+        report["effects_collapsed"] = findChild<QWidget*>("audioAdvanced")->isHidden();
+        report["cover_advanced_collapsed"] = findChild<QWidget*>("coverAdvanced")->isHidden();
         double before = timeline->zoom;
         timeline->zoomBy(1.25);
         report["zoom"] = timeline->zoom > before;
@@ -2213,6 +2477,11 @@ bool Window::smokeTest(const QString& directory) {
         tabs->setCurrentIndex(4);
         QApplication::processEvents();
         grab().save(directory + "/lyrics-native.png");
+        for (int i : {1, 2, 3, 6, 7}) {
+            tabs->setCurrentIndex(i);
+            QApplication::processEvents();
+            grab().save(directory + QString("/tab-%1.png").arg(i));
+        }
         QString previousLanguage = language;
         language = "en";
         loadLanguage();
@@ -2227,6 +2496,14 @@ bool Window::smokeTest(const QString& directory) {
         loadLanguage();
         retranslate();
         report["native_cpp"] = true;
+        report["application_icon"] = !windowIcon().pixmap(48, 48).isNull();
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() == "windows") {
+            auto handle = reinterpret_cast<HWND>(winId());
+            report["taskbar_icon"] = SendMessageW(handle, WM_GETICON, ICON_BIG, 0) != 0 &&
+                                     SendMessageW(handle, WM_GETICON, ICON_SMALL, 0) != 0;
+        }
+#endif
         bool success = true;
         for (auto it = report.begin(); it != report.end(); ++it)
             success &= it.value().toBool();
@@ -2243,6 +2520,7 @@ bool Window::smokeTest(const QString& directory) {
     }
 }
 void Window::playbackSmoke(const QString& file, const QString& outputFile) {
+    setProperty("sfTesting", true);
     auto report = std::make_shared<QJsonObject>();
     auto stage = std::make_shared<int>(0);
     auto elapsed = std::make_shared<QElapsedTimer>();
@@ -2261,9 +2539,17 @@ void Window::playbackSmoke(const QString& file, const QString& outputFile) {
         if (*stage == 0 && player->playbackState() == QMediaPlayer::PlayingState &&
             player->position() >= 1200) {
             (*report)["start_at_cursor"] = player->position() < 1800;
+            timeline->cursor = 2.4;
+            QMetaObject::invokeMethod(timeline, "cursorChanged", Qt::DirectConnection,
+                                      Q_ARG(double, 2.4));
+            (*report)["red_cursor_seeks_while_playing"] =
+                player->position() >= 2350 && player->position() < 2700 &&
+                player->playbackState() == QMediaPlayer::PlayingState;
             preview(true);
             (*report)["pause"] = player->playbackState() == QMediaPlayer::PausedState;
-            player->setPosition(2800);
+            timeline->cursor = 2.8;
+            QMetaObject::invokeMethod(timeline, "cursorChanged", Qt::DirectConnection,
+                                      Q_ARG(double, 2.8));
             preview(true);
             *stage = 1;
         } else if (*stage == 1 && player->position() >= 2800 &&
@@ -2279,11 +2565,11 @@ void Window::playbackSmoke(const QString& file, const QString& outputFile) {
         } else if (*stage == 2 && player->position() >= 300 &&
                    player->playbackState() == QMediaPlayer::PlayingState) {
             (*report)["lyrics_playback"] = playerContext == "lyrics" && player->position() < 1000;
-            double expected = qMax(0., player->position() / 1000. - .1);
+            double expected = qMax(0., player->position() / 1000. - sf::LyricLead);
             insertStamp(true, true);
             auto parsed = sf::parseLyrics(lyrics->toPlainText(), false);
             (*report)["live_stamp_lead"] =
-                !parsed.isEmpty() && std::abs(parsed.first().start - expected) < .025;
+                !parsed.isEmpty() && std::abs(parsed.first().start - expected) < .006;
             (*report)["text_preserved"] =
                 sf::plainLyrics(lyrics->toPlainText()) == "Первая строка\nВторая строка";
             *stage = 3;

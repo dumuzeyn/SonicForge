@@ -4,4 +4,4 @@
 
 Установщик и портативный архив содержат этот список и тексты лицензий в `SonicForge/licenses`. Лицензии шрифтов поставляются рядом со шрифтами; лицензия модели жанров — в `models/genre`.
 
-Уведомления архивной Python-версии сохранены в [legacy/python-v2/docs](../legacy/python-v2/docs/THIRD_PARTY_NOTICES.md).
+Уведомления прежней Python-версии доступны [в истории Git](https://github.com/dumuzeyn/SonicForge/blob/v3.0.0/legacy/python-v2/docs/THIRD_PARTY_NOTICES.md).

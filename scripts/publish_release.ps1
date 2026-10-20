@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory=$true)][string]$Commit,
-    [string]$Tag = 'v3.0.0',
+    [string]$Tag = 'v3.1.0',
     [long]$ResumeDraftId = 0
 )
 $ErrorActionPreference = 'Stop'
@@ -10,7 +10,7 @@ $ReleaseAssets = @(
     (Join-Path $ReleaseRoot 'dist\SonicForge-windows-x64.zip'),
     (Join-Path $ReleaseRoot 'dist\SHA256SUMS.txt')
 )
-if ($Commit -notmatch '^[a-f0-9]{40}$' -or $Tag -ne 'v3.0.0') { throw 'Unexpected release identity' }
+if ($Commit -notmatch '^[a-f0-9]{40}$' -or $Tag -ne 'v3.1.0') { throw 'Unexpected release identity' }
 foreach ($ReleaseAsset in $ReleaseAssets) {
     if (-not (Test-Path -LiteralPath $ReleaseAsset -PathType Leaf)) { throw 'Missing release asset' }
 }
@@ -38,8 +38,8 @@ try {
     if ($ReleaseMatching -and (-not $ResumeDraftId -or $ReleaseMatching.id -ne $ResumeDraftId -or -not $ReleaseMatching.draft)) {
         throw 'This release already exists; it will not be overwritten'
     }
-    $ReleaseBody = Get-Content -LiteralPath (Join-Path $ReleaseRoot 'docs\RELEASE-3.0.0.md') -Raw -Encoding UTF8
-    $ReleasePayload = @{ tag_name=$Tag; target_commitish=$Commit; name='SonicForge 3.0.0';
+    $ReleaseBody = Get-Content -LiteralPath (Join-Path $ReleaseRoot 'docs\RELEASE-3.1.0.md') -Raw -Encoding UTF8
+    $ReleasePayload = @{ tag_name=$Tag; target_commitish=$Commit; name='SonicForge 3.1.0';
         body=$ReleaseBody; draft=$true; prerelease=$false } | ConvertTo-Json
     if ($ResumeDraftId) {
         if (-not $ReleaseMatching -or $ReleaseMatching.id -ne $ResumeDraftId -or -not $ReleaseMatching.draft) {

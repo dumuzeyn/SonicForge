@@ -1,4 +1,5 @@
 #include "core.h"
+#include "speech.h"
 #include <QtTest>
 #include <cmath>
 class CoreTests : public QObject {
@@ -45,12 +46,16 @@ class CoreTests : public QObject {
     }
     void timing() {
         QCOMPARE(sf::timestamp(62.345), QString("01:02.35"));
+        QCOMPARE(sf::timestamp(62.345, 3), QString("01:02.345"));
+        auto cue = sf::lrc({sf::Lyric{10 - sf::LyricLead, 11, "Cue"}});
+        QCOMPARE(cue, QString("[00:09.955]Cue"));
         QCOMPARE(sf::parseTime("01:02.345"), 62.345);
         QVERIFY_EXCEPTION_THROWN(sf::parseTime("01:77"), sf::Error);
         auto lines = sf::parseLyrics("[00:01.20]Первая\n[00:03.40]Повтор\n[00:05.60]Повтор");
         QCOMPARE(lines.size(), 3);
         QCOMPARE(lines[1].end, 5.6);
-        QCOMPARE(sf::lrc(lines), QString("[00:01.20]Первая\n[00:03.40]Повтор\n[00:05.60]Повтор"));
+        QCOMPARE(sf::lrc(lines),
+                 QString("[00:01.200]Первая\n[00:03.400]Повтор\n[00:05.600]Повтор"));
         lines = sf::parseLyrics("[ti:Песня]\n[00:04][00:01.20]Припев\n[offset:-100]");
         QCOMPARE(lines.size(), 2);
         QVERIFY(std::abs(lines[0].start - 1.1) < 1e-9);
@@ -212,6 +217,92 @@ class CoreTests : public QObject {
         QCOMPARE(sf::soundSpelling("გამარჯობა", "ru", "ka"), QString("гамарджоба"));
         QCOMPARE(sf::soundSpelling("Schön", "en", "de"), QString("Schon"));
         QVERIFY(sf::soundSpelling("llama", "ru", "es").startsWith("й"));
+    }
+    void fragmentVolumeSpeedEqAndZero() {
+        QTemporaryDir directory;
+        sf::Project project;
+        auto id = project.add(sf::readSource(tone(directory, "speed")));
+        auto& clip = project.get(id);
+        clip.speed = 2;
+        clip.volume = .5;
+        clip.bass = 3;
+        QCOMPARE(clip.duration(), 3.);
+        auto path = sf::render(project, directory.filePath("fast.wav"));
+        QVERIFY(std::abs(sf::readSource(path).duration - 3) < .02);
+        auto right = project.split(id, 1);
+        QCOMPARE(project.get(right).start, 2.);
+        project.validate();
+        auto silent = project.get(right);
+        silent.position = 0;
+        silent.speed = 0;
+        project.clips = {silent};
+        path = sf::render(project, directory.filePath("silent.wav"));
+        QVERIFY(rms(sf::decode(path, 8000, 1)) < 1e-5);
+        project.clips[0].speed = .01;
+        project.clips[0].volume = 4;
+        project.validate();
+    }
+    void symbolCanBeRemoved() {
+        QTemporaryDir directory;
+        auto input = tone(directory, "symbol", 2);
+        sf::CoverOptions options;
+        options.size = 192;
+        options.title = false;
+        auto with = sf::makeCover(input, {}, options);
+        options.symbol = false;
+        QVERIFY(with != sf::makeCover(input, {}, options));
+    }
+    void overlappingSpeechKeepsEveryWord() {
+        QList<sf::Lyric> words;
+        sf::appendSpeechWindow(
+            words, {{20.9, 21.5, "first", .9}, {22.4, 23, "second", .9}, {23.5, 24, "third", .9}},
+            0, 23);
+        sf::appendSpeechWindow(words,
+                               {{20.9, 21.5, "first", .9},
+                                {22.4, 23, "second", .9},
+                                {23.5, 24, "third", .9},
+                                {24.1, 25, "last", .9}},
+                               23, 43);
+        QCOMPARE(words.size(), 4);
+        auto lines = sf::speechLines(words);
+        QString text;
+        for (const auto& line : lines)
+            text += line.text + ' ';
+        QCOMPARE(text.trimmed(), QString("first second third last"));
+    }
+    void ctcRespectsIntroAndRepeatedLetters() {
+        QVector<float> probabilities(12 * 3, std::log(.001f));
+        for (int i = 0; i < 12; ++i)
+            probabilities[i * 3] = std::log(.998f);
+        for (auto pair : {QPair<int, int>{4, 1}, {6, 1}, {8, 2}}) {
+            probabilities[pair.first * 3] = std::log(.001f);
+            probabilities[pair.first * 3 + pair.second] = std::log(.998f);
+        }
+        auto match = sf::ctcViterbi(probabilities, 12, 3, {1, 1, 2});
+        QVERIFY(match.has_value());
+        QCOMPARE(match->first, QVector<int>({4, 6, 8}));
+        QVERIFY(match->confidence > .99);
+        QVERIFY(!sf::ctcViterbi(probabilities, 12, 3, {99}));
+    }
+    void longWaveformStaysCompact() {
+        QTemporaryDir directory;
+        auto path = directory.filePath("two-hours.flac");
+        sf::ffmpeg({"-f", "lavfi", "-i", "sine=frequency=220:duration=7200:sample_rate=8000",
+                    "-c:a", "flac", path});
+        const auto source = sf::readSource(path);
+        QCOMPARE(source.duration, 7200.);
+        QVERIFY(source.peaks.size() <= 2401);
+        QVERIFY(source.peaks.size() >= 2300);
+    }
+    void closingTerminatesOwnedProcesses() {
+        QProcess child;
+        child.start(sf::executable("ffmpeg"), {"-v", "error", "-re", "-f", "lavfi", "-i",
+                                               "sine=duration=120", "-f", "null", "-"});
+        QVERIFY(child.waitForStarted());
+        sf::adoptChild(child);
+        sf::shutdownWorkers();
+        QVERIFY(child.waitForFinished(3000));
+        QCOMPARE(child.state(), QProcess::NotRunning);
     }
 };
 QTEST_MAIN(CoreTests)

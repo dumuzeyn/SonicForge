@@ -47,6 +47,7 @@ QByteArray process(const QString& program, const QStringList& args, const Cancel
     p.start();
     if (!p.waitForStarted(15000))
         throw Error("Не удалось запустить: " + program + "\n" + p.errorString());
+    adoptChild(p);
     QByteArray output, errors;
     QElapsedTimer timer;
     timer.start();
@@ -104,28 +105,9 @@ QVector<float> decode(const QString& file, int rate, int channels, double start,
     return values;
 }
 void writeWav(const QString& path, const QVector<float>& samples, int rate, int channels) {
-    QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly))
-        throw Error(file.errorString());
-    QDataStream stream(&file);
-    stream.setByteOrder(QDataStream::LittleEndian);
-    quint32 bytes = quint32(samples.size() * 2);
-    file.write("RIFF", 4);
-    stream << quint32(bytes + 36);
-    file.write("WAVEfmt ", 8);
-    stream << quint32(16) << quint16(1) << quint16(channels) << quint32(rate)
-           << quint32(rate * channels * 2) << quint16(channels * 2) << quint16(16);
-    file.write("data", 4);
-    stream << bytes;
-    QByteArray block;
-    block.resize(samples.size() * 2);
-    for (qsizetype i = 0; i < samples.size(); ++i) {
-        qint16 sample = qint16(std::clamp(double(samples[i]), -1., 1.) * 32767);
-        qToLittleEndian(sample, block.data() + i * 2);
-    }
-    file.write(block);
-    if (!file.commit())
-        throw Error(file.errorString());
+    WavWriter writer(path, rate, channels);
+    writer.append(samples.constData(), samples.size());
+    writer.finish();
 }
 double Project::duration() const {
     double value = 0;
@@ -186,12 +168,12 @@ QString Project::split(const QString& id, double at) {
         throw Error("Поставьте курсор внутри фрагмента");
     Clip right = old;
     right.id = QUuid::createUuid().toString(QUuid::Id128);
-    right.start += offset;
+    right.start += offset * (old.speed > 0 ? old.speed : 1);
     right.position = at;
     right.fadeIn = 0;
     right.fadeOut = qMin(right.fadeOut, right.duration());
     auto& left = get(id);
-    left.end = old.start + offset;
+    left.end = old.start + offset * (old.speed > 0 ? old.speed : 1);
     left.fadeOut = 0;
     left.fadeIn = qMin(left.fadeIn, left.duration());
     clips << right;
@@ -202,9 +184,12 @@ void Project::validate() const {
         if (!sources.contains(c.source) || !std::isfinite(c.position) || !std::isfinite(c.gain) ||
             !std::isfinite(c.start) || !std::isfinite(c.end) || !std::isfinite(c.fadeIn) ||
             !std::isfinite(c.fadeOut) || c.start < 0 || c.end > sources[c.source].duration + .002 ||
-            c.duration() < .01 || c.position < 0 || c.lane < 0 || c.gain < -60 || c.gain > 18 ||
-            c.fadeIn < 0 || c.fadeOut < 0 || c.fadeIn + c.fadeOut > c.duration() + 1e-7 ||
-            c.position + c.duration() > 14400)
+            !std::isfinite(c.volume) || !std::isfinite(c.speed) || c.volume < 0 || c.volume > 4 ||
+            c.speed < 0 || c.speed > 4 || !std::isfinite(c.bass) || !std::isfinite(c.mid) ||
+            !std::isfinite(c.treble) || std::abs(c.bass) > 18 || std::abs(c.mid) > 18 ||
+            std::abs(c.treble) > 18 || c.duration() < .01 || c.position < 0 || c.lane < 0 ||
+            c.gain < -60 || c.gain > 18 || c.fadeIn < 0 || c.fadeOut < 0 ||
+            c.fadeIn + c.fadeOut > c.duration() + 1e-7 || c.position + c.duration() > 604800)
             throw Error("Недопустимые параметры фрагмента");
         for (const auto& b : clips)
             if (b.id != c.id && b.lane == c.lane && c.position < b.position + b.duration() - 1e-8 &&
@@ -215,9 +200,11 @@ void Project::validate() const {
 QJsonObject Project::json() const {
     QJsonArray list;
     for (auto& c : clips)
-        list << QJsonObject{{"id", c.id},       {"source", c.source}, {"lane", c.lane},
-                            {"start", c.start}, {"end", c.end},       {"position", c.position},
-                            {"gain", c.gain},   {"fadeIn", c.fadeIn}, {"fadeOut", c.fadeOut}};
+        list << QJsonObject{{"id", c.id},         {"source", c.source}, {"lane", c.lane},
+                            {"start", c.start},   {"end", c.end},       {"position", c.position},
+                            {"gain", c.gain},     {"fadeIn", c.fadeIn}, {"fadeOut", c.fadeOut},
+                            {"volume", c.volume}, {"speed", c.speed},   {"bass", c.bass},
+                            {"mid", c.mid},       {"treble", c.treble}};
     QJsonArray m;
     for (int lane : muted)
         m << lane;
@@ -232,8 +219,8 @@ Source readSource(const QString& file, const Cancel& c) {
         {"-v", "error", "-show_format", "-show_streams", "-of", "json", info.absoluteFilePath()},
         c));
     double duration = doc.object()["format"].toObject()["duration"].toString().toDouble();
-    if (duration <= 0 || duration >= 14400)
-        throw Error("Нужен аудиофайл короче четырёх часов");
+    if (duration <= 0 || duration >= 86400)
+        throw Error("Нужен аудиофайл с длительностью от нуля до 24 часов");
     // Aggregate waveform bins while decoding, independent of song length.
     QProcess decoder;
     decoder.setProgram(executable("ffmpeg"));
@@ -246,6 +233,7 @@ Source readSource(const QString& file, const Cancel& c) {
     decoder.start();
     if (!decoder.waitForStarted(15000))
         throw Error(decoder.errorString());
+    adoptChild(decoder);
     int step = qMax(1, int(std::ceil(duration * 8000 / 2400)));
     QVector<float> peaks;
     QByteArray pending, errors;
@@ -309,9 +297,31 @@ QString render(const Project& project, const QString& target, const Cancel& c, d
             throw Error("Исходный файл изменился: " + clip.source);
         double offset = qMax(0., start - clip.position),
                duration = qMin(clip.duration() - offset, end - qMax(start, clip.position));
-        args << "-ss" << n(clip.start + offset) << "-t" << n(duration) << "-i" << clip.source;
+        const double rate = clip.speed > 0 ? clip.speed : 1;
+        args << "-ss" << n(clip.start + offset * rate) << "-t" << n(duration * rate) << "-i"
+             << clip.source;
         QStringList chain{"asetpts=PTS-STARTPTS", "aresample=44100",
                           "aformat=channel_layouts=stereo", "volume=" + n(clip.gain) + "dB"};
+        if (clip.speed > 0) {
+            double tempo = clip.speed;
+            while (tempo > 2) {
+                chain << "atempo=2";
+                tempo /= 2;
+            }
+            while (tempo < .5) {
+                chain << "atempo=0.5";
+                tempo *= 2;
+            }
+            if (std::abs(tempo - 1) > .00001)
+                chain << "atempo=" + n(tempo);
+        }
+        chain << "volume=" + n(clip.speed > 0 ? clip.volume : 0);
+        if (clip.bass)
+            chain << "bass=g=" + n(clip.bass) + ":f=100:w=0.8";
+        if (clip.mid)
+            chain << "equalizer=f=1000:t=q:w=1:g=" + n(clip.mid);
+        if (clip.treble)
+            chain << "treble=g=" + n(clip.treble) + ":f=6000:w=0.8";
         if (clip.fadeIn > 0 || clip.fadeOut > 0) {
             chain << "asetpts=PTS-STARTPTS+" + n(offset) + "/TB";
             if (clip.fadeIn > 0)
@@ -340,7 +350,7 @@ QString render(const Project& project, const QString& target, const Cancel& c, d
     else if (ext == "m4a")
         args << "-c:a" << "aac" << "-b:a" << "256k";
     else if (ext == "wav")
-        args << "-c:a" << "pcm_s16le";
+        args << "-c:a" << "pcm_s16le" << "-rf64" << "auto";
     else
         throw Error("Поддерживаются WAV, MP3 и M4A");
     QString temporary = QFileInfo(target).absolutePath() + "/.sonicforge-" +
@@ -364,11 +374,27 @@ Source cutAudio(const Project& project, const Clip& clip, double a, double b, co
         throw Error("Недопустимое выделение");
     double right = clip.duration() - b;
     QStringList args, filters;
+    QString input = clip.source;
+    double sourceStart = clip.start;
+    QString baked;
+    if (clip.speed != 1) {
+        Project one = project;
+        auto plain = clip;
+        plain.position = 0;
+        plain.gain = plain.fadeIn = plain.fadeOut = plain.bass = plain.mid = plain.treble = 0;
+        plain.volume = 1;
+        one.clips = {plain};
+        one.muted.clear();
+        baked = uniqueFile();
+        render(one, baked, c);
+        input = baked;
+        sourceStart = 0;
+    }
     int count = 0;
     for (auto bounds : {QPair<double, double>{0, a}, {b, right}})
         if (bounds.second > 1e-8) {
-            args << "-ss" << n(clip.start + bounds.first) << "-t" << n(bounds.second) << "-i"
-                 << clip.source;
+            args << "-ss" << n(sourceStart + bounds.first) << "-t" << n(bounds.second) << "-i"
+                 << input;
             filters
                 << "[" + QString::number(count) +
                        ":a]asetpts=PTS-STARTPTS,aresample=44100,aformat=channel_layouts=stereo[p" +
@@ -384,7 +410,10 @@ Source cutAudio(const Project& project, const Clip& clip, double a, double b, co
     ffmpeg(args + QStringList{"-filter_complex", filters.join(';'), "-map", "[out]", "-c:a",
                               "pcm_f32le", output},
            c);
-    return readSource(output, c);
+    auto result = readSource(output, c);
+    if (!baked.isEmpty())
+        QFile::remove(baked);
+    return result;
 }
 Source crossfade(const Project& p, const Clip& first, const Clip& next, const Cancel& c,
                  double seconds) {
@@ -438,17 +467,19 @@ Source crossfade(const Project& p, const Clip& first, const Clip& next, const Ca
     QFile::remove(b);
     return readSource(out, c);
 }
-QString timestamp(double value) {
+QString timestamp(double value, int decimals) {
     if (!std::isfinite(value) || value < 0)
         throw Error("Неверное время");
-    qint64 cents = qRound64(value * 100);
+    decimals = decimals == 3 ? 3 : 2;
+    const qint64 factor = decimals == 3 ? 1000 : 100;
+    qint64 cents = qRound64(value * factor);
     return QString("%1:%2.%3")
-        .arg(cents / 6000, 2, 10, QChar('0'))
-        .arg((cents / 100) % 60, 2, 10, QChar('0'))
-        .arg(cents % 100, 2, 10, QChar('0'));
+        .arg(cents / (60 * factor), 2, 10, QChar('0'))
+        .arg((cents / factor) % 60, 2, 10, QChar('0'))
+        .arg(cents % factor, decimals, 10, QChar('0'));
 }
 double parseTime(const QString& text) {
-    static QRegularExpression re("^\\[?(\\d{1,3}):(\\d{2})(?:[.:](\\d{1,3}))?\\]?$");
+    static QRegularExpression re("^\\[?(\\d{1,6}):(\\d{2})(?:[.:](\\d{1,3}))?\\]?$");
     auto m = re.match(text.trimmed());
     if (!m.hasMatch() || m.captured(2).toInt() > 59)
         throw Error("Введите время mm:ss.xx");
@@ -458,7 +489,7 @@ double parseTime(const QString& text) {
                 : m.captured(3).toDouble() / std::pow(10, m.captured(3).size()));
 }
 QList<Lyric> parseLyrics(const QString& text, bool strict) {
-    static QRegularExpression re("^\\[(\\d{1,3}:\\d{2}(?:[.:]\\d{1,3})?)\\]");
+    static QRegularExpression re("^\\[(\\d{1,6}:\\d{2}(?:[.:]\\d{1,3})?)\\]");
     static QRegularExpression header("^\\[(ar|al|ti|au|by|re|ve|length|offset):([^]]*)\\]$",
                                      QRegularExpression::CaseInsensitiveOption);
     QList<Lyric> lines;
@@ -506,12 +537,12 @@ QString lrc(const QList<Lyric>& lines) {
     QStringList result;
     for (auto& line : lines)
         if (!line.text.trimmed().isEmpty())
-            result << "[" + timestamp(line.start) + "]" + line.text.trimmed();
+            result << "[" + timestamp(line.start, 3) + "]" + line.text.trimmed();
     return result.join('\n');
 }
 QString plainLyrics(const QString& text) {
     QString result = text;
-    result.remove(QRegularExpression("\\[\\d{1,3}:\\d{2}(?:[.:]\\d{1,3})?\\]"));
+    result.remove(QRegularExpression("\\[\\d{1,6}:\\d{2}(?:[.:]\\d{1,3})?\\]"));
     return result.trimmed();
 }
 QList<std::complex<double>> fft(QList<std::complex<double>> a) {
@@ -690,7 +721,7 @@ QString normalize(const QString& source, const QString& target, const AudioOptio
     if (suffix == "mp3")
         args << "-c:a" << "libmp3lame" << "-q:a" << QString::number(options.quality);
     else if (suffix == "wav")
-        args << "-c:a" << "pcm_s16le";
+        args << "-c:a" << "pcm_s16le" << "-rf64" << "auto";
     else
         args << "-c:a" << "aac" << "-b:a" << "256k";
     if (QFile::exists(target))

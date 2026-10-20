@@ -1,4 +1,0 @@
-# Installed only into the isolated CPU helper alongside separation dependencies.
-stable-ts-whisperless==2.19.1
-faster-whisper==1.2.1
-av>=15,<19

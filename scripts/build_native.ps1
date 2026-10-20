@@ -2,7 +2,6 @@ param(
     [switch]$Deploy,
     [switch]$Installer,
     [switch]$Portable,
-    [string]$Python = 'python',
     [string]$FfmpegRoot = 'C:\ffmpeg',
     [string]$VCRuntimeRoot = "$env:WINDIR\System32",
     [int]$Jobs = 2
@@ -39,21 +38,16 @@ $Lock = Get-Content native/dependencies.json -Raw | ConvertFrom-Json
 $Tools = Join-Path $Root 'build\native-tools'
 $Qt = Join-Path $Root "build\qt\$($Lock.qt)\mingw_64"
 $Compiler = Join-Path $Root 'build\qt\Tools\mingw1310_64\bin'
-$CMake = Join-Path $Tools 'Scripts\cmake.exe'
-if (-not (Test-Path -LiteralPath $CMake)) {
-    Run $Python @('-m','venv',$Tools)
-    Run "$Tools\Scripts\python.exe" @('-m','pip','install','aqtinstall==3.3.0','cmake==4.4.4','ninja==1.13.2')
+$CMake = Join-Path $Tools 'cmake\bin\cmake.exe'
+if (-not (Test-Path -LiteralPath $CMake)) { $CMake=(Get-Command cmake -ErrorAction Stop).Source }
+$Ctest=Join-Path (Split-Path -Parent $CMake) 'ctest.exe'
+$Ninja=Join-Path $Tools 'bin\ninja.exe'
+if (-not (Test-Path -LiteralPath $Ninja)) { $Ninja=(Get-Command ninja -ErrorAction Stop).Source }
+if (-not (Test-Path -LiteralPath "$Qt\bin\qmake.exe") -or -not (Test-Path -LiteralPath "$Compiler\g++.exe")) {
+    throw 'Install Qt 6.10.0 for MinGW 13.1 x64 (Multimedia, SVG and Image Formats), CMake and Ninja. See README.md.'
 }
-if (-not (Test-Path -LiteralPath "$Qt\bin\qmake.exe")) {
-    Run "$Tools\Scripts\python.exe" @('-m','aqt','install-qt','windows','desktop',$Lock.qt,'win64_mingw','-m','qtmultimedia','-O',"$Root\build\qt")
-}
-if (-not (Test-Path -LiteralPath "$Compiler\g++.exe")) {
-    Run "$Tools\Scripts\python.exe" @('-m','aqt','install-tool','windows','desktop','tools_mingw1310','-O',"$Root\build\qt")
-}
-if (-not (Test-Path -LiteralPath "$Qt\plugins\imageformats\qwebp.dll")) {
-    Run "$Tools\Scripts\python.exe" @('-m','aqt','install-qt','windows','desktop',$Lock.qt,'win64_mingw','-m','qtimageformats','--noarchives','-O',"$Root\build\qt")
-}
-$env:PATH="$Compiler;$Tools\Scripts;$Qt\bin;"+$env:PATH
+if (-not (Test-Path -LiteralPath "$Qt\plugins\imageformats\qwebp.dll")) { throw 'Qt Image Formats module is required' }
+$env:PATH="$Compiler;$(Split-Path -Parent $Ninja);$(Split-Path -Parent $CMake);$Qt\bin;"+$env:PATH
 New-Item -ItemType Directory -Path build/native-deps,validation -Force | Out-Null
 foreach ($Dependency in @(@('whisper','https://github.com/ggml-org/whisper.cpp.git',$Lock.whisper), @('demucs','https://github.com/sevagh/demucs.cpp.git',$Lock.demucs))) {
     $Directory = "build/native-deps/$($Dependency[0])"
@@ -65,9 +59,9 @@ foreach ($Dependency in @(@('whisper','https://github.com/ggml-org/whisper.cpp.g
 }
 Run git @('-C','build/native-deps/demucs','submodule','update','--init','--depth','1')
 if ((git -C build/native-deps/demucs/vendor/eigen rev-parse HEAD) -ne $Lock.eigen) { throw 'Unexpected Eigen revision' }
-Run $CMake @('-S','.','-B','build/native','-G','Ninja','-DCMAKE_BUILD_TYPE=Release',"-DCMAKE_PREFIX_PATH=$Qt",'-DCMAKE_C_COMPILER=gcc','-DCMAKE_CXX_COMPILER=g++')
+Run $CMake @('-S','.','-B','build/native','-G','Ninja','-DCMAKE_BUILD_TYPE=Release',"-DCMAKE_PREFIX_PATH=$Qt",'-DCMAKE_C_COMPILER=gcc','-DCMAKE_CXX_COMPILER=g++',"-DCMAKE_MAKE_PROGRAM=$Ninja" )
 Run $CMake @('--build','build/native','-j',"$Jobs")
-Run "$Tools\Scripts\ctest.exe" @('--test-dir','build/native','--output-on-failure')
+Run $Ctest @('--test-dir','build/native','--output-on-failure')
 if (-not ($Deploy -or $Installer -or $Portable)) { return }
 $Target = Join-Path $Root 'dist\SonicForge'
 $TargetExe = Join-Path $Target 'SonicForge.exe'
@@ -91,7 +85,7 @@ Copy-Item assets/fonts/* "$Target\assets\fonts" -Force
 Copy-Item assets/sonic_forge_mark.ico "$Target\assets" -Force
 Copy-Item assets/models/genre/* "$Target\models\genre" -Force
 $Models = Get-Content native/resources/models.json -Raw | ConvertFrom-Json
-foreach ($Kind in @('speech','stems')) {
+foreach ($Kind in @('speech','speech_fast','alignment_ru','alignment_en','stems')) {
     $Model = $Models.$Kind
     $Cache = Join-Path $Root ('build\native-models\'+$Model.file)
     Download $Model.url $Cache $Model.sha256

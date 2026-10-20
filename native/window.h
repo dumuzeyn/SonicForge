@@ -1,6 +1,7 @@
 #pragma once
 #include "core.h"
 #include "timeline.h"
+#include "widgets.h"
 #include <QtConcurrent>
 #include <QtMultimedia>
 #include <QtWidgets>
@@ -20,6 +21,8 @@ class Window final : public QMainWindow {
     void openFiles(const QStringList& files);
     bool smokeTest(const QString& output);
     void playbackSmoke(const QString& file, const QString& output);
+    void soundSmoke(const QString& file, const QString& output);
+    void closeSmoke(const QString& output);
 
   protected:
     void closeEvent(QCloseEvent*) override;
@@ -30,12 +33,13 @@ class Window final : public QMainWindow {
     QJsonObject strings;
     QTranslator qtTranslator;
     QTabWidget* tabs = nullptr;
+    QTabBar* navigation = nullptr;
     Timeline* timeline = nullptr;
     QLineEdit *source = nullptr, *output = nullptr;
     QCheckBox *linked = nullptr, *showTimes = nullptr, *separateVocals = nullptr,
               *overwriteLyrics = nullptr;
     QComboBox *mixFormat = nullptr, *lyricFormat = nullptr, *lyricLanguage = nullptr,
-              *lyricMode = nullptr;
+              *lyricMode = nullptr, *lyricQuality = nullptr;
     QPlainTextEdit *lyrics = nullptr, *log = nullptr;
     QLineEdit* stamp = nullptr;
     QLabel *counter = nullptr, *status = nullptr, *analysisLabel = nullptr, *coverPreview = nullptr,
@@ -66,6 +70,14 @@ class Window final : public QMainWindow {
     std::optional<qint64> pendingSeek;
     bool seekIsTimeline = false;
     sf::CoverOptions coverOptions;
+    bool audioSliders = false, audioDirty = false;
+    AudioPane *originalPane = nullptr, *processedPane = nullptr;
+    QTimer* comparisonTimer = nullptr;
+    QFutureWatcher<WorkResult>* comparisonWatcher = nullptr;
+    sf::Cancel comparisonCancel = std::make_shared<std::atomic_bool>(false);
+    QJsonObject measurements;
+    quint64 comparisonRevision = 0;
+    QSet<QString> comparisonFiles;
     QString t(const QString& key) const;
     QString localize(const QString& text) const;
     void retranslate();
@@ -112,6 +124,9 @@ class Window final : public QMainWindow {
     void loadMetadata();
     void analyzeAudio();
     void compareAudio();
+    void scheduleComparison();
+    void fragmentSettings();
+    void showContextHelp(QWidget*, const QString&, const QString&, QPoint = {});
     sf::AudioOptions audioOptions() const;
     QMap<QString, QString> metadataValues() const;
     void generateCover();

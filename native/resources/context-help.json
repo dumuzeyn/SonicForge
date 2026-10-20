@@ -1,0 +1,1010 @@
+{
+  "stage_audio": {
+    "ru": "Включите явно, только если хотите изменить звук: даже стандартный профиль меняет громкость. Без этого этапа аудио сохраняется без обработки. Правки редактора сюда не входят.",
+    "en": "Enable explicitly only to change sound: even the default profile changes loudness. Otherwise audio is kept unprocessed. Editor edits are not included."
+  },
+  "Звук": {
+    "ru": "Включите явно, только если хотите изменить звук: даже стандартный профиль меняет громкость. Без этого этапа аудио сохраняется без обработки. Правки редактора сюда не входят.",
+    "en": "Enable explicitly only to change sound: even the default profile changes loudness. Otherwise audio is kept unprocessed. Editor edits are not included."
+  },
+  "stage_metadata": {
+    "ru": "Обновляет теги выходных копий значениями вкладки «Метаданные».",
+    "en": "Updates output tags using the Metadata tab fields."
+  },
+  "Метаданные": {
+    "ru": "Обновляет теги выходных копий значениями вкладки «Метаданные».",
+    "en": "Updates output tags using the Metadata tab fields."
+  },
+  "stage_lyrics": {
+    "ru": "Читает существующий текст или распознаёт новый в отдельном этапе. Надёжные строки сохраняет с таймкодами в MP3 USLT.",
+    "en": "Reads existing lyrics or recognizes new lyrics in a separate stage. Reliable timed lines are stored in MP3 USLT."
+  },
+  "Текст песни": {
+    "ru": "Дополнительный текстовый тег метаданных. Для распознавания и синхронизированных строк используйте вкладку «Текст песни».",
+    "en": "Additional plain lyric metadata. Use the Lyrics tab for recognition and timed lines."
+  },
+  "stage_cover": {
+    "ru": "Генерирует обложку с выбранными настройками. При включённом встраивании записывает её в выходную песню.",
+    "en": "Generates artwork with selected settings. Embeds into output audio when embedding is enabled."
+  },
+  "Обложка": {
+    "ru": "Генерирует обложку с выбранными настройками. При включённом встраивании записывает её в выходную песню.",
+    "en": "Generates artwork with selected settings. Embeds into output audio when embedding is enabled."
+  },
+  "language_button": {
+    "ru": "Переключает язык интерфейса, не язык распознавания песен.",
+    "en": "Switches the interface language, not the lyric recognition language."
+  },
+  "English": {
+    "ru": "Переключает язык интерфейса, не язык распознавания песен.",
+    "en": "Switches the interface language, not the lyric recognition language."
+  },
+  "help": {
+    "ru": "Объяснения по открытой вкладке и её параметрам. F1 открывает ту же справку.",
+    "en": "Help for the open tab and its controls. F1 opens the same help."
+  },
+  "? Справка": {
+    "ru": "Объяснения по открытой вкладке и её параметрам. F1 открывает ту же справку.",
+    "en": "Help for the open tab and its controls. F1 opens the same help."
+  },
+  "audio_loudness": {
+    "ru": "Меняет целевую среднюю громкость, не просто громкость воспроизведения. Число LUFS в блоке ниже показывает итоговую настройку. Чем ближе к нулю, тем громче.",
+    "en": "Changes target average loudness, not player volume. The LUFS value below shows the actual target; closer to zero is louder."
+  },
+  "Громкость": {
+    "ru": "Меняет целевую среднюю громкость, не просто громкость воспроизведения. Число LUFS в блоке ниже показывает итоговую настройку. Чем ближе к нулю, тем громче.",
+    "en": "Changes target average loudness, not player volume. The LUFS value below shows the actual target; closer to zero is louder."
+  },
+  "audio_character": {
+    "ru": "Мягче ослабляет высокие частоты, ярче усиливает их. Фактическое усиление показано в dB ниже. Средние частоты меняются только в дополнительных настройках.",
+    "en": "Softer cuts treble; brighter boosts it. Actual gain in dB is shown below. Mids are adjusted in advanced settings only."
+  },
+  "Характер": {
+    "ru": "Мягче ослабляет высокие частоты, ярче усиливает их. Фактическое усиление показано в dB ниже. Средние частоты меняются только в дополнительных настройках.",
+    "en": "Softer cuts treble; brighter boosts it. Actual gain in dB is shown below. Mids are adjusted in advanced settings only."
+  },
+  "audio_bass_macro": {
+    "ru": "Усиливает или ослабляет низкие частоты. 0 dB сохраняет исходный бас. Интенсивность уменьшает или усиливает действие ползунка.",
+    "en": "Boosts or cuts low frequencies. 0 dB preserves source bass. Intensity scales this slider's effect."
+  },
+  "Бас": {
+    "ru": "Усиливает или ослабляет низкие частоты. 0 dB сохраняет исходный бас. Интенсивность уменьшает или усиливает действие ползунка.",
+    "en": "Boosts or cuts low frequencies. 0 dB preserves source bass. Intensity scales this slider's effect."
+  },
+  "audio_space": {
+    "ru": "Изменяет ширину стерео. ×1.00 сохраняет исходную ширину, меньше — уже, больше — шире. Монофайл не получает настоящего стерео.",
+    "en": "Adjusts stereo width. ×1.00 keeps source width; lower narrows, higher widens. Mono cannot gain real stereo detail."
+  },
+  "Пространство": {
+    "ru": "Изменяет ширину стерео. ×1.00 сохраняет исходную ширину, меньше — уже, больше — шире. Монофайл не получает настоящего стерео.",
+    "en": "Adjusts stereo width. ×1.00 keeps source width; lower narrows, higher widens. Mono cannot gain real stereo detail."
+  },
+  "audio_auto_denoise": {
+    "ru": "Проверяет постоянный фоновый шум и включает фильтр только при его обнаружении. Это не удаление вокала и не восстановление повреждённой записи.",
+    "en": "Checks for stationary noise and applies a filter only if detected. Not vocal removal or restoration of damaged audio."
+  },
+  "Автоматически убрать заметный шум": {
+    "ru": "Проверяет постоянный фоновый шум и включает фильтр только при его обнаружении. Это не удаление вокала и не восстановление повреждённой записи.",
+    "en": "Checks for stationary noise and applies a filter only if detected. Not vocal removal or restoration of damaged audio."
+  },
+  "audio_peak_protection": {
+    "ru": "Лимитер сдерживает пики после обработки. Уменьшает риск перегруза, но не устраняет искажения, уже записанные в оригинале.",
+    "en": "Limits peaks after processing to reduce clipping. Cannot fix distortion already recorded in the original."
+  },
+  "Защитить от перегрузки": {
+    "ru": "Лимитер сдерживает пики после обработки. Уменьшает риск перегруза, но не устраняет искажения, уже записанные в оригинале.",
+    "en": "Limits peaks after processing to reduce clipping. Cannot fix distortion already recorded in the original."
+  },
+  "audio_analyze": {
+    "ru": "Измеряет громкость, динамику, частотный баланс и шум выбранного файла в фоне. Ничего не записывает. Рекомендация применяется отдельной кнопкой.",
+    "en": "Measures loudness, dynamics, frequency balance and noise in the background. No file writes; apply the recommendation separately."
+  },
+  "Анализировать": {
+    "ru": "Измеряет громкость, динамику, частотный баланс и шум выбранного файла в фоне. Ничего не записывает. Рекомендация применяется отдельной кнопкой.",
+    "en": "Measures loudness, dynamics, frequency balance and noise in the background. No file writes; apply the recommendation separately."
+  },
+  "audio_apply_recommendation": {
+    "ru": "Выбирает профиль по результатам анализа и меняет настройки. Для проверки нажмите «Создать сравнение».",
+    "en": "Selects a profile from analysis and changes settings. Use Create comparison to hear the result."
+  },
+  "Применить рекомендацию": {
+    "ru": "Выбирает профиль по результатам анализа и меняет настройки. Для проверки нажмите «Создать сравнение».",
+    "en": "Selects a profile from analysis and changes settings. Use Create comparison to hear the result."
+  },
+  "audio_preview": {
+    "ru": "Прослушивание выбранной версии песни. Запуск одного плеера ставит другой на паузу. Оригинал сохраняет исходный звук; изменённый результат автоматически пересчитывается по текущим настройкам.",
+    "en": "Listen to this version. Starting one player pauses the other. Original keeps the input audio; Modified updates automatically from current settings."
+  },
+  "Создать сравнение": {
+    "ru": "Создаёт две временные версии для сравнения при одинаковой воспринимаемой громкости. Не изменяет оригинал и не запускает «Выполнение».",
+    "en": "Creates temporary original/processed versions matched in perceived loudness. Does not alter the source or start Processing."
+  },
+  "audio_original": {
+    "ru": "Воспроизводит исходный звук из подготовленного сравнения.",
+    "en": "Plays the source version from the prepared comparison."
+  },
+  "Оригинал": {
+    "ru": "Воспроизводит исходный звук из подготовленного сравнения.",
+    "en": "Plays the source version from the prepared comparison."
+  },
+  "audio_processed": {
+    "ru": "Воспроизводит звук после текущих настроек. После изменения настроек создайте сравнение заново.",
+    "en": "Plays the processed comparison. Recreate comparison after changing settings."
+  },
+  "Результат": {
+    "ru": "Воспроизводит звук после текущих настроек. После изменения настроек создайте сравнение заново.",
+    "en": "Plays the processed comparison. Recreate comparison after changing settings."
+  },
+  "audio_stop": {
+    "ru": "Останавливает прослушивание сравнения.",
+    "en": "Stops comparison playback."
+  },
+  "Стоп": {
+    "ru": "Останавливает прослушивание сравнения.",
+    "en": "Stops comparison playback."
+  },
+  "advanced_audio": {
+    "ru": "Точные значения эквалайзера, громкости, фильтров, компрессора и эффектов. Правки не сбрасываются при создании сравнения.",
+    "en": "Precise EQ, loudness, filters, compressor and effects. Values are retained when comparison is created."
+  },
+  "Дополнительные настройки": {
+    "ru": "Точные значения эквалайзера, громкости, фильтров, компрессора и эффектов. Правки не сбрасываются при создании сравнения.",
+    "en": "Precise EQ, loudness, filters, compressor and effects. Values are retained when comparison is created."
+  },
+  "artist": {
+    "ru": "Исполнитель песни. Пустое поле сохраняет существующий тег при обычном обновлении.",
+    "en": "Song artist. An empty field preserves the tag in normal update mode."
+  },
+  "Исполнитель": {
+    "ru": "Добавляет исполнителя к надписи на обложке, если включено название.",
+    "en": "Adds the artist to the cover lettering when title is enabled."
+  },
+  "album": {
+    "ru": "Название альбома, записываемое в метаданные выходного файла.",
+    "en": "Album name stored in output metadata."
+  },
+  "Альбом": {
+    "ru": "Название альбома, записываемое в метаданные выходного файла.",
+    "en": "Album name stored in output metadata."
+  },
+  "album_artist": {
+    "ru": "Общий исполнитель альбома; для сборника может отличаться от исполнителя песни.",
+    "en": "Overall album artist, which can differ from the song artist on compilations."
+  },
+  "Исполнитель альбома": {
+    "ru": "Общий исполнитель альбома; для сборника может отличаться от исполнителя песни.",
+    "en": "Overall album artist, which can differ from the song artist on compilations."
+  },
+  "composer": {
+    "ru": "Автор музыки. Не исполнитель и не автор текста.",
+    "en": "Music composer, not necessarily the performer or lyricist."
+  },
+  "Композитор": {
+    "ru": "Автор музыки. Не исполнитель и не автор текста.",
+    "en": "Music composer, not necessarily the performer or lyricist."
+  },
+  "date": {
+    "ru": "Год или дата выпуска, например 2026.",
+    "en": "Release year or date, for example 2026."
+  },
+  "Год": {
+    "ru": "Год или дата выпуска, например 2026.",
+    "en": "Release year or date, for example 2026."
+  },
+  "track": {
+    "ru": "Порядковый номер песни в альбоме, например 3 или 3/12.",
+    "en": "Track number in the album, such as 3 or 3/12."
+  },
+  "Номер трека": {
+    "ru": "Порядковый номер песни в альбоме, например 3 или 3/12.",
+    "en": "Track number in the album, such as 3 or 3/12."
+  },
+  "comment": {
+    "ru": "Комментарий в метаданных песни. Не влияет на создание обложки.",
+    "en": "A comment stored in song metadata. It does not affect cover generation."
+  },
+  "Комментарий": {
+    "ru": "Комментарий в метаданных песни. Не влияет на создание обложки.",
+    "en": "A comment stored in song metadata. It does not affect cover generation."
+  },
+  "disc": {
+    "ru": "Номер диска в издании, например 1/2.",
+    "en": "Disc number in the release, such as 1/2."
+  },
+  "Номер диска": {
+    "ru": "Номер диска в издании, например 1/2.",
+    "en": "Disc number in the release, such as 1/2."
+  },
+  "publisher": {
+    "ru": "Издатель или лейбл в метаданных.",
+    "en": "Publisher or record label stored in metadata."
+  },
+  "Издатель": {
+    "ru": "Издатель или лейбл в метаданных.",
+    "en": "Publisher or record label stored in metadata."
+  },
+  "copyright": {
+    "ru": "Сведения об авторских правах в метаданных.",
+    "en": "Copyright information stored in metadata."
+  },
+  "Авторские права": {
+    "ru": "Сведения об авторских правах в метаданных.",
+    "en": "Copyright information stored in metadata."
+  },
+  "lyrics": {
+    "ru": "Дополнительный текстовый тег метаданных. Для распознавания и синхронизированных строк используйте вкладку «Текст песни».",
+    "en": "Additional plain lyric metadata. Use the Lyrics tab for recognition and timed lines."
+  },
+  "choose_file": {
+    "ru": "Выбирает один исходный файл для обработки, анализа, обложки или текста. Не добавляет его в редактор.",
+    "en": "Selects one processing source for analysis, cover or lyrics. Does not add it to the editor."
+  },
+  "Файл": {
+    "ru": "Выбирает один исходный файл для обработки, анализа, обложки или текста. Не добавляет его в редактор.",
+    "en": "Selects one processing source for analysis, cover or lyrics. Does not add it to the editor."
+  },
+  "choose_folder": {
+    "ru": "Выбирает папку для пакетной обработки. Результат — соседняя SonicForgeProgect, не внутри источника.",
+    "en": "Selects a folder for batch processing. Output is a sibling SonicForgeProgect, not inside the source."
+  },
+  "Папка": {
+    "ru": "Выбирает папку для пакетной обработки. Результат — соседняя SonicForgeProgect, не внутри источника.",
+    "en": "Selects a folder for batch processing. Output is a sibling SonicForgeProgect, not inside the source."
+  },
+  "choose": {
+    "ru": "Меняет папку для готовых копий пакетной обработки. Редактор выбирает выходной файл отдельно.",
+    "en": "Changes the batch output folder. The editor selects its export file separately."
+  },
+  "Выбрать": {
+    "ru": "Меняет папку для готовых копий пакетной обработки. Редактор выбирает выходной файл отдельно.",
+    "en": "Changes the batch output folder. The editor selects its export file separately."
+  },
+  "metadata_actions": {
+    "ru": "Прочитать теги исходного файла, открыть дополнительные поля или создать копию без метаданных.",
+    "en": "Read source tags, open additional fields or produce a copy without metadata."
+  },
+  "Действия": {
+    "ru": "Прочитать теги исходного файла, открыть дополнительные поля или создать копию без метаданных.",
+    "en": "Read source tags, open additional fields or produce a copy without metadata."
+  },
+  "additional_metadata": {
+    "ru": "Номер диска, издатель, авторские права и дополнительный текстовый тег.",
+    "en": "Disc number, publisher, copyright and an additional text tag."
+  },
+  "Дополнительные поля": {
+    "ru": "Номер диска, издатель, авторские права и дополнительный текстовый тег.",
+    "en": "Disc number, publisher, copyright and an additional text tag."
+  },
+  "cover_show_title": {
+    "ru": "Оформляет название с учётом звучания песни и композиции обложки. Название берётся из метаданных или имени файла.",
+    "en": "Styles the title to match the music and cover composition, using metadata or the filename."
+  },
+  "Название": {
+    "ru": "Оформляет название с учётом звучания песни и композиции обложки. Название берётся из метаданных или имени файла.",
+    "en": "Styles the title to match the music and cover composition, using metadata or the filename."
+  },
+  "cover_show_artist": {
+    "ru": "Добавляет исполнителя к надписи на обложке, если включено название.",
+    "en": "Adds the artist to the cover lettering when title is enabled."
+  },
+  "embed_cover_short": {
+    "ru": "В «Выполнении» записывает готовую картинку в аудиофайл. Предпросмотр показывает картинку, но не меняет песню.",
+    "en": "Processing embeds the completed image in audio. Preview displays an image without changing the song."
+  },
+  "Встроить в файл": {
+    "ru": "В «Выполнении» записывает готовую картинку в аудиофайл. Предпросмотр показывает картинку, но не меняет песню.",
+    "en": "Processing embeds the completed image in audio. Preview displays an image without changing the song."
+  },
+  "cover_preview": {
+    "ru": "Создаёт и показывает обложку в этом окне. Не запускает выполнение и не встраивает её в исходную песню.",
+    "en": "Generates and displays artwork here. Does not start Processing or embed into the source."
+  },
+  "Предпросмотр обложки": {
+    "ru": "Создаёт и показывает обложку в этом окне. Не запускает выполнение и не встраивает её в исходную песню.",
+    "en": "Generates and displays artwork here. Does not start Processing or embed into the source."
+  },
+  "overwrite_lyrics": {
+    "ru": "При пакетном распознавании разрешает заменить уже существующий текст. Если выключено, существующий текст сохраняется.",
+    "en": "Allows batch recognition to replace existing lyrics. When off, existing lyrics are preserved."
+  },
+  "Перезаписать готовый текст": {
+    "ru": "При пакетном распознавании разрешает заменить уже существующий текст. Если выключено, существующий текст сохраняется.",
+    "en": "Allows batch recognition to replace existing lyrics. When off, existing lyrics are preserved."
+  },
+  "highpass_hz": {
+    "ru": "Частоты ниже этого порога срезаются только при включённом фильтре низких частот. Единица — Hz.",
+    "en": "Frequencies below this cutoff are removed only with the high-pass filter enabled. Unit: Hz."
+  },
+  "Срез низких частот, Hz": {
+    "ru": "Частоты ниже этого порога срезаются только при включённом фильтре низких частот. Единица — Hz.",
+    "en": "Frequencies below this cutoff are removed only with the high-pass filter enabled. Unit: Hz."
+  },
+  "lowpass_hz": {
+    "ru": "Частоты выше этого порога срезаются только при включённом фильтре высоких частот. Единица — Hz.",
+    "en": "Frequencies above this cutoff are removed only with the low-pass filter enabled. Unit: Hz."
+  },
+  "Срез высоких частот, Hz": {
+    "ru": "Частоты выше этого порога срезаются только при включённом фильтре высоких частот. Единица — Hz.",
+    "en": "Frequencies above this cutoff are removed only with the low-pass filter enabled. Unit: Hz."
+  },
+  "copy_log": {
+    "ru": "Копирует весь журнал выполнения в буфер обмена.",
+    "en": "Copies the entire processing log to the clipboard."
+  },
+  "Копировать журнал": {
+    "ru": "Копирует весь журнал выполнения в буфер обмена.",
+    "en": "Copies the entire processing log to the clipboard."
+  },
+  "clear_log": {
+    "ru": "Очищает только видимый журнал, не файлы и не настройки.",
+    "en": "Clears the visible log only, not files or settings."
+  },
+  "Очистить": {
+    "ru": "Очищает только видимый журнал, не файлы и не настройки.",
+    "en": "Clears the visible log only, not files or settings."
+  },
+  "project_repository": {
+    "ru": "Открыть репозиторий SonicForge на GitHub в вашем браузере.",
+    "en": "Open the SonicForge repository on GitHub in your browser."
+  },
+  "GitHub — репозиторий": {
+    "ru": "Открыть репозиторий SonicForge на GitHub в вашем браузере.",
+    "en": "Open the SonicForge repository on GitHub in your browser."
+  },
+  "author_support": {
+    "ru": "Открыть страницу поддержки автора в браузере. Пожертвование добровольное и не открывает дополнительных функций.",
+    "en": "Open the author's support page in your browser. Donations are voluntary and do not unlock additional features."
+  },
+  "Поддержать автора": {
+    "ru": "Открыть страницу поддержки автора в браузере. Пожертвование добровольное и не открывает дополнительных функций.",
+    "en": "Open the author's support page in your browser. Donations are voluntary and do not unlock additional features."
+  },
+  "interface_language": {
+    "ru": "Выберите русский или английский язык интерфейса. Текст песни и настройки обработки сохраняются.",
+    "en": "Choose Russian or English for the interface. Lyrics and processing settings are retained."
+  },
+  "Язык интерфейса": {
+    "ru": "Выберите русский или английский язык интерфейса. Текст песни и настройки обработки сохраняются.",
+    "en": "Choose Russian or English for the interface. Lyrics and processing settings are retained."
+  },
+  "preserve_lyrics": {
+    "ru": "Сохраняет встроенный текст и таймкоды при обновлении и очистке метаданных, даже при перезаписи остальных тегов. Отдельные действия вкладки «Текст песни» управляются независимо.",
+    "en": "Preserves embedded lyrics and timing when metadata is updated or cleared, even when replacing other tags. Separate actions in the Lyrics tab remain independent."
+  },
+  "Не трогать текст песни": {
+    "ru": "Сохраняет встроенный текст и таймкоды при обновлении и очистке метаданных, даже при перезаписи остальных тегов. Отдельные действия вкладки «Текст песни» управляются независимо.",
+    "en": "Preserves embedded lyrics and timing when metadata is updated or cleared, even when replacing other tags. Separate actions in the Lyrics tab remain independent."
+  },
+  "cover_choose_custom": {
+    "ru": "Выбирает локальный PNG, JPEG или WebP. Формат и содержимое проверяются до открытия; изображение приводится к квадрату без изменения исходного файла.",
+    "en": "Selects a local PNG, JPEG or WebP. Its type and contents are checked before opening; the source file is not modified when it is fitted to a square."
+  },
+  "Выбрать свою картинку": {
+    "ru": "Выбирает локальный PNG, JPEG или WebP. Формат и содержимое проверяются до открытия; изображение приводится к квадрату без изменения исходного файла.",
+    "en": "Selects a local PNG, JPEG or WebP. Its type and contents are checked before opening; the source file is not modified when it is fitted to a square."
+  },
+  "lyrics_import": {
+    "ru": "Открывает отдельный TXT или LRC в UTF-8. Строки LRC: [00:12.34]Текст. Не меняет песню до записи.",
+    "en": "Opens a UTF-8 TXT or LRC file. LRC lines: [00:12.34]Text. The song is unchanged until you save."
+  },
+  "Импорт TXT/LRC": {
+    "ru": "Открывает отдельный TXT или LRC в UTF-8. Строки LRC: [00:12.34]Текст. Не меняет песню до записи.",
+    "en": "Opens a UTF-8 TXT or LRC file. LRC lines: [00:12.34]Text. The song is unchanged until you save."
+  },
+  "lyrics_timestamps": {
+    "ru": "Показывает время каждой строки. Можно редактировать таймкоды или вставить собственный LRC. Обычный текст сохраняется без выдуманных времён.",
+    "en": "Displays each line’s time. Edit timestamps or paste your own LRC. Plain lyrics keep no invented timestamps."
+  },
+  "Показывать таймкоды": {
+    "ru": "Показывает время каждой строки. Можно редактировать таймкоды или вставить собственный LRC. Обычный текст сохраняется без выдуманных времён.",
+    "en": "Displays each line’s time. Edit timestamps or paste your own LRC. Plain lyrics keep no invented timestamps."
+  },
+  "lyrics_timestamp": {
+    "ru": "Вставляет время из поля перед текущей строкой. Для LRC укажите [mm:ss.xxx] у каждой строки; смешанный текст проверяется перед записью.",
+    "en": "Inserts the field’s time before the current line. Give every LRC lyric line a [mm:ss.xxx] timestamp; mixed input is checked before saving."
+  },
+  "Время mm:ss.xxx": {
+    "ru": "Вставляет время из поля перед текущей строкой. Для LRC укажите [mm:ss.xxx] у каждой строки; смешанный текст проверяется перед записью.",
+    "en": "Inserts the field’s time before the current line. Give every LRC lyric line a [mm:ss.xxx] timestamp; mixed input is checked before saving."
+  },
+  "lyrics_cursor_timestamp": {
+    "ru": "Во время прослушивания нажмите F8: метка появится за 45 мс до текущей позиции, затем курсор перейдёт к следующей непустой строке. Без плеера используется курсор редактора. Ручной ввод времени сохраняется точно.",
+    "en": "Press F8 during playback to stamp 0.1 s before the current position and advance to the next nonempty line. Without the player, use the editor cursor. Manually entered times stay exact."
+  },
+  "Метка сейчас · F8": {
+    "ru": "Во время прослушивания нажмите F8: метка появится за 45 мс до текущей позиции, затем курсор перейдёт к следующей непустой строке. Без плеера используется курсор редактора. Ручной ввод времени сохраняется точно.",
+    "en": "Press F8 during playback to stamp 0.1 s before the current position and advance to the next nonempty line. Without the player, use the editor cursor. Manually entered times stay exact."
+  },
+  "lyrics_separate_vocals": {
+    "ru": "Сначала локальный Demucs выделяет вокал, затем распознаётся голосовая дорожка. Время песни сохраняется, оригинал не меняется. Требует дополнительного времени; можно отключить для сравнения.",
+    "en": "Local Demucs extracts vocals before the voice track is transcribed. Keeps the song timeline and original intact. Adds processing time; disable to compare with the mix."
+  },
+  "Отделять вокал перед распознаванием": {
+    "ru": "Сначала локальный Demucs выделяет вокал, затем распознаётся голосовая дорожка. Время песни сохраняется, оригинал не меняется. Требует дополнительного времени; можно отключить для сравнения.",
+    "en": "Local Demucs extracts vocals before the voice track is transcribed. Keeps the song timeline and original intact. Adds processing time; disable to compare with the mix."
+  },
+  "lyrics_mode": {
+    "ru": "Коррекция сопоставляет аудио с готовыми словами, сохраняя порядок строк и повторы. Старые таймкоды ограничивают поиск ближайшим повтором. Ненайденные и сомнительные строки сохраняют прежние таймкоды; остальные исправляются. Для папки создаются выходные копии, песни без текста пропускаются.",
+    "en": "Matches audio to supplied words, preserving line order and repetitions. Existing times restrict repeat searches to the nearest occurrence. Missing or uncertain lines keep their previous timings; other lines are corrected. Folders write output copies and skip songs without lyrics."
+  },
+  "Режим": {
+    "ru": "Коррекция сопоставляет аудио с готовыми словами, сохраняя порядок строк и повторы. Старые таймкоды ограничивают поиск ближайшим повтором. Ненайденные и сомнительные строки сохраняют прежние таймкоды; остальные исправляются. Для папки создаются выходные копии, песни без текста пропускаются.",
+    "en": "Matches audio to supplied words, preserving line order and repetitions. Existing times restrict repeat searches to the nearest occurrence. Missing or uncertain lines keep their previous timings; other lines are corrected. Folders write output copies and skip songs without lyrics."
+  },
+  "lyrics_copy_all": {
+    "ru": "Копирует весь текст песни, даже без выделения и во время распознавания. Ctrl+C в поле текста копирует выделенное, а без выделения — весь текст.",
+    "en": "Copies all lyrics, even without selection or during recognition. Ctrl+C in the lyric editor copies the selection, or all lyrics if nothing is selected."
+  },
+  "Копировать текст": {
+    "ru": "Копирует весь текст песни, даже без выделения и во время распознавания. Ctrl+C в поле текста копирует выделенное, а без выделения — весь текст.",
+    "en": "Copies all lyrics, even without selection or during recognition. Ctrl+C in the lyric editor copies the selection, or all lyrics if nothing is selected."
+  },
+  "lyrics_language": {
+    "ru": "Авто сохраняет русский и английский текст, а для другого языка записывает звучание русскими буквами. При необходимости можно выбрать латиницу. Это приближённая транскрипция, не перевод.",
+    "en": "Auto keeps Russian and English lyrics; other languages use Russian sound spelling by default. Latin letters remain available. This is an approximate transcription, not translation."
+  },
+  "Язык": {
+    "ru": "Авто сохраняет русский и английский текст, а для другого языка записывает звучание русскими буквами. При необходимости можно выбрать латиницу. Это приближённая транскрипция, не перевод.",
+    "en": "Auto keeps Russian and English lyrics; other languages use Russian sound spelling by default. Latin letters remain available. This is an approximate transcription, not translation."
+  },
+  "show_splash": {
+    "ru": "Снимите галочку, чтобы при следующих запусках не показывать окно загрузки.",
+    "en": "Clear this option to hide the loading window on future launches."
+  },
+  "Показывать экран загрузки": {
+    "ru": "Снимите галочку, чтобы при следующих запусках не показывать окно загрузки.",
+    "en": "Clear this option to hide the loading window on future launches."
+  },
+  "source": {
+    "ru": "Один аудиофайл или папка с несколькими песнями.",
+    "en": "A single audio file or a folder containing several songs."
+  },
+  "Источник": {
+    "ru": "Один аудиофайл или папка с несколькими песнями.",
+    "en": "A single audio file or a folder containing several songs."
+  },
+  "output": {
+    "ru": "Папка получит готовые файлы только после завершения всех выбранных этапов.",
+    "en": "Finished files are published here only after all selected stages complete."
+  },
+  "Папка назначения": {
+    "ru": "Папка получит готовые файлы только после завершения всех выбранных этапов.",
+    "en": "Finished files are published here only after all selected stages complete."
+  },
+  "title": {
+    "ru": "Пустое поле сохраняет название из тегов. Если его нет, используется имя аудиофайла.",
+    "en": "An empty field retains the tagged title. If no title exists, the audio filename is used."
+  },
+  "genre": {
+    "ru": "Если поле пустое, существующий жанр сохраняется. При его отсутствии или включённой перезаписи жанр определяется по звучанию. Неуверенный результат не удаляет прежний жанр.",
+    "en": "An empty field retains the existing genre. If missing or overwrite is enabled, infer it from audio. An uncertain result does not erase an existing genre."
+  },
+  "Жанр": {
+    "ru": "Пустое поле включает локальную нейросеть musicnn. Альтернативы и оценки — в журнале. При низкой уверенности жанр остаётся неопределённым.",
+    "en": "Leave empty for local musicnn analysis. Scores and alternatives appear in the log. Low confidence leaves the genre undefined."
+  },
+  "overwrite_genre": {
+    "ru": "Заменяет жанр, уже записанный в файле.",
+    "en": "Replaces the genre already stored in the file."
+  },
+  "Заменить существующий жанр": {
+    "ru": "Заменяет жанр, уже записанный в файле.",
+    "en": "Replaces the genre already stored in the file."
+  },
+  "overwrite_all_metadata": {
+    "ru": "Удаляет существующие теги и записывает только заполненные поля.",
+    "en": "Removes existing tags and writes only the completed fields."
+  },
+  "Перезаписать все метаданные": {
+    "ru": "Удаляет существующие теги и записывает только заполненные поля.",
+    "en": "Removes existing tags and writes only the completed fields."
+  },
+  "read_metadata": {
+    "ru": "Показывает теги выбранного файла в редактируемых полях.",
+    "en": "Loads tags from the selected file into editable fields."
+  },
+  "Прочитать": {
+    "ru": "Показывает теги выбранного файла в редактируемых полях.",
+    "en": "Loads tags from the selected file into editable fields."
+  },
+  "clear_metadata": {
+    "ru": "Создаёт выходную копию без метаданных. Исходный файл не меняется.",
+    "en": "Creates an output copy without metadata. The source file is unchanged."
+  },
+  "Очистить все": {
+    "ru": "Создаёт выходную копию без метаданных. Исходный файл не меняется.",
+    "en": "Creates an output copy without metadata. The source file is unchanged."
+  },
+  "integrated_lufs": {
+    "ru": "Целевая средняя громкость. Значение -14 LUFS подходит для большинства записей.",
+    "en": "Target average loudness. -14 LUFS suits most music."
+  },
+  "Средняя громкость, LUFS": {
+    "ru": "Целевая средняя громкость. Значение -14 LUFS подходит для большинства записей.",
+    "en": "Target average loudness. -14 LUFS suits most music."
+  },
+  "true_peak": {
+    "ru": "Максимальный пик после обработки. Отрицательное значение уменьшает риск перегруза.",
+    "en": "Maximum peak after processing. A negative value reduces clipping risk."
+  },
+  "Пиковый предел, dBTP": {
+    "ru": "Максимальный пик после обработки. Отрицательное значение уменьшает риск перегруза.",
+    "en": "Maximum peak after processing. A negative value reduces clipping risk."
+  },
+  "lra": {
+    "ru": "Диапазон изменения громкости. Малое значение делает тихие и громкие части ближе по уровню.",
+    "en": "Loudness range. Lower values bring quiet and loud passages closer together."
+  },
+  "Диапазон громкости, LU": {
+    "ru": "Желаемый диапазон громкости: меньше — ровнее, больше — динамичнее.",
+    "en": "Target loudness range: lower is steadier, higher preserves more dynamics."
+  },
+  "final_gain": {
+    "ru": "Дополнительное усиление после нормализации.",
+    "en": "Additional gain applied after normalization."
+  },
+  "Финальное усиление": {
+    "ru": "Дополнительное усиление после нормализации.",
+    "en": "Additional gain applied after normalization."
+  },
+  "audio_profile": {
+    "ru": "Выберите ожидаемый характер результата. Профиль меняет несколько профессиональных параметров одновременно.",
+    "en": "Choose the intended result. A profile adjusts several professional parameters together."
+  },
+  "Желаемый результат": {
+    "ru": "Выберите ожидаемый характер результата. Профиль меняет несколько профессиональных параметров одновременно.",
+    "en": "Choose the intended result. A profile adjusts several professional parameters together."
+  },
+  "audio_intensity": {
+    "ru": "Определяет, насколько заметно профиль изменяет звук. Нулевая интенсивность оставляет только безопасную нормализацию.",
+    "en": "Controls how strongly the profile changes the sound. Zero leaves only safe loudness normalization."
+  },
+  "Интенсивность обработки": {
+    "ru": "Определяет, насколько заметно профиль изменяет звук. Нулевая интенсивность оставляет только безопасную нормализацию.",
+    "en": "Controls how strongly the profile changes the sound. Zero leaves only safe loudness normalization."
+  },
+  "bass_gain": {
+    "ru": "Усиливает или ослабляет низкие частоты. Двойной щелчок возвращает 0 dB.",
+    "en": "Boosts or reduces low frequencies. Double-click to reset to 0 dB."
+  },
+  "Низкие частоты, dB": {
+    "ru": "Усиливает или ослабляет низкие частоты. Двойной щелчок возвращает 0 dB.",
+    "en": "Boosts or reduces low frequencies. Double-click to reset to 0 dB."
+  },
+  "mid_gain": {
+    "ru": "Меняет область голоса и основных инструментов. Двойной щелчок возвращает 0 dB.",
+    "en": "Adjusts vocals and core instruments. Double-click to reset to 0 dB."
+  },
+  "Средние частоты, dB": {
+    "ru": "Меняет область голоса и основных инструментов. Двойной щелчок возвращает 0 dB.",
+    "en": "Adjusts vocals and core instruments. Double-click to reset to 0 dB."
+  },
+  "treble_gain": {
+    "ru": "Меняет яркость и детализацию высоких частот. Двойной щелчок возвращает 0 dB.",
+    "en": "Adjusts brightness and high-frequency detail. Double-click to reset to 0 dB."
+  },
+  "Высокие частоты, dB": {
+    "ru": "Меняет яркость и детализацию высоких частот. Двойной щелчок возвращает 0 dB.",
+    "en": "Adjusts brightness and high-frequency detail. Double-click to reset to 0 dB."
+  },
+  "stereo_width": {
+    "ru": "1.0 сохраняет исходную ширину; меньше сужает стерео, больше расширяет.",
+    "en": "1.0 preserves the source width; lower narrows it and higher widens it."
+  },
+  "Ширина стерео": {
+    "ru": "1.0 сохраняет исходную ширину; меньше сужает стерео, больше расширяет.",
+    "en": "1.0 preserves the source width; lower narrows it and higher widens it."
+  },
+  "highpass_enabled": {
+    "ru": "Включает срез частот ниже указанного значения. В обычном состоянии фильтр полностью выключен.",
+    "en": "Removes frequencies below the selected value. The filter is fully off by default."
+  },
+  "Срезать лишний низ": {
+    "ru": "Включает срез частот ниже указанного значения. В обычном состоянии фильтр полностью выключен.",
+    "en": "Removes frequencies below the selected value. The filter is fully off by default."
+  },
+  "lowpass_enabled": {
+    "ru": "Включает срез частот выше указанного значения. В обычном состоянии фильтр полностью выключен.",
+    "en": "Removes frequencies above the selected value. The filter is fully off by default."
+  },
+  "Срезать лишний верх": {
+    "ru": "Включает срез частот выше указанного значения. В обычном состоянии фильтр полностью выключен.",
+    "en": "Removes frequencies above the selected value. The filter is fully off by default."
+  },
+  "denoise_mode": {
+    "ru": "Авто применяет шумоподавление только при обнаружении постоянного фонового шума. Вручную применяет его всегда.",
+    "en": "Auto only reduces noise when stationary background noise is detected. Manual always applies it."
+  },
+  "Шумоподавление": {
+    "ru": "Авто применяет шумоподавление только при обнаружении постоянного фонового шума. Вручную применяет его всегда.",
+    "en": "Auto only reduces noise when stationary background noise is detected. Manual always applies it."
+  },
+  "compressor": {
+    "ru": "Уменьшает разницу между тихими и громкими участками, делая запись плотнее.",
+    "en": "Reduces the difference between quiet and loud sections to make the recording denser."
+  },
+  "Компрессор": {
+    "ru": "Уменьшает разницу между тихими и громкими участками, делая запись плотнее.",
+    "en": "Reduces the difference between quiet and loud sections to make the recording denser."
+  },
+  "compressor_threshold": {
+    "ru": "Уровень, выше которого компрессор начинает уменьшать громкость.",
+    "en": "The level above which compression begins."
+  },
+  "Порог, dB": {
+    "ru": "Уровень, выше которого компрессор начинает уменьшать громкость.",
+    "en": "The level above which compression begins."
+  },
+  "compressor_ratio": {
+    "ru": "Сила сжатия сигнала после превышения порога.",
+    "en": "The amount of gain reduction after the signal crosses the threshold."
+  },
+  "Соотношение": {
+    "ru": "Сила сжатия сигнала после превышения порога.",
+    "en": "The amount of gain reduction after the signal crosses the threshold."
+  },
+  "compressor_attack": {
+    "ru": "Как быстро компрессор реагирует на громкий звук.",
+    "en": "How quickly the compressor responds to loud sound."
+  },
+  "Атака, ms": {
+    "ru": "Как быстро компрессор реагирует на громкий звук.",
+    "en": "How quickly the compressor responds to loud sound."
+  },
+  "compressor_release": {
+    "ru": "Как быстро компрессор перестаёт воздействовать после громкого участка.",
+    "en": "How quickly compression stops after a loud section."
+  },
+  "Восстановление, ms": {
+    "ru": "Как быстро компрессор перестаёт воздействовать после громкого участка.",
+    "en": "How quickly compression stops after a loud section."
+  },
+  "compressor_makeup": {
+    "ru": "Дополнительное усиление после компрессии. По умолчанию равно 0 dB.",
+    "en": "Extra gain after compression. It is 0 dB by default."
+  },
+  "Компенсация, dB": {
+    "ru": "Дополнительное усиление после компрессии. По умолчанию равно 0 dB.",
+    "en": "Extra gain after compression. It is 0 dB by default."
+  },
+  "pitch_semitones": {
+    "ru": "Изменяет высоту звучания без изменения длительности.",
+    "en": "Changes pitch while preserving duration."
+  },
+  "Высота, полутоны": {
+    "ru": "Изменяет высоту звучания без изменения длительности.",
+    "en": "Changes pitch while preserving duration."
+  },
+  "playback_speed": {
+    "ru": "Изменяет длительность и темп воспроизведения.",
+    "en": "Changes playback duration and tempo."
+  },
+  "Скорость": {
+    "ru": "Изменяет длительность и темп воспроизведения.",
+    "en": "Changes playback duration and tempo."
+  },
+  "reverb_mix": {
+    "ru": "Добавляет ощущение пространства и отражений. Ноль полностью отключает эффект.",
+    "en": "Adds a sense of space and reflections. Zero fully disables the effect."
+  },
+  "Реверберация": {
+    "ru": "Добавляет ощущение пространства и отражений. Ноль полностью отключает эффект.",
+    "en": "Adds a sense of space and reflections. Zero fully disables the effect."
+  },
+  "fade_in": {
+    "ru": "Продолжительность плавного появления звука в начале.",
+    "en": "Duration of the gradual volume rise at the beginning."
+  },
+  "Плавное начало, s": {
+    "ru": "Продолжительность плавного появления звука в начале.",
+    "en": "Duration of the gradual volume rise at the beginning."
+  },
+  "fade_out": {
+    "ru": "Продолжительность плавного затухания в конце.",
+    "en": "Duration of the gradual fade at the end."
+  },
+  "Плавное окончание, s": {
+    "ru": "Продолжительность плавного затухания в конце.",
+    "en": "Duration of the gradual fade at the end."
+  },
+  "sample_rate": {
+    "ru": "По умолчанию сохраняется частота источника, если её поддерживает MP3.",
+    "en": "The source sample rate is preserved by default when MP3 supports it."
+  },
+  "Частота дискретизации": {
+    "ru": "По умолчанию сохраняется частота источника, если её поддерживает MP3.",
+    "en": "The source sample rate is preserved by default when MP3 supports it."
+  },
+  "channel_layout": {
+    "ru": "По умолчанию моно или стерео сохраняется как в исходном файле.",
+    "en": "Mono or stereo is preserved from the source by default."
+  },
+  "Каналы": {
+    "ru": "По умолчанию моно или стерео сохраняется как в исходном файле.",
+    "en": "Mono or stereo is preserved from the source by default."
+  },
+  "mp3_quality": {
+    "ru": "Максимальное использует лучшее переменное качество; другие режимы уменьшают размер файла.",
+    "en": "Maximum uses the best variable quality; other modes reduce file size."
+  },
+  "Качество MP3": {
+    "ru": "Максимальное использует лучшее переменное качество; другие режимы уменьшают размер файла.",
+    "en": "Maximum uses the best variable quality; other modes reduce file size."
+  },
+  "denoise": {
+    "ru": "Мягко снижает постоянный фоновый шум.",
+    "en": "Gently reduces constant background noise."
+  },
+  "denoise_strength": {
+    "ru": "Сила шумоподавления. Доступна только при включённом шумоподавлении.",
+    "en": "Denoise amount. Available only while denoise is enabled."
+  },
+  "Сила, dB": {
+    "ru": "Сила шумоподавления. Доступна только при включённом шумоподавлении.",
+    "en": "Denoise amount. Available only while denoise is enabled."
+  },
+  "limiter": {
+    "ru": "Ограничивает финальные пики и уменьшает вероятность искажений.",
+    "en": "Restrains final peaks and reduces the chance of distortion."
+  },
+  "Лимитер": {
+    "ru": "Ограничивает финальные пики и уменьшает вероятность искажений.",
+    "en": "Restrains final peaks and reduces the chance of distortion."
+  },
+  "seed": {
+    "ru": "Целое число для повторяемого рисунка. Пустое поле равно 0; другое число меняет рисунок.",
+    "en": "Integer for repeatable artwork. Empty means 0; another number changes the pattern."
+  },
+  "Seed": {
+    "ru": "Целое число для повторяемого рисунка. Пустое поле равно 0; другое число меняет рисунок.",
+    "en": "Integer for repeatable artwork. Empty means 0; another number changes the pattern."
+  },
+  "cover_size": {
+    "ru": "Размер квадратной обложки в пикселях.",
+    "en": "Square cover size in pixels."
+  },
+  "Размер, px": {
+    "ru": "Размер квадратной обложки в пикселях.",
+    "en": "Square cover size in pixels."
+  },
+  "cover_style": {
+    "ru": "Своя тема использует вашу палитру. В генерируемой теме цвет и узор выбираются независимо между M2Pv1, M2Pv2 и M2Pv3.",
+    "en": "Custom theme uses your palette. Generated theme lets you choose color and pattern independently from M2Pv1, M2Pv2 and M2Pv3."
+  },
+  "Тема обложки": {
+    "ru": "Своя тема использует вашу палитру. В генерируемой теме цвет и узор выбираются независимо между M2Pv1, M2Pv2 и M2Pv3.",
+    "en": "Custom theme uses your palette. Generated theme lets you choose color and pattern independently from M2Pv1, M2Pv2 and M2Pv3."
+  },
+  "cover_mood": {
+    "ru": "Автоматический вариант определяется по звуку и тексту; значение можно уточнить вручную.",
+    "en": "Automatic mood comes from audio and lyrics; use this only to guide it manually."
+  },
+  "Настроение": {
+    "ru": "Автоматический вариант определяется по звуку и тексту; значение можно уточнить вручную.",
+    "en": "Automatic mood comes from audio and lyrics; use this only to guide it manually."
+  },
+  "cover_text_mode": {
+    "ru": "Показывать название и исполнителя, только название или оставить изображение без текста.",
+    "en": "Show title and artist, title only, or leave the artwork without text."
+  },
+  "Текст на обложке": {
+    "ru": "Показывать название и исполнителя, только название или оставить изображение без текста.",
+    "en": "Show title and artist, title only, or leave the artwork without text."
+  },
+  "no_change_cover": {
+    "ru": "Отключает создание и встраивание новой обложки.",
+    "en": "Disables generation and embedding of new cover art."
+  },
+  "Не менять обложку": {
+    "ru": "Отключает создание и встраивание новой обложки.",
+    "en": "Disables generation and embedding of new cover art."
+  },
+  "lyrics_recognize": {
+    "ru": "Определяет язык по разным участкам и показывает строки по мере распознавания. Готовый уверенно распознанный текст MP3 автоматически записывается в USLT.",
+    "en": "Detects language across different parts and displays lines as they are recognized. Reliably recognized MP3 lyrics are automatically stored in USLT."
+  },
+  "Распознать текст": {
+    "ru": "Определяет язык по разным участкам и показывает строки по мере распознавания. Готовый уверенно распознанный текст MP3 автоматически записывается в USLT.",
+    "en": "Detects language across different parts and displays lines as they are recognized. Reliably recognized MP3 lyrics are automatically stored in USLT."
+  },
+  "lyrics_load": {
+    "ru": "Загружает существующий текст из выбранной песни; если его нет, ищет соседний TXT/LRC. Не запускает распознавание и не открывает окно выбора файла.",
+    "en": "Loads existing lyrics from the selected song, or a nearby TXT/LRC if tags contain none. Does not run recognition or open a file picker."
+  },
+  "Открыть готовый": {
+    "ru": "Загружает существующий текст из выбранной песни; если его нет, ищет соседний TXT/LRC. Не запускает распознавание и не открывает окно выбора файла.",
+    "en": "Loads existing lyrics from the selected song, or a nearby TXT/LRC if tags contain none. Does not run recognition or open a file picker."
+  },
+  "lyrics_save": {
+    "ru": "Записывает текст редактора в выбранный MP3, заменяя прежний USLT. Таймкоды сохраняются, если число строк не изменилось. Для других аудиоформатов создаётся TXT/LRC.",
+    "en": "Stores editor text in the selected MP3, replacing its USLT. Timestamps remain if the line count is unchanged. Other formats save TXT/LRC."
+  },
+  "Записать в песню": {
+    "ru": "Записывает текст редактора в выбранный MP3, заменяя прежний USLT. Таймкоды сохраняются, если число строк не изменилось. Для других аудиоформатов создаётся TXT/LRC.",
+    "en": "Stores editor text in the selected MP3, replacing its USLT. Timestamps remain if the line count is unchanged. Other formats save TXT/LRC."
+  },
+  "lyrics_format": {
+    "ru": "Для MP3 строки с таймкодами сохраняются в теге USLT без отдельного LRC. Для других форматов доступны TXT и LRC.",
+    "en": "MP3 stores timed lines in USLT without a separate LRC file. TXT and LRC remain available for other formats."
+  },
+  "Формат": {
+    "ru": "Для MP3 строки с таймкодами сохраняются в теге USLT без отдельного LRC. Для других форматов доступны TXT и LRC.",
+    "en": "MP3 stores timed lines in USLT without a separate LRC file. TXT and LRC remain available for other formats."
+  },
+  "run": {
+    "ru": "Выполняет выбранные этапы во временной области и только затем публикует готовые файлы.",
+    "en": "Runs selected stages in a temporary area, then publishes only completed files."
+  },
+  "Запустить": {
+    "ru": "Выполняет выбранные этапы во временной области и только затем публикует готовые файлы.",
+    "en": "Runs selected stages in a temporary area, then publishes only completed files."
+  },
+  "stop": {
+    "ru": "Останавливает текущую обработку и удаляет незавершённый результат.",
+    "en": "Stops current processing and removes incomplete output."
+  },
+  "Остановить": {
+    "ru": "Останавливает текущую обработку и удаляет незавершённый результат.",
+    "en": "Stops current processing and removes incomplete output."
+  },
+  "custom_detail": {
+    "ru": "Количество мелких деталей текстуры; в Music2Picture — количество слоёв узора.",
+    "en": "Fine texture detail; in Music2Picture, the number of pattern layers."
+  },
+  "Детализация": {
+    "ru": "Количество мелких деталей текстуры; в Music2Picture — количество слоёв узора.",
+    "en": "Fine texture detail; in Music2Picture, the number of pattern layers."
+  },
+  "custom_contrast": {
+    "ru": "Разница светлых и тёмных областей. 100% — исходный контраст выбранной палитры.",
+    "en": "Difference between light and dark areas. 100% preserves the chosen palette's contrast."
+  },
+  "Контраст": {
+    "ru": "Разница светлых и тёмных областей. 100% — исходный контраст выбранной палитры.",
+    "en": "Difference between light and dark areas. 100% preserves the chosen palette's contrast."
+  },
+  "custom_saturation": {
+    "ru": "Интенсивность цвета: 0% — чёрно-белый фон, 100% — выбранные цвета.",
+    "en": "Color intensity: 0% gives a grayscale background; 100% preserves your colors."
+  },
+  "Насыщенность": {
+    "ru": "Интенсивность цвета: 0% — чёрно-белый фон, 100% — выбранные цвета.",
+    "en": "Color intensity: 0% gives a grayscale background; 100% preserves your colors."
+  },
+  "custom_softness": {
+    "ru": "Сглаживает только текстуру фона. 0% — без размытия; текст не размывается.",
+    "en": "Softens only the background texture. 0% disables blur; text stays sharp."
+  },
+  "Мягкость фона": {
+    "ru": "Сглаживает только текстуру фона. 0% — без размытия; текст не размывается.",
+    "en": "Softens only the background texture. 0% disables blur; text stays sharp."
+  },
+  "editor_pipeline": {
+    "ru": "Выключено — редактор отдельно от остальных разделов. Включено — анализ, обложка, текст и итоговая обработка используют текущий монтаж. Исходники не изменяются. Экспорт доступен в обоих режимах.",
+    "en": "Off: the editor is independent. On: analysis, cover, lyrics and final processing use the current mix. Originals stay unchanged. Export works in both modes."
+  },
+  "editor_output_format": {
+    "ru": "Формат рабочей версии монтажа и результата без этапа «Звук». Этот этап, если включён, создаёт MP3 по своим настройкам. Экспорт редактора выбирается отдельно.",
+    "en": "Working mix/result format without the Sound stage. If enabled, Sound produces MP3 using its own settings. Editor export format is selected separately."
+  },
+  "Формат монтажа": {
+    "ru": "Формат экспортируемого монтажа и его передачи в обработку: MP3, WAV или M4A. Прослушивание использует рабочий звук без потерь.",
+    "en": "Format for mix export and linked processing: MP3, WAV or M4A. Preview uses lossless working audio."
+  },
+  "cover_color": {
+    "ru": "M2Pv1 — классическая окраска; M2Pv2 — цвета характера песни; M2Pv3 — скорость ритма: медленнее — холодные оттенки, быстрее — тёплые. Оценка темпа может ошибаться вдвое.",
+    "en": "M2Pv1 — classic colors; M2Pv2 — musical character; M2Pv3 — rhythmic speed: slower is cooler, faster is warmer. Tempo estimates may be half or double time."
+  },
+  "Цвет": {
+    "ru": "M2Pv1 — классическая окраска; M2Pv2 — цвета характера песни; M2Pv3 — скорость ритма: медленнее — холодные оттенки, быстрее — тёплые. Оценка темпа может ошибаться вдвое.",
+    "en": "M2Pv1 — classic colors; M2Pv2 — musical character; M2Pv3 — rhythmic speed: slower is cooler, faster is warmer. Tempo estimates may be half or double time."
+  },
+  "cover_pattern": {
+    "ru": "M2Pv1 — спектральные деформации; M2Pv2 — органические складки; M2Pv3 — узор поверх структуры песни, начало слева, конец справа.",
+    "en": "M2Pv1 — warped spectrum; M2Pv2 — organic folds; M2Pv3 — folds over song structure, opening on the left and ending on the right."
+  },
+  "Генерация": {
+    "ru": "M2Pv1 — спектральные деформации; M2Pv2 — органические складки; M2Pv3 — узор поверх структуры песни, начало слева, конец справа.",
+    "en": "M2Pv1 — warped spectrum; M2Pv2 — organic folds; M2Pv3 — folds over song structure, opening on the left and ending on the right."
+  },
+  "lyrics_play": {
+    "ru": "Прослушать песню или микс редактора. Повторное нажатие ставит на паузу. Полоса перемещает позицию.",
+    "en": "Listen to the song or editor mix. Click again to pause. Use the bar to seek."
+  },
+  "Прослушивание": {
+    "ru": "Прослушать песню или микс редактора. Повторное нажатие ставит на паузу. Полоса перемещает позицию.",
+    "en": "Listen to the song or editor mix. Click again to pause. Use the bar to seek."
+  },
+  "lyrics_stop": {
+    "ru": "Остановить прослушивание и оставить текущую позицию.",
+    "en": "Stop playback and keep the current position."
+  },
+  "clip": {
+    "ru": "Громкость 0–400%, скорость 0–400% и трёхполосный эквалайзер применяются только к выбранному фрагменту. 0% скорости даёт паузу, 100% сохраняет исходную скорость. Правки можно отменить.",
+    "en": "Volume, speed and the three-band EQ affect this clip. 0% speed creates a pause; 100% retains the original speed. Changes can be undone."
+  },
+  "lufs": {
+    "ru": "Целевая воспринимаемая громкость. Более высокое значение LUFS делает результат громче. Анализ и рекомендация помогают выбрать уровень.",
+    "en": "Target perceived loudness. A higher LUFS value makes the output louder. Analysis and recommendations help choose a level."
+  },
+  "peak": {
+    "ru": "Максимальный истинный пик. Отрицательное значение оставляет запас и помогает избежать перегрузки.",
+    "en": "True peak ceiling. A negative value leaves headroom to avoid clipping."
+  },
+  "gain": {
+    "ru": "Итоговая громкость: 100% — обычный уровень, 0% — тишина, 400% — усиление в четыре раза. Ограничитель защищает от перегрузки.",
+    "en": "Output volume: 100% is normal, 0% is silence, 400% multiplies amplitude by four. The limiter protects peaks."
+  },
+  "speed": {
+    "ru": "Скорость песни, 100% — исходная. Темп меняется без обязательного изменения высоты тона.",
+    "en": "Playback speed: 100% is the original tempo. Tempo is changed independently of pitch."
+  },
+  "bass": {
+    "ru": "Низкие частоты около 100 Гц. Влево — меньше баса, вправо — больше.",
+    "en": "Low frequencies around 100 Hz. Move left for less bass, right for more."
+  },
+  "mid": {
+    "ru": "Средние частоты около 1000 Гц: разборчивость вокала и инструментов.",
+    "en": "Midrange around 1000 Hz: vocal and instrument clarity."
+  },
+  "treble": {
+    "ru": "Высокие частоты около 6000 Гц: яркость и детали звука.",
+    "en": "Treble around 6000 Hz: brightness and detail."
+  },
+  "width": {
+    "ru": "100% — исходная ширина стерео, 0% — моно. Изменение не влияет на монофонический источник.",
+    "en": "100% retains stereo width; 0% is mono. A mono source has no stereo width to change."
+  },
+  "cover_symbol": {
+    "ru": "Показывать декоративный символ на обложке. Отключите, чтобы оставить только текстуру и выбранную надпись.",
+    "en": "Show a decorative artwork symbol. Turn off to keep the texture and optional lettering."
+  },
+  "overwrite_metadata": {
+    "ru": "Перезаписывает остальные теги заполненными полями. Встроенный текст песни и таймкоды сохраняются всегда.",
+    "en": "Replace other metadata with the completed fields. Embedded lyrics and timings are always retained."
+  },
+  "Связь с редактором": {
+    "ru": "Включённый квадрат означает, что остальные разделы используют текущий монтаж. Без галочки обрабатывается выбранный исходный файл.",
+    "en": "When checked, other sections use the current timeline mix. Otherwise they use the selected source file."
+  },
+  "seek": {
+    "ru": "Перетащите ползунок, чтобы слушать песню с нужного места. Во время проигрывания звук сразу переместится в выбранную позицию.",
+    "en": "Drag to seek. During playback, audio immediately moves to the selected position."
+  },
+  "tab_lyrics": {
+    "ru": "Слушайте песню и редактируйте текст. F8 ставит метку за 45 мс до текущего звука и переходит на следующую строку. Текст сохраняется между вкладками.",
+    "en": "Listen and edit lyrics. F8 places a cue 45 ms before current playback and moves to the next line. Text is preserved across tabs."
+  },
+  "tab_metadata": {
+    "ru": "Читайте и меняйте название, исполнителя, жанр и другие теги. Текст песни и таймкоды сохраняются при любых переключателях перезаписи.",
+    "en": "Read and edit title, artist, genre and other tags. Lyrics and timing are always preserved, including when overwriting metadata."
+  },
+  "tab_processing": {
+    "ru": "Выберите этапы обработки и запустите создание готовых копий в папке назначения. Здесь видны ход задачи и журнал.",
+    "en": "Select processing stages and create output copies in the destination folder. Progress and logs appear here."
+  },
+  "tab_audio": {
+    "ru": "Настройте звук ползунками, выполните анализ и примените рекомендации. Ниже всех настроек доступны оригинал и автоматически изменённая версия для прослушивания. Свёрнутые фильтры остаются активными.",
+    "en": "Adjust audio sliders, analyze and apply recommendations. Original and automatically processed playback are below the settings. Collapsed filters remain active."
+  },
+  "tab_cover": {
+    "ru": "Создавайте обложку по структуре песни или выбирайте своё изображение. Дополнительные настройки под Seed позволяют менять детали, надпись, символ и палитру.",
+    "en": "Generate artwork from the song structure or select an image. Advanced options below Seed control detail, lettering, symbol and palette."
+  },
+  "tab_help": {
+    "ru": "Справочник по монтажу, звуку, обложкам, тексту и сохранению. F1 открывает эту вкладку.",
+    "en": "Guide to editing, audio, artwork, lyrics and saving. Press F1 to open it."
+  },
+  "tab_editor": {
+    "ru": "Монтаж песни на дорожках: перемещайте фрагменты, выделяйте правой кнопкой мыши и меняйте масштаб Ctrl + колесо. Красная линия задаёт место проигрывания.",
+    "en": "Arrange audio clips on tracks. Right drag selects, Ctrl + wheel zooms, and the red cursor sets playback position."
+  },
+  "tab_settings": {
+    "ru": "Выберите язык интерфейса, откройте репозиторий и обновления или поддержите автора.",
+    "en": "Choose the interface language, open the repository and releases, or support the author."
+  },
+  "speech_quality": {
+    "ru": "Точнее: полный Whisper Large v3. Быстрее: Turbo, меньше памяти и времени на распознавание. Оба режима проверяют русские и английские тайминги отдельной акустической CTC-моделью. Модели работают по очереди.",
+    "en": "Accurate uses full Whisper Large v3. Fast uses Turbo with lower memory use and faster recognition. Both modes refine Russian and English timing with a separate acoustic CTC model. Models run sequentially."
+  }
+}

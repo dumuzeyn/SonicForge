@@ -120,11 +120,13 @@ void Timeline::paintEvent(QPaintEvent*) {
             int first = qMax(0, int(std::floor((horizontalScrollBar()->value() + 82 - x) / 2))),
                 last = qMin(int(w / 2), int((width - x) / 2));
             for (int px = first; px <= last; ++px) {
-                double time = clip.start + (px * 2 / w) * clip.duration();
+                double edgeTime = (px * 2 / w) * clip.duration();
+                double time = clip.start + edgeTime * (clip.speed > 0 ? clip.speed : 1);
                 int bin = qBound(0, int(time / source.duration * source.peaks.size()),
                                  int(source.peaks.size() - 1));
-                double level = source.peaks[bin] * 14;
-                double edgeTime = time - clip.start;
+                double level = source.peaks[bin] * 14 * (clip.speed > 0 ? clip.volume : 0) *
+                               std::pow(10., clip.gain / 20.);
+                level = qMin(18., level);
                 if (clip.fadeIn > 0)
                     level *= qBound(0., edgeTime / clip.fadeIn, 1.);
                 if (clip.fadeOut > 0)
