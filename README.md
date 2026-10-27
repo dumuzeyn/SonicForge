@@ -1,17 +1,18 @@
 # SonicForge 3.2.0
 
+**Русский** · [English](README.en.md)
+
 Музыкальный редактор для Windows: монтаж на дорожках, обработка звука, метаданные, процедурные обложки и синхронизированный текст песен. Приложение написано на **C++20 / Qt 6**; распознавание, выравнивание текста и разделение на составляющие выполняются локально. Python для запуска не нужен.
 
 ## Скачать
 
-| Файл | Для чего |
-|---|---|
-| [SonicForge-Setup.exe](https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-Setup.exe) | Установка и обновление Windows-версии |
-| [SonicForge-Uninstall.exe](https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-Uninstall.exe) | Поиск установленной копии и запуск её удаления |
-| [SonicForge-windows-x64.zip](https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-windows-x64.zip) | Портативная версия: распакуйте архив целиком |
-| [SHA256SUMS.txt](https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SHA256SUMS.txt) | Контрольные суммы трёх файлов выпуска |
+<p>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-Setup.exe"><img src="docs/images/download-installer-ru.svg" alt="Скачать установщик SonicForge для Windows" width="240" height="68"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-windows-x64.zip"><img src="docs/images/download-portable-ru.svg" alt="Скачать портативную версию SonicForge в ZIP" width="240" height="68"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-Uninstall.exe"><img src="docs/images/download-uninstaller-ru.svg" alt="Скачать отдельный деинсталлятор SonicForge" width="240" height="68"></a>
+</p>
 
-[Релиз 3.2.0](https://github.com/dumuzeyn/SonicForge/releases/tag/v3.2.0) · [Все релизы](https://github.com/dumuzeyn/SonicForge/releases) · [Что изменилось](docs/RELEASE-3.2.0.md) · [Исправления после аудита](docs/FIXES-2026-10-26.md)
+[Контрольные суммы SHA-256](https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SHA256SUMS.txt) · [Релиз 3.2.0](https://github.com/dumuzeyn/SonicForge/releases/tag/v3.2.0) · [Все релизы](https://github.com/dumuzeyn/SonicForge/releases) · [Что изменилось](docs/RELEASE-3.2.0.md) · [Исправления после аудита](docs/FIXES-2026-10-26.md)
 
 **Система:** Windows 10/11 x64. Qt, FFmpeg и необходимые runtime входят в комплект. Нейросетям нужен процессор с AVX2 и несколько гигабайт свободной оперативной памяти. Обычный выпуск использует CPU; режим Whisper Turbo требует меньше памяти, чем Large.
 
@@ -108,12 +109,6 @@ Whisper можно собрать с Vulkan через `-WhisperVulkan` при �
 - GitHub Actions: проверка PowerShell/JSON и сборка самостоятельного деинсталлятора на Windows.
 
 Python не требуется ни приложению, ни сборке. Исходники прежней Python-версии доступны в истории Git и теге `v3.0.0`.
-
-## English
-
-SonicForge 3.2.0 is a native C++20 / Qt 6 audio editor for Windows 10/11 x64. It includes multitrack editing, audio processing, metadata, procedural cover artwork and timed lyrics. Recognition, alignment, stem separation and genre inference run locally; no Python runtime is shipped.
-
-Download the [installer](https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-Setup.exe), [portable ZIP](https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-windows-x64.zip) or [standalone uninstall launcher](https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-Uninstall.exe). Large neural models download on first use and are checked with SHA-256. Neural functions require AVX2 and several gigabytes of available RAM. The release is unsigned. Save projects with Ctrl+S, open them with Ctrl+O, and keep their `.assets` folder and external source files available.
 
 ## Лицензия
 

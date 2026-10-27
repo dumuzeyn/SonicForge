@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="68" viewBox="0 0 240 68" role="img" aria-labelledby="title description">
+  <title id="title">Portable edition · SonicForge 3.2.0</title>
+  <desc id="description">Unzip and launch</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#178A8C"/>
+      <stop offset="1" stop-color="#11636F"/>
+    </linearGradient>
+  </defs>
+  <rect x="0.5" y="0.5" width="239" height="67" rx="14" fill="url(#background)" stroke="#25999A"/>
+  <rect x="15" y="15" width="40" height="38" rx="11" fill="#FFFFFF" fill-opacity="0.13"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m24 27 11-6 11 6v16l-11 6-11-6Zm0 0 11 6 11-6M35 33v16m-5-25 11 6"/></g>
+  <g font-family="Segoe UI, Noto Sans, Arial, sans-serif" fill="#FFFFFF">
+    <text x="68" y="29" font-size="15" font-weight="600">Portable edition</text>
+    <text x="68" y="47" font-size="10.5" fill-opacity="0.85">Unzip and launch</text>
+  </g>
+</svg>
