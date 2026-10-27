@@ -6,7 +6,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 file(GLOB_RECURSE SF_BUILD_SOURCES CONFIGURE_DEPENDS RELATIVE "${CMAKE_SOURCE_DIR}"
   "native/*.cpp" "native/*.h" "native/*.inc" "native/*.in" "native/resources/*.json" "native/*.rc" "scripts/*.ps1" "packaging/*.iss" "packaging/*.cpp" "packaging/*.rc" "packaging/*.manifest")
-list(APPEND SF_BUILD_SOURCES "CMakeLists.txt" "native/dependencies.json" "native/runtime-lock.json")
+list(APPEND SF_BUILD_SOURCES "CMakeLists.txt" "packaging/CMakeLists.txt" "native/dependencies.json" "native/runtime-lock.json")
 list(SORT SF_BUILD_SOURCES)
 set(SF_SOURCE_RECORD "")
 foreach(SF_FILE IN LISTS SF_BUILD_SOURCES)

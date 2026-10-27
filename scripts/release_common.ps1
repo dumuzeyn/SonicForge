@@ -11,7 +11,7 @@ function Get-SourceDigest([string]$Root, [string]$RecordPath = '') {
             $relative = $_.FullName.Substring($Root.TrimEnd('\').Length + 1).Replace('\','/')
             if ($relative -match '^(native/.*\.(cpp|h|inc|rc|in)|native/resources/.*\.json|scripts/.*\.ps1|packaging/.*\.(iss|cpp|rc|manifest))$') { $relative }
         }
-    }) + @('CMakeLists.txt','native/dependencies.json','native/runtime-lock.json')
+    }) + @('CMakeLists.txt','packaging/CMakeLists.txt','native/dependencies.json','native/runtime-lock.json')
     [string[]]$paths = @($paths | Select-Object -Unique)
     [Array]::Sort($paths, [StringComparer]::Ordinal)
     $record = [Text.StringBuilder]::new()
