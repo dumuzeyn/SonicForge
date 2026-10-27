@@ -11,75 +11,62 @@
 #include <limits>
 
 namespace sf {
-std::optional<CtcMatch> ctcViterbi(const QVector<float>& emission, int frames, int vocabulary,
-                                   const QVector<int>& tokens, int blank) {
-    if (tokens.isEmpty() || frames < tokens.size() || vocabulary < 2 ||
-        emission.size() != qsizetype(frames) * vocabulary || tokens.size() > 800)
-        return {};
-    for (int token : tokens)
-        if (token < 0 || token >= vocabulary || token == blank)
-            return {};
-    const int states = tokens.size() * 2 + 1;
+std::optional<CtcMatch> ctcViterbiView(const float* emission, qsizetype emissionSize, int frames, int vocabulary,
+                                    const QVector<int>& tokens, int blank) {
+    if (tokens.isEmpty() || frames < tokens.size() || vocabulary < 2 || blank < 0 || blank >= vocabulary ||
+        emissionSize != qsizetype(frames) * vocabulary || tokens.size() > 1000000) return {};
+    for (int token : tokens) if (token < 0 || token >= vocabulary || token == blank) return {};
+    const int states = int(tokens.size()) * 2 + 1;
+    const int blockFrames = qBound(1, (16 * 1024 * 1024) / states, 512);
     const float impossible = -std::numeric_limits<float>::infinity();
     QVector<float> previous(states, impossible), current(states, impossible);
-    // Two score rows; one byte of backtracking per frame/state, bounded by a 24-second window.
-    QByteArray back(qsizetype(frames) * states, 0);
     previous[0] = 0;
-    float best = impossible;
-    int bestFrame = -1;
-    for (int t = 0; t < frames; ++t) {
-        current.fill(impossible);
-        current[0] =
-            0; // Permit leading music/silence without shifting the first word to time zero.
+    QTemporaryFile checkpoints(cacheDirectory() + "/ctc-scores-XXXXXX.bin");
+    if (!checkpoints.open()) throw Error(checkpoints.errorString());
+    auto advance = [&](int t, QByteArray* back, int localFrame) {
+        current.fill(impossible); current[0] = 0;
         for (int state = 1; state < states; ++state) {
-            int token = state % 2 ? tokens[state / 2] : blank;
-            float score = previous[state];
-            int step = 0;
-            if (previous[state - 1] > score) {
-                score = previous[state - 1];
-                step = 1;
-            }
-            if (state > 1 && token != blank && token != tokens[(state - 2) / 2] &&
-                previous[state - 2] > score) {
-                score = previous[state - 2];
-                step = 2;
-            }
-            current[state] = score + emission[t * vocabulary + token];
-            back[t * states + state] = char(step);
-        }
-        if (current[states - 2] > best) {
-            best = current[states - 2];
-            bestFrame = t;
+            const int token = state % 2 ? tokens[state / 2] : blank;
+            float score = previous[state]; int step = 0;
+            if (previous[state - 1] > score) { score = previous[state - 1]; step = 1; }
+            if (state > 1 && token != blank && token != tokens[(state - 2) / 2] && previous[state - 2] > score) { score = previous[state - 2]; step = 2; }
+            current[state] = score + emission[qsizetype(t) * vocabulary + token];
+            if (back) (*back)[qsizetype(localFrame) * states + state] = char(step);
         }
         previous.swap(current);
+    };
+    float best = impossible; int bestFrame = -1;
+    const qint64 rowBytes = qint64(states) * sizeof(float);
+    for (int t = 0; t < frames; ++t) {
+        if (t % blockFrames == 0 && checkpoints.write(reinterpret_cast<const char*>(previous.constData()), rowBytes) != rowBytes) throw Error(checkpoints.errorString());
+        advance(t, nullptr, 0);
+        if (previous[states - 2] > best) { best = previous[states - 2]; bestFrame = t; }
     }
-    if (bestFrame < 0 || !std::isfinite(best))
-        return {};
-    CtcMatch match;
-    match.first.fill(-1, tokens.size());
-    match.last.fill(-1, tokens.size());
-    QVector<float> peaks(tokens.size(), 0);
-    int state = states - 2;
-    for (int t = bestFrame; t >= 0 && state > 0; --t) {
-        if (state % 2) {
-            int index = state / 2;
-            match.first[index] = t;
-            match.last[index] = qMax(match.last[index], t);
-            peaks[index] = qMax(peaks[index], std::exp(emission[t * vocabulary + tokens[index]]));
+    if (bestFrame < 0 || !std::isfinite(best)) return {};
+    CtcMatch match; match.first.fill(-1, tokens.size()); match.last.fill(-1, tokens.size());
+    QVector<float> peaks(tokens.size(), 0); int state = states - 2;
+    for (int block = bestFrame / blockFrames; block >= 0 && state > 0; --block) {
+        if (!checkpoints.seek(qint64(block) * rowBytes) || checkpoints.read(reinterpret_cast<char*>(previous.data()), rowBytes) != rowBytes) throw Error(checkpoints.errorString());
+        const int first = block * blockFrames, last = qMin(bestFrame, first + blockFrames - 1);
+        QByteArray back(qsizetype(last - first + 1) * states, 0);
+        for (int t = first; t <= last; ++t) advance(t, &back, t - first);
+        for (int t = last; t >= first && state > 0; --t) {
+            if (state % 2) {
+                const int index = state / 2; match.first[index] = t; match.last[index] = qMax(match.last[index], t);
+                peaks[index] = qMax(peaks[index], std::exp(emission[qsizetype(t) * vocabulary + tokens[index]]));
+            }
+            state -= quint8(back[qsizetype(t - first) * states + state]);
         }
-        state -= quint8(back[t * states + state]);
     }
-    if (state != 0 || match.first.contains(-1))
-        return {};
+    if (state != 0 || match.first.contains(-1)) return {};
     int supported = 0;
-    for (float peak : peaks) {
-        match.confidence += peak;
-        supported += peak >= .12;
-    }
-    match.confidence /= peaks.size();
-    match.tokenConfidence = peaks;
-    match.coverage = double(supported) / peaks.size();
+    for (float peak : peaks) { match.confidence += peak; supported += peak >= .12; }
+    match.confidence /= peaks.size(); match.tokenConfidence = peaks; match.coverage = double(supported) / peaks.size();
     return match;
+}
+std::optional<CtcMatch> ctcViterbi(const QVector<float>& emission, int frames, int vocabulary,
+                                    const QVector<int>& tokens, int blank) {
+    return ctcViterbiView(emission.constData(), emission.size(), frames, vocabulary, tokens, blank);
 }
 
 void appendSpeechWindow(QList<Lyric>& target, const QList<Lyric>& words, double begin, double end) {
@@ -126,6 +113,7 @@ QList<Lyric> speechLines(const QList<Lyric>& words) {
 }
 
 namespace {
+struct CtcEmission { QVector<float> probabilities; int frames = 0, classes = 0; };
 class CtcEngine {
     QLibrary library;
     const OrtApi* api = nullptr;
@@ -162,7 +150,9 @@ class CtcEngine {
             check(api->SetInterOpNumThreads(options, 1));
             check(api->DisableCpuMemArena(options));
             check(api->DisableMemPattern(options));
-            check(api->CreateSession(environment, reinterpret_cast<const wchar_t*>(path.utf16()),
+            QString modelPath = path;
+            if (!QFileInfo::exists(modelPath)) modelPath = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/models/" + QFileInfo(path).fileName();
+            check(api->CreateSession(environment, reinterpret_cast<const wchar_t*>(modelPath.utf16()),
                                      options, &session));
             check(api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &memory));
             OrtAllocator* allocator = nullptr;
@@ -205,65 +195,8 @@ class CtcEngine {
     ~CtcEngine() {
         release();
     }
-    std::optional<Lyric> align(QVector<float> audio, const QString& text, double origin,
-                               bool preserveText, bool splitSilence = true) {
-        if (splitSilence) {
-            QVector<QPair<int, int>> regions;
-            int first = -1, last = -1;
-            for (int at = 0; at < audio.size(); at += 160) {
-                double energy = 0;
-                const int end = qMin(at + 160, int(audio.size()));
-                for (int sample = at; sample < end; ++sample)
-                    energy += double(audio[sample]) * audio[sample];
-                if (energy / qMax(1, end - at) <= 1e-10)
-                    continue;
-                if (first >= 0 && at - last > 32000) {
-                    regions << qMakePair(qMax(0, first - 2400),
-                                         qMin(int(audio.size()), last + 2560));
-                    first = -1;
-                }
-                if (first < 0)
-                    first = at;
-                last = at;
-            }
-            if (first < 0)
-                return {};
-            regions << qMakePair(qMax(0, first - 2400), qMin(int(audio.size()), last + 2560));
-            if (regions.size() > 1 || regions[0].second - regions[0].first < audio.size() - 16000) {
-                std::optional<Lyric> best;
-                for (const auto& region : regions) {
-                    auto candidate =
-                        align(audio.mid(region.first, region.second - region.first), text,
-                              origin + region.first / 16000., preserveText, false);
-                    if (candidate && (!best || candidate->confidence > best->confidence))
-                        best = candidate;
-                }
-                if (best && best->confidence > .65)
-                    return best;
-            }
-        }
-        QVector<int> tokens, tokenWords;
-        const auto originalWords = text.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-        for (int word = 0; word < originalWords.size(); ++word) {
-            const auto input =
-                language == "en" ? originalWords[word].toUpper() : originalWords[word].toLower();
-            for (auto character : input)
-                if (character.isLetterOrNumber() && !vocabulary.contains(QString(character)))
-                    return {}; // Preserve mixed-language words and written numbers.
-            if (!tokens.isEmpty()) {
-                tokens << vocabulary["|"].toInt();
-                tokenWords << -1;
-            }
-            for (auto character : input) {
-                QString key(character);
-                if (!vocabulary.contains(key))
-                    continue;
-                tokens << vocabulary[key].toInt();
-                tokenWords << word;
-            }
-        }
-        if (audio.size() < 1600 || tokens.isEmpty() || tokens.size() > 800)
-            return {};
+    CtcEmission infer(QVector<float> audio) {
+        if (audio.size() < 1600) return {};
         double mean = 0, variance = 0;
         for (float value : audio)
             mean += value;
@@ -338,7 +271,69 @@ class CtcEngine {
             for (int k = 0; k < classes; ++k)
                 probabilities[t * classes + k] = float(data[t * classes + k] - normalizer);
         }
-        auto match = ctcViterbi(probabilities, frames, classes, tokens);
+        return {std::move(probabilities), frames, classes};
+    }
+    std::optional<Lyric> align(QVector<float> audio, const QString& text, double origin,
+                               bool preserveText, bool splitSilence = true) {
+        if (splitSilence) {
+            QVector<QPair<int, int>> regions;
+            int first = -1, last = -1;
+            for (int at = 0; at < audio.size(); at += 160) {
+                double energy = 0;
+                const int end = qMin(at + 160, int(audio.size()));
+                for (int sample = at; sample < end; ++sample)
+                    energy += double(audio[sample]) * audio[sample];
+                if (energy / qMax(1, end - at) <= 1e-10)
+                    continue;
+                if (first >= 0 && at - last > 32000) {
+                    regions << qMakePair(qMax(0, first - 2400),
+                                         qMin(int(audio.size()), last + 2560));
+                    first = -1;
+                }
+                if (first < 0)
+                    first = at;
+                last = at;
+            }
+            if (first < 0)
+                return {};
+            regions << qMakePair(qMax(0, first - 2400), qMin(int(audio.size()), last + 2560));
+            if (regions.size() > 1 || regions[0].second - regions[0].first < audio.size() - 16000) {
+                std::optional<Lyric> best;
+                for (const auto& region : regions) {
+                    auto candidate =
+                        align(audio.mid(region.first, region.second - region.first), text,
+                              origin + region.first / 16000., preserveText, false);
+                    if (candidate && (!best || candidate->confidence > best->confidence))
+                        best = candidate;
+                }
+                if (best && best->confidence > .65)
+                    return best;
+            }
+        }
+        QVector<int> tokens, tokenWords;
+        const auto originalWords = text.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+        for (int word = 0; word < originalWords.size(); ++word) {
+            const auto input =
+                language == "en" ? originalWords[word].toUpper() : originalWords[word].toLower();
+            for (auto character : input)
+                if (character.isLetterOrNumber() && !vocabulary.contains(QString(character)))
+                    return {}; // Preserve mixed-language words and written numbers.
+            if (!tokens.isEmpty()) {
+                tokens << vocabulary["|"].toInt();
+                tokenWords << -1;
+            }
+            for (auto character : input) {
+                QString key(character);
+                if (!vocabulary.contains(key))
+                    continue;
+                tokens << vocabulary[key].toInt();
+                tokenWords << word;
+            }
+        }
+        if (audio.size() < 1600 || tokens.isEmpty() || tokens.size() > 800)
+            return {};
+        auto emission = infer(std::move(audio));
+        auto match = ctcViterbi(emission.probabilities, emission.frames, emission.classes, tokens);
         if (!match)
             return {};
         QVector<double> certainty(originalWords.size(), 0), coverage(originalWords.size(), 0);
@@ -405,6 +400,127 @@ QString textLanguage(const QString& text) {
     return {};
 }
 } // namespace
+QString directAlignmentLanguage(const QString& text) {
+    const auto plain = plainLyrics(text);
+    const auto language = textLanguage(plain);
+    if (language.isEmpty()) return {};
+    QFile file(":/ctc-" + language + ".json");
+    if (!file.open(QIODevice::ReadOnly)) return {};
+    const auto vocabulary = QJsonDocument::fromJson(file.readAll()).object();
+    const auto normalized = language == "en" ? plain.toUpper() : plain.toLower();
+    for (auto character : normalized)
+        if (character.isLetterOrNumber() && !vocabulary.contains(QString(character))) return {};
+    return language;
+}
+QList<Lyric> alignSuppliedLyrics(const QString& audio, const QString& text, const QString& directory,
+                                const QString& reference) {
+    const auto language = directAlignmentLanguage(text);
+    if (language.isEmpty()) throw Error("Для прямого выравнивания нужен русский или английский текст");
+    const auto supplied = plainLyrics(text).split('\n', Qt::SkipEmptyParts);
+    const auto anchors = parseLyrics(text, false);
+    if (!anchors.isEmpty() && anchors.size() == supplied.size())
+        return refineSpeechTiming(audio, anchors, directory, reference, true);
+    QFile file(":/ctc-" + language + ".json");
+    if (!file.open(QIODevice::ReadOnly)) throw Error("Не найден словарь выравнивания");
+    const auto vocabulary = QJsonDocument::fromJson(file.readAll()).object();
+    QVector<int> tokens;
+    QVector<QPair<int,int>> ranges;
+    for (const auto& line : supplied) {
+        if (!tokens.isEmpty()) tokens << vocabulary["|"].toInt();
+        const int first = tokens.size();
+        auto normalized = language == "en" ? line.toUpper() : line.toLower();
+        bool space = false;
+        for (auto character : normalized) {
+            if (character.isSpace()) { space = tokens.size() > first; continue; }
+            const auto key = QString(character);
+            if (!vocabulary.contains(key)) continue;
+            if (space) { tokens << vocabulary["|"].toInt(); space = false; }
+            tokens << vocabulary[key].toInt();
+        }
+        if (tokens.size() == first) throw Error("Строка не содержит слов для выравнивания");
+        ranges << qMakePair(first, int(tokens.size()) - 1);
+    }
+    const auto source = readSource(audio, {}, false);
+    const int frames = qCeil(source.duration / .02), classes = vocabulary.size();
+
+    std::cerr << "stage=Загрузка модели выравнивания\nprogress=0" << std::endl;
+    CtcEngine engine(directory + "/ctc-" + language + ".onnx", language);
+    QTemporaryFile emissions(cacheDirectory() + "/ctc-emissions-XXXXXX.bin");
+    if (!emissions.open()) throw Error(emissions.errorString());
+    QVector<float> emptyFrame(classes, -30.f); emptyFrame[0] = 0;
+    QByteArray emptyBlock;
+    for (int frame = 0; frame < 512; ++frame) emptyBlock.append(reinterpret_cast<const char*>(emptyFrame.constData()), classes * sizeof(float));
+    for (int frame = 0; frame < frames; frame += 512) {
+        const auto bytes = qMin(512, frames - frame) * classes * qint64(sizeof(float));
+        if (emissions.write(emptyBlock.constData(), bytes) != bytes) throw Error(emissions.errorString());
+    }
+    constexpr double blockSeconds = 12, contextSeconds = 1;
+    const int blocks = qCeil(source.duration / blockSeconds);
+    for (int block = 0; block < blocks; ++block) {
+        const double at = block * blockSeconds, begin = qMax(0., at - contextSeconds);
+        const double end = qMin(source.duration, at + blockSeconds + contextSeconds);
+        std::cerr << "stage=" << QString("Выравнивание: анализ звука %1/%2").arg(block+1).arg(blocks).toUtf8().constData()
+                  << "\nprogress=" << .85 * block / blocks << std::endl;
+        auto emission = engine.infer(decode(audio, 16000, 1, begin, end - begin));
+        if (!emission.frames) continue;
+        if (emission.classes != classes) throw Error("Неверный словарь выравнивания");
+        const int first = qRound(at / .02), last = qMin(frames, qRound((at + blockSeconds) / .02));
+        for (int frame = first; frame < last; ++frame) {
+            const int local = frame - qRound(begin / .02);
+            if (local < emission.frames) {
+                if (!emissions.seek(qint64(frame) * classes * sizeof(float)) ||
+                    emissions.write(reinterpret_cast<const char*>(emission.probabilities.constData() + local * classes), classes * sizeof(float)) != qint64(classes * sizeof(float))) throw Error(emissions.errorString());
+            }
+        }
+    }
+    std::cerr << "stage=Сопоставление строк с музыкой\nprogress=0.85" << std::endl;
+    emissions.flush();
+    auto* mapped = emissions.map(0, qint64(frames) * classes * sizeof(float));
+    if (!mapped) throw Error("Не удалось отобразить данные выравнивания");
+    auto unmap = qScopeGuard([&] { emissions.unmap(mapped); });
+    const auto match = ctcViterbiView(reinterpret_cast<const float*>(mapped), qsizetype(frames) * classes, frames, classes, tokens, 0);
+    if (!match) throw Error("Не удалось сопоставить текст со звуком. Исходный текст сохранён.");
+    QList<Lyric> result;
+    for (int line = 0; line < ranges.size(); ++line) {
+        const auto [first,last] = ranges[line];
+        double certainty = 0, coverage = 0;
+        for (int token = first; token <= last; ++token) {
+            certainty += match->tokenConfidence[token];
+            coverage += match->tokenConfidence[token] >= .12;
+        }
+        certainty /= last - first + 1; coverage /= last - first + 1;
+        if (qEnvironmentVariableIsSet("SF_TRACE_ALIGNMENT"))
+            std::cerr << "line=" << line+1 << " confidence=" << certainty << " coverage=" << coverage << std::endl;
+        Lyric value{qMax(0., match->first[first] * .02 - LyricLead),
+                    qMin(source.duration, match->last[last] * .02 + .025), supplied[line].trimmed(), certainty};
+        if (certainty < .12 || coverage < .45) {
+            // Recheck only the uncertain row, constrained by its neighbours.
+            // The separated stem can lose a short syllable that remains in the mix.
+            std::cerr << "stage=" << QString("Проверяю строку %1/%2").arg(line+1).arg(ranges.size()).toUtf8().constData()
+                      << "\nprogress=" << .85 + .15 * line / ranges.size() << std::endl;
+            const double begin = result.isEmpty() ? 0 : qMax(0., result.last().end - .12);
+            const double end = line + 1 < ranges.size()
+                                   ? qMin(source.duration, match->first[ranges[line+1].first] * .02 + .12)
+                                   : source.duration;
+            std::optional<Lyric> confirmed;
+            for (double at = begin; at < end; at += 20) {
+                const auto length = qMin(24., end-at);
+                auto candidate = engine.align(decode(audio, 16000, 1, at, length), value.text, at, true);
+                if (!reference.isEmpty() && reference != audio && (!candidate || candidate->confidence < .45)) {
+                    auto alternative = engine.align(decode(reference, 16000, 1, at, length), value.text, at, true);
+                    if (alternative && (!candidate || alternative->confidence > candidate->confidence)) candidate = alternative;
+                }
+                if (candidate && (!confirmed || candidate->confidence > confirmed->confidence)) confirmed = candidate;
+            }
+            if (!confirmed)
+                throw Error(QString("Не удалось подтвердить строку %1 по звуку. Исходный текст сохранён; проверьте соответствие текста песне.").arg(line+1));
+            value = *confirmed;
+        }
+        result << value;
+    }
+    std::cerr << "progress=1" << std::endl;
+    return result;
+}
 QList<Lyric> refineSpeechTiming(const QString& audio, QList<Lyric> lines, const QString& directory,
                                 const QString& reference, bool preserveText) {
     if (lines.isEmpty())

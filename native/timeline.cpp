@@ -8,7 +8,9 @@ Timeline::Timeline(QWidget* parent) : QAbstractScrollArea(parent) {
     setAcceptDrops(true);
     setFocusPolicy(Qt::StrongFocus);
     setMinimumHeight(160);
-    setMaximumHeight(245);
+    setMaximumHeight(800);
+    setAccessibleName("Audio timeline");
+    setAccessibleDescription("Page Up/Down selects clips; arrow keys move the cursor; Shift+arrows move the selected clip.");
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -36,7 +38,7 @@ QString Timeline::hit(QPoint point) const {
 }
 void Timeline::refresh() {
     horizontalScrollBar()->setRange(
-        0, qMax(0, int(96 + project.duration() * scale()) - viewport()->width()));
+        0, int(qBound(0., 96 + project.duration() * scale() - viewport()->width(), double(INT_MAX - 1))));
     horizontalScrollBar()->setPageStep(viewport()->width());
     verticalScrollBar()->setRange(0,
                                   qMax(0, 32 + (project.lanes() + 1) * 70 - viewport()->height()));
@@ -76,14 +78,15 @@ void Timeline::paintEvent(QPaintEvent*) {
             break;
         }
     p.setFont(QFont("Noto Sans", 9));
-    for (double t = std::floor(at(0) / step) * step; t <= project.duration() + step; t += step) {
+    for (double t = std::floor(at(0) / step) * step; t <= qMin(project.duration() + step, at(viewport()->width()) + step); t += step) {
         double x = 84 + t * s;
         p.setPen(QColor("#e4e0f0"));
         p.drawLine(QPointF(x, 28), QPointF(x, height));
         p.setPen(QColor("#6d6489"));
         p.drawText(QRectF(x + 3, 4, 85, 20), sf::timestamp(t));
     }
-    for (int lane = 0; lane < project.lanes(); ++lane) {
+    const int firstLane = qMax(0, laneAt(0)), lastLane = qMin(project.lanes() - 1, laneAt(viewport()->height()));
+    for (int lane = firstLane; lane <= lastLane; ++lane) {
         double y = 32 + lane * 70;
         p.fillRect(QRectF(horizontalScrollBar()->value(), y, 82, 68), QColor("#f0edf8"));
         p.setPen(QColor("#534b70"));
@@ -99,7 +102,7 @@ void Timeline::paintEvent(QPaintEvent*) {
     for (auto clip : project.clips) {
         double x = 84 + clip.position * s, y = 34 + clip.lane * 70,
                w = qMax(1., clip.duration() * s);
-        if (x + w < horizontalScrollBar()->value() + 82 || x > width)
+        if (x + w < horizontalScrollBar()->value() + 82 || x > width || clip.lane < firstLane || clip.lane > lastLane)
             continue;
         QColor fill = QColor::fromHsl((260 + clip.lane * 43) % 360, 110, 225);
         if (project.muted.contains(clip.lane))
@@ -113,7 +116,7 @@ void Timeline::paintEvent(QPaintEvent*) {
         p.setClipRect(rect.adjusted(2, 2, -2, -2));
         p.setPen(QColor("#41345f"));
         p.drawText(QRectF(x + 7, y + 3, w - 14, 19), Qt::AlignLeft | Qt::AlignVCenter,
-                   QFileInfo(clip.source).completeBaseName());
+                   QFileInfo(clip.labelSource()).completeBaseName());
         const auto source = project.sources.value(clip.source);
         p.setPen(QPen(QColor("#8267ce"), 1));
         if (!source.peaks.isEmpty()) {
@@ -265,4 +268,26 @@ void Timeline::dropEvent(QDropEvent* event) {
         emit imported(files, laneAt(event->position().y()), at(event->position().x()));
         event->acceptProposedAction();
     }
+}
+void Timeline::keyPressEvent(QKeyEvent* event) {
+    if (busy) return;
+    if (event->key() == Qt::Key_PageDown || event->key() == Qt::Key_PageUp) {
+        if (project.clips.isEmpty()) return;
+        int index = -1; for (int i = 0; i < project.clips.size(); ++i) if (project.clips[i].id == selected) index = i;
+        if (index < 0 && event->key() == Qt::Key_PageUp) index = 0;
+        index = (index + (event->key() == Qt::Key_PageUp ? project.clips.size() - 1 : 1)) % project.clips.size();
+        selected = project.clips[index].id; cursor = project.clips[index].position;
+        setAccessibleDescription(QFileInfo(project.clips[index].labelSource()).fileName() + " · " + sf::timestamp(cursor));
+        emit cursorChanged(cursor); refresh(); event->accept(); return;
+    }
+    if (event->key() == Qt::Key_Left || event->key() == Qt::Key_Right) {
+        const double delta = (event->key() == Qt::Key_Right ? 1 : -1) * (event->modifiers().testFlag(Qt::ControlModifier) ? 1. : .01);
+        if (event->modifiers().testFlag(Qt::ShiftModifier) && !selected.isEmpty()) {
+            emit editStarted(); auto& clip = project.get(selected);
+            clip.position = project.freePosition(clip.lane, qMax(0., clip.position + delta), clip.duration(), clip.id);
+            emit changed();
+        } else { cursor = qBound(0., cursor + delta, project.duration()); emit cursorChanged(cursor); }
+        refresh(); event->accept(); return;
+    }
+    QAbstractScrollArea::keyPressEvent(event);
 }

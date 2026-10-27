@@ -1,20 +1,33 @@
 param(
     [Parameter(Mandatory=$true)][string]$Commit,
-    [string]$Tag = 'v3.1.0',
+    [string]$Tag = 'v3.2.0',
+    [switch]$AllowUnsigned,
     [long]$ResumeDraftId = 0
 )
 $ErrorActionPreference = 'Stop'
 $ReleaseRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+. (Join-Path $PSScriptRoot 'release_common.ps1')
 $ReleaseAssets = @(
     (Join-Path $ReleaseRoot 'dist\SonicForge-Setup.exe'),
+    (Join-Path $ReleaseRoot 'dist\SonicForge-Uninstall.exe'),
     (Join-Path $ReleaseRoot 'dist\SonicForge-windows-x64.zip'),
     (Join-Path $ReleaseRoot 'dist\SHA256SUMS.txt')
 )
-if ($Commit -notmatch '^[a-f0-9]{40}$' -or $Tag -ne 'v3.1.0') { throw 'Unexpected release identity' }
+if ($Commit -notmatch '^[a-f0-9]{40}$' -or $Tag -ne 'v3.2.0') { throw 'Unexpected release identity' }
 foreach ($ReleaseAsset in $ReleaseAssets) {
     if (-not (Test-Path -LiteralPath $ReleaseAsset -PathType Leaf)) { throw 'Missing release asset' }
+    if ((Get-Item -LiteralPath $ReleaseAsset).Length -ge 2GB) { throw "Release asset exceeds GitHub's 2 GiB limit: $([IO.Path]::GetFileName($ReleaseAsset))" }
 }
 Set-Location -LiteralPath $ReleaseRoot
+if (git status --porcelain) { throw 'Commit the verified source changes before publishing a release' }
+$VerifiedBundle = Test-BundleManifest $ReleaseRoot "$ReleaseRoot\dist\SonicForge"
+if ($VerifiedBundle.dirty -or $VerifiedBundle.commit -ne $Commit -or ('v'+$VerifiedBundle.version) -ne $Tag) { throw 'Build provenance does not match the release commit/version; rebuild from a clean checkout' }
+foreach ($SignedFile in @('dist\SonicForge\SonicForge.exe','dist\SonicForge-Setup.exe','dist\SonicForge-Uninstall.exe')) {
+    if (-not $AllowUnsigned -and (Get-AuthenticodeSignature -LiteralPath (Join-Path $ReleaseRoot $SignedFile)).Status -ne 'Valid') { throw 'Publisher signature is missing. Configure SF_SIGN_CERT_SHA1 or explicitly choose -AllowUnsigned.' }
+}
+foreach ($Line in Get-Content dist/SHA256SUMS.txt) { $Hash,$Name=$Line -split '  ',2; if((Get-FileHash -LiteralPath (Join-Path "$ReleaseRoot\dist" $Name)).Hash.ToLowerInvariant() -ne $Hash){throw "Release checksum mismatch: $Name"} }
+$ReleaseNames = @((Get-Content dist/SHA256SUMS.txt) | ForEach-Object { ($_ -split '  ',2)[1] })
+foreach ($Asset in $ReleaseAssets) { $Name = [IO.Path]::GetFileName($Asset); if ($Name -ne 'SHA256SUMS.txt' -and $Name -notin $ReleaseNames) { throw "Artifact is not part of this verified build: $Name" } }
 $ReleaseHead = git rev-parse HEAD
 if ($ReleaseHead -ne $Commit) { throw 'Release commit does not match local HEAD' }
 $ReleaseRemote = git ls-remote origin refs/heads/main
@@ -38,8 +51,8 @@ try {
     if ($ReleaseMatching -and (-not $ResumeDraftId -or $ReleaseMatching.id -ne $ResumeDraftId -or -not $ReleaseMatching.draft)) {
         throw 'This release already exists; it will not be overwritten'
     }
-    $ReleaseBody = Get-Content -LiteralPath (Join-Path $ReleaseRoot 'docs\RELEASE-3.1.0.md') -Raw -Encoding UTF8
-    $ReleasePayload = @{ tag_name=$Tag; target_commitish=$Commit; name='SonicForge 3.1.0';
+    $ReleaseBody = Get-Content -LiteralPath (Join-Path $ReleaseRoot 'docs\RELEASE-3.2.0.md') -Raw -Encoding UTF8
+    $ReleasePayload = @{ tag_name=$Tag; target_commitish=$Commit; name='SonicForge 3.2.0';
         body=$ReleaseBody; draft=$true; prerelease=$false } | ConvertTo-Json
     if ($ResumeDraftId) {
         if (-not $ReleaseMatching -or $ReleaseMatching.id -ne $ResumeDraftId -or -not $ReleaseMatching.draft) {
@@ -51,6 +64,8 @@ try {
         $ReleaseDraft = Invoke-RestMethod -Method Post -Uri "$ReleaseApi/releases" -Headers $ReleaseHeaders `
             -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($ReleasePayload))
     }
+    New-Item -ItemType Directory -Path "$ReleaseRoot\validation" -Force | Out-Null
+    @{id=$ReleaseDraft.id;tag=$Tag;commit=$Commit} | ConvertTo-Json | Set-Content "$ReleaseRoot\validation\release-draft.json" -Encoding utf8
     $ReleasePriorAssets = Invoke-RestMethod -Uri "$ReleaseApi/releases/$($ReleaseDraft.id)/assets" -Headers $ReleaseHeaders
     # Keep an incomplete upload private. Never replace an existing release.
     foreach ($ReleaseAsset in $ReleaseAssets) {
@@ -77,6 +92,12 @@ try {
     }
     $ReleaseUploadedAssets = Invoke-RestMethod -Uri "$ReleaseApi/releases/$($ReleaseDraft.id)/assets" -Headers $ReleaseHeaders
     if (@($ReleaseUploadedAssets).Count -ne $ReleaseAssets.Count) { throw 'Incomplete release; draft remains unpublished' }
+    foreach ($ReleaseAsset in $ReleaseAssets) {
+        $ReleaseFile = Get-Item -LiteralPath $ReleaseAsset
+        $ReleaseVerified = @($ReleaseUploadedAssets | Where-Object name -eq $ReleaseFile.Name)
+        $ReleaseExpectedHash = (Get-FileHash -LiteralPath $ReleaseFile.FullName).Hash.ToLowerInvariant()
+        if ($ReleaseVerified.Count -ne 1 -or $ReleaseVerified[0].state -ne 'uploaded' -or $ReleaseVerified[0].size -ne $ReleaseFile.Length -or $ReleaseVerified[0].digest -ne ('sha256:'+$ReleaseExpectedHash)) { throw "Server checksum verification failed: $($ReleaseFile.Name). Draft remains unpublished." }
+    }
     $ReleasePublished = Invoke-RestMethod -Method Patch -Uri "$ReleaseApi/releases/$($ReleaseDraft.id)" `
         -Headers $ReleaseHeaders -ContentType 'application/json' -Body '{"draft":false,"make_latest":"true"}'
     if ($ReleasePublished.draft -or $ReleasePublished.tag_name -ne $Tag) { throw 'Release publication could not be confirmed' }

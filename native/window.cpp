@@ -73,10 +73,26 @@ QString Window::localize(const QString& text) const {
         auto native = load(":/en-native.json");
         for (auto it = native.begin(); it != native.end(); ++it)
             result[it.key()] = it.value().toString();
+        const auto reliable = load(":/en-reliability.json");
+        for (auto it = reliable.begin(); it != reliable.end(); ++it) result[it.key()] = it.value().toString();
         return result;
     }();
     if (dictionary.contains(text))
         return dictionary.value(text);
+    struct Pattern { QRegularExpression expression; QString translation; QList<QString> placeholders; };
+    static const QList<Pattern> patterns = [&] {
+        QList<Pattern> result;
+        const QRegularExpression placeholder("%L?[1-9][0-9]?");
+        for (auto it = dictionary.begin(); it != dictionary.end(); ++it) {
+            auto matches = placeholder.globalMatch(it.key()); QString expression = "^"; qsizetype previous = 0; QList<QString> keys;
+            while (matches.hasNext()) { const auto match = matches.next(); expression += QRegularExpression::escape(it.key().mid(previous, match.capturedStart()-previous)) + "(.*?)"; keys << match.captured(); previous = match.capturedEnd(); }
+            if (keys.isEmpty()) continue;
+            expression += QRegularExpression::escape(it.key().mid(previous)) + "$";
+            result << Pattern{QRegularExpression(expression, QRegularExpression::DotMatchesEverythingOption), it.value(), keys};
+        }
+        return result;
+    }();
+    for (const auto& pattern : patterns) { const auto match = pattern.expression.match(text); if (match.hasMatch()) { auto result = pattern.translation; for (int i = pattern.placeholders.size()-1; i >= 0; --i) result.replace(pattern.placeholders[i], match.captured(i+1)); return result; } }
     for (auto it = dictionary.begin(); it != dictionary.end(); ++it)
         if (it.key().size() > 4 && it.key().endsWith(' ') && text.startsWith(it.key()))
             return it.value() + text.mid(it.key().size());
@@ -102,6 +118,9 @@ void Window::retranslate() {
     };
     for (auto* widget : findChildren<QWidget*>()) {
         widget->setLocale(QLocale(language));
+        if (!widget->accessibleName().isEmpty()) widget->setAccessibleName(translated(widget, widget->accessibleName(), "accessibleName"));
+        if (!widget->accessibleDescription().isEmpty()) widget->setAccessibleDescription(translated(widget, widget->accessibleDescription(), "accessibleDescription"));
+        if (!widget->toolTip().isEmpty()) widget->setToolTip(translated(widget, widget->toolTip(), "tooltip"));
         if (auto* label = qobject_cast<QLabel*>(widget)) {
             if (label->pixmap().isNull())
                 label->setText(translated(label, label->text(), "text"));
@@ -130,6 +149,7 @@ void Window::retranslate() {
                 browser->setHtml(browser->property("sfRussianHtml").toString());
         }
     }
+    for (auto* action : findChildren<QAction*>()) if (!action->text().isEmpty()) action->setText(translated(action, action->text(), "action"));
     timeline->setProperty("english", language == "en");
     source->setPlaceholderText(t("source"));
     output->setPlaceholderText(t("output"));
@@ -187,7 +207,7 @@ QToolButton* Window::tool(QBoxLayout* parent, const QString& name, const QString
     b->setIcon(sf::icon(name));
     b->setIconSize(QSize(24, 24));
     b->setFixedSize(44, 38);
-    b->setAccessibleName(localize(title));
+    b->setAccessibleName(title);
     b->setProperty("sfAction", title);
     b->setProperty("sfDescription", description);
     b->setProperty("sfIconName", name);
@@ -231,7 +251,8 @@ QDoubleSpinBox* Window::number(QFormLayout* layout, const QString& key, const QS
     spin->setAccessibleName(label);
     spin->setProperty("sfHelpTitle", label);
     spin->setProperty("sfHelpKey", key);
-    if (audioSliders) {
+    if (audioSliders || QStringList{"cover_detail", "cover_contrast", "cover_saturation",
+                                    "cover_softness"}.contains(key)) {
         double scale = QStringList{"gain", "width", "speed", "reverb"}.contains(key) ? 100 : 1;
         auto* panel = valueSlider(spin, scale == 100 ? "%" : QString(), scale);
         panel->setProperty("sfHelpTitle", label);
@@ -267,9 +288,9 @@ Window::Window() {
     QCoreApplication::setApplicationName("SonicForge");
     loadPreferences();
     loadLanguage();
-    setWindowTitle("SonicForge 3.1");
+    setWindowTitle("Sonic Forge[*]");
     resize(1120, 760);
-    setMinimumSize(920, 700);
+    setMinimumSize(760, 500);
     setWindowIcon(QIcon(":/assets/sonic_forge_mark.ico"));
     setStyleSheet(
         "QMainWindow,QWidget{background:#f7f6fb;color:#272232;font-family:'Segoe "
@@ -312,7 +333,7 @@ Window::Window() {
     navigation = new QTabBar;
     navigation->setExpanding(true);
     navigation->setDrawBase(false);
-    navigation->setUsesScrollButtons(false);
+    navigation->setUsesScrollButtons(true);
     navigation->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     layout->addWidget(navigation);
     paths = new QWidget;
@@ -336,6 +357,7 @@ Window::Window() {
     pathLayout->addWidget(files, 0, 2);
     pathLayout->addWidget(folder, 0, 3);
     pathLayout->addWidget(target, 1, 2, 1, 2);
+    controls << files << folder << target;
     connect(files, &QPushButton::clicked, this, [this] {
         QString path = QFileDialog::getOpenFileName(this, "Аудиофайл", {}, audioFilter());
         if (!path.isEmpty()) {
@@ -371,7 +393,7 @@ Window::Window() {
     mixFormat->addItems({"MP3", "WAV", "M4A"});
     mode->addWidget(mixFormat);
     mode->addStretch();
-    auto* native = new QLabel("3.1");
+    auto* native = new QLabel(QCoreApplication::applicationVersion());
     native->setStyleSheet("color:#90869f;font-size:9pt;");
     mode->addWidget(native);
     tabs = new QTabWidget;
@@ -409,7 +431,7 @@ Window::Window() {
         playerClock->setText(sf::timestamp(position / 1000.) + " / " +
                              sf::timestamp(player->duration() / 1000.));
         if (playingTimeline) {
-            timeline->cursor = qMin(timeline->project.duration(), position / 1000.);
+            timeline->cursor = qMin(timeline->project.duration(), playerOrigin + position / 1000.);
             if (selectionArmed)
                 timeline->selection = qMakePair(selectionStart, timeline->cursor);
             timeline->viewport()->update();
@@ -446,7 +468,7 @@ Window::Window() {
         workingSignature.clear();
     });
     mixFormat->setEnabled(true);
-    connect(mixFormat, &QComboBox::currentIndexChanged, this, [this] { workingSignature.clear(); });
+    connect(mixFormat, &QComboBox::currentIndexChanged, this, [this] { audioDirty = true; scheduleComparison(); markDirty(); });
     connect(navigation, &QTabBar::currentChanged, tabs, &QTabWidget::setCurrentIndex);
     connect(tabs, &QTabWidget::currentChanged, navigation, &QTabBar::setCurrentIndex);
     connect(tabs, &QTabWidget::currentChanged, this,
@@ -470,6 +492,46 @@ Window::Window() {
     }
     retranslate();
     updateState();
+    setupRecovery();
+    auto* fileMenu = menuBar()->addMenu("Проект");
+    fileMenu->addAction("Открыть проект…", QKeySequence::Open, this, [this] { openProject(); });
+    fileMenu->addAction("Сохранить проект", QKeySequence::Save, this, [this] { saveProject(); });
+    fileMenu->addAction("Сохранить проект как…", QKeySequence::SaveAs, this, [this] { const auto path = QFileDialog::getSaveFileName(this, localize("Сохранить проект как…"), projectPath, "Sonic Forge (*.sfproject)"); if (!path.isEmpty()) saveProject(path); });
+    connect(lyrics, &QPlainTextEdit::textChanged, this, &Window::markDirty);
+    for (auto* field : metadataFields) connect(field, &QLineEdit::textEdited, this, &Window::markDirty);
+    for (auto* field : numbers) connect(field, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &Window::markDirty);
+    for (auto* field : checks) connect(field, &QCheckBox::toggled, this, &Window::markDirty);
+    for (auto* field : choices) connect(field, &QComboBox::currentIndexChanged, this, &Window::markDirty);
+    const auto preferences = QJsonDocument::fromJson(QSettings().value("workspace/preferences").toByteArray()).object();
+    restoring = true;
+    for (auto it = numbers.begin(); it != numbers.end(); ++it) if (preferences["numbers"].toObject().contains(it.key())) { QSignalBlocker block(it.value()); it.value()->setValue(preferences["numbers"].toObject()[it.key()].toDouble()); }
+    for (auto it = choices.begin(); it != choices.end(); ++it) if (preferences["choices"].toObject().contains(it.key())) { QSignalBlocker block(it.value()); it.value()->setCurrentIndex(qBound(0, preferences["choices"].toObject()[it.key()].toInt(), it.value()->count()-1)); }
+    for (auto it = checks.begin(); it != checks.end(); ++it) if (preferences["checks"].toObject().contains(it.key()) && !it.key().startsWith("cover_")) { QSignalBlocker block(it.value()); it.value()->setChecked(preferences["checks"].toObject()[it.key()].toBool()); }
+    restoreGeometry(QSettings().value("window/geometry").toByteArray());
+    for (auto* field : numbers) syncValueControls(field);
+    retranslate();
+    restoring = false;
+    connect(source, &QLineEdit::textChanged, this, [this] {
+        if (restoring || busy) return;
+        if (!QFileInfo(source->text()).isFile()) { markDirty(); return; }
+        stop(); player->setSource({}); playerContext.clear(); pendingSeek.reset();
+        if (!lyricSource.isEmpty() && lyricSource != source->text() && !lyrics->toPlainText().isEmpty()) {
+            const auto root = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/lyric-drafts";
+            if (!QDir().mkpath(root)) throw sf::Error("Не удалось сохранить черновик текста");
+            const auto key = QString::fromLatin1(QCryptographicHash::hash(lyricSource.toUtf8(), QCryptographicHash::Sha256).toHex());
+            QSaveFile draft(root + "/" + key + ".json");
+            if (!draft.open(QIODevice::WriteOnly) || draft.write(QJsonDocument(QJsonObject{{"source", lyricSource}, {"text", lyricText()}}).toJson()) < 0 || !draft.commit()) throw sf::Error("Не удалось сохранить черновик текста");
+            lyrics->clear(); lyricTimes.clear();
+            status->setText(localize("Источник изменён. Предыдущий текст сохранён в черновике этой песни."));
+        }
+        if (lyricSource != source->text()) {
+            QSignalBlocker block(lyricTrack); lyricTrack->clear(); lyricTrack->addItem(localize("Основная (und)"), "und|");
+            const auto key = QString::fromLatin1(QCryptographicHash::hash(source->text().toUtf8(), QCryptographicHash::Sha256).toHex());
+            QFile draft(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/lyric-drafts/" + key + ".json");
+            if (draft.open(QIODevice::ReadOnly)) { const auto text = QJsonDocument::fromJson(draft.readAll()).object()["text"].toString(); lyricTimes = sf::parseLyrics(text, false); lyrics->setPlainText(showTimes->isChecked() ? text : sf::plainLyrics(text)); }
+        }
+        lyricSource = source->text(); workingSignature.clear(); markDirty();
+    });
 }
 void Window::buildEditor(QWidget* page) {
     auto* layout = new QVBoxLayout(page);
@@ -573,7 +635,8 @@ void Window::buildEditor(QWidget* page) {
     hint->setStyleSheet("color:#8b819c;font-size:9pt;");
     layout->addWidget(hint);
     timeline = new Timeline;
-    timeline->setFixedHeight(225);
+    timeline->setMinimumHeight(160);
+    timeline->setMaximumHeight(420);
     layout->addWidget(timeline);
     auto* navigation = row(layout);
     counter = new QLabel;
@@ -631,6 +694,7 @@ void Window::buildEditor(QWidget* page) {
     auto* transport = row(layout);
     playButton = tool(transport, "play", "Прослушать",
                       "Пробел. Прослушать монтаж с красного курсора.", [this] { preview(true); });
+    button(transport, "Слушать выделение / 30 с", [this] { previewRange(); });
     tool(transport, "stop", "Остановить", "Остановить звук, сохранив позицию курсора.",
          [this] { stop(); });
     transport->addStretch();
@@ -641,13 +705,14 @@ void Window::buildEditor(QWidget* page) {
     connect(timeline, &Timeline::editStarted, this, [this] { dragSnapshot = timeline->project; });
     connect(timeline, &Timeline::changed, this, [this] {
         undoHistory << dragSnapshot;
+        if (undoHistory.size() > 100) undoHistory.removeFirst();
         redoHistory.clear();
         projectChanged();
     });
     connect(timeline, &Timeline::stateChanged, this, &Window::updateState);
     connect(timeline, &Timeline::cursorChanged, this, [this](double value) {
-        if (player && playerContext == "editor" && !player->source().isEmpty())
-            player->setPosition(qRound64(value * 1000));
+        if (player && (playerContext == "editor" || playerContext == "excerpt") && !player->source().isEmpty())
+            player->setPosition(qRound64(qMax(0., value - playerOrigin) * 1000));
         if (selectionArmed)
             timeline->selection = qMakePair(selectionStart, value);
         updateState();
@@ -697,10 +762,11 @@ void Window::buildMetadata(QWidget* page) {
     auto* actions = row(layout);
     button(actions, "Прочитать", [this] { loadMetadata(); }, true);
     button(actions, "Очистить поля", [this] {
-        for (auto* field : metadataFields)
-            field->clear();
+        for (auto* field : metadataFields) { field->clear(); field->setModified(true); }
     });
     check(actions, "overwrite_genre", "Перезаписать жанр", false);
+    auto* automaticGenre = check(actions, "auto_genre", "Определять жанр автоматически · MSD", false);
+    automaticGenre->setToolTip("MSD musicnn: Rock, Pop, Jazz, Metal и другие жанры обученной модели. Это вероятностная подсказка; редкие жанры могут не определяться.");
     check(actions, "overwrite_metadata", "Перезаписать все метаданные", false);
     actions->addStretch();
     auto* box = group(layout, "Метаданные");
@@ -742,13 +808,11 @@ void Window::buildAudio(QWidget* page) {
     audioSliders = true;
     auto* actions = row(layout);
     button(actions, "Анализировать", [this] { analyzeAudio(); }, true);
-    button(actions, "Применить рекомендацию", [this] {
+    button(actions, "Применить пресет публикации", [this] {
         numbers["lufs"]->setValue(measurements.value("suggestedLufs").toDouble(-14));
         numbers["peak"]->setValue(measurements.value("suggestedTruePeak").toDouble(-1.5));
         checks["limiter"]->setChecked(true);
-        checks["auto_noise"]->setChecked(true);
-        checks["denoise"]->setChecked(measurements["flatness"].toDouble() > .35 &&
-                                      measurements["rmsDb"].toDouble() < -25);
+        checks["auto_noise"]->setChecked(false);
         numbers["highpass"]->setValue(measurements["bassFraction"].toDouble() > .8 ? 30 : 0);
     });
     actions->addStretch();
@@ -786,7 +850,7 @@ void Window::buildAudio(QWidget* page) {
     auto* effects = new QVBoxLayout(advanced);
     auto* flags = row(effects);
     check(flags, "denoise", "Убирать шум", false);
-    check(flags, "auto_noise", "Автоматический шумоподавитель", true);
+    check(flags, "auto_noise", "Автоматический шумоподавитель · экспериментальный", false);
     check(flags, "limiter", "Ограничитель пиков", true);
     check(flags, "compressor", "Компрессор", false);
     auto* columns = row(effects);
@@ -810,6 +874,9 @@ void Window::buildAudio(QWidget* page) {
     choice(right, "rate", "Частота дискретизации", {"Как в оригинале", "44100", "48000", "96000"});
     choice(right, "channels", "Каналы", {"Как в оригинале", "Моно", "Стерео"});
     choice(right, "quality", "Качество MP3", {"Максимальное", "Высокое", "Стандартное"});
+    choice(right, "output_format", "Формат обработанных файлов", {"MP3", "WAV", "FLAC", "M4A", "Opus"});
+    number(right, "preview_seconds", "Предпросмотр, с · 0 весь файл", 30, 0, 120, 1);
+    number(right, "preview_start", "Начало предпросмотра, с", 0, 0, 86400, .1);
     audioSliders = false;
     originalPane = new AudioPane("Оригинал");
     layout->addWidget(originalPane);
@@ -858,23 +925,39 @@ void Window::buildCover(QWidget* page) {
     scrollContent(page, layout);
     auto* actions = row(layout);
     button(actions, "Предпросмотр обложки", [this] { generateCover(); }, true);
+    auto* textButton = button(actions, "Текст и оформление…", [this] {
+        if (coverArtwork.background.isNull()) generateCover(true);
+        else coverTextSettings();
+    });
+    textButton->setObjectName("coverTextButton");
     button(actions, "Выбрать изображение", [this] {
         QString file = QFileDialog::getOpenFileName(this, "Обложка", {},
                                                     "Изображения (*.png *.jpg *.jpeg *.webp)");
         if (!file.isEmpty()) {
-            lastCover = file;
             customCoverFile = file;
-            coverPreview->setPixmap(
-                QPixmap(file).scaled(400, 400, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            auto metadata = metadataValues();
+            QString song = linked->isChecked() && !timeline->project.clips.isEmpty()
+                               ? timeline->project.clips.first().labelSource() : source->text();
+            sf::Metadata tags;
+            if (QFileInfo(song).isFile()) tags = sf::readMetadata(song);
+            tags = sf::coverMetadata(song, tags);
+            for (auto i = metadata.begin(); i != metadata.end(); ++i)
+                if (!i.value().isEmpty()) tags.values[i.key()] = i.value();
+            coverArtwork = sf::coverArtworkFromImage(QImage(file), tags, currentCoverOptions());
+            // Keep an imported picture intact until its lettering is enabled.
+            checks["cover_title"]->setChecked(false);
+            checks["cover_artist"]->setChecked(false);
+            checks["cover_symbol"]->setChecked(false);
+            refreshCoverPreview();
         }
     });
     button(actions, "Сохранить PNG", [this] {
-        if (lastCover.isEmpty())
+        if (coverImage.isNull())
             return;
         QString target =
             QFileDialog::getSaveFileName(this, "Сохранить обложку", "cover.png", "PNG (*.png)");
-        if (!target.isEmpty() && !QFile::copy(lastCover, target))
-            throw sf::Error("Не удалось сохранить изображение; выберите новое имя");
+        if (!target.isEmpty() && !coverImage.save(target, "PNG"))
+            throw sf::Error("Не удалось сохранить обложку");
     });
     actions->addStretch();
     auto* columns = row(layout);
@@ -885,7 +968,15 @@ void Window::buildCover(QWidget* page) {
            {"M2Pv1 — классический", "M2Pv2 — органический", "M2Pv3 — структура песни"},
            coverOptions.pattern);
     choice(form, "cover_color", "Цвет",
-           {"M2Pv1", "M2Pv2", "M2Pv3 — скорость ритма", "Своя палитра"}, coverOptions.colorSource);
+           {"M2Pv1", "M2Pv2", "M2Pv3 — скорость ритма", "Своя палитра", "Оригинальная палитра узора"}, coverOptions.colorSource);
+    auto* paletteActions = new QHBoxLayout;
+    form->addRow(paletteActions);
+    auto* paletteButton = button(paletteActions, "Настроить палитру…", [this] { coverSettings(); });
+    paletteButton->setObjectName("coverPaletteButton");
+    paletteActions->addStretch();
+    paletteButton->setVisible(coverOptions.colorSource == 3);
+    connect(choices["cover_color"], &QComboBox::currentIndexChanged, paletteButton,
+            [paletteButton](int index) { paletteButton->setVisible(index == 3); });
     number(form, "cover_size", "Размер, px", coverOptions.size, 128, 4096, 1);
     number(form, "cover_seed", "Seed", coverOptions.seed, 0, 2147483647, 1);
     auto* advancedLayout = new QVBoxLayout;
@@ -899,34 +990,43 @@ void Window::buildCover(QWidget* page) {
     number(form, "cover_softness", "Мягкость, %", coverOptions.softness, 0, 100, 1);
     auto* flags = new QVBoxLayout;
     form->addRow(flags);
-    check(flags, "cover_title", "Писать название", true);
-    check(flags, "cover_artist", "Писать исполнителя", false);
+    check(flags, "cover_title", "Писать название", coverOptions.title);
+    check(flags, "cover_artist", "Писать исполнителя", coverOptions.artist);
     check(flags, "cover_symbol", "Показывать символ", coverOptions.symbol);
-    check(flags, "embed_cover", "Встраивать обложку", true);
-    check(flags, "keep_cover", "Не менять обложку", false);
-    button(flags, "Настроить палитру…", [this] { coverSettings(); });
-    coverPreview = new QLabel("Предпросмотр");
-    coverPreview->setAlignment(Qt::AlignCenter);
+    coverPreview = new CoverPreview;
     coverPreview->setMinimumSize(320, 320);
     coverPreview->setMaximumSize(440, 440);
-    coverPreview->setStyleSheet("background:#eeeaf5;border-radius:10px;color:#8f85a3;");
-    columns->addWidget(coverPreview, 1);
+    columns->addWidget(coverPreview, 1, Qt::AlignTop);
+    for (const auto& key : {"cover_title", "cover_artist", "cover_symbol"})
+        connect(checks[key], &QCheckBox::toggled, this, [this] {
+            if (!coverArtwork.background.isNull()) {
+                try { refreshCoverPreview(); } catch (const std::exception& error) { failure(QString::fromUtf8(error.what())); }
+            }
+        });
+    auto invalidateTexture = [this] {
+        if (customCoverFile.isEmpty()) { coverArtwork.background = {}; coverImage = {}; lastCover.clear(); coverPreview->setImage({}); }
+    };
+    for (const auto& key : {"cover_pattern", "cover_color"})
+        connect(choices[key], &QComboBox::currentIndexChanged, this, [invalidateTexture](int) { invalidateTexture(); });
+    for (const auto& key : {"cover_size", "cover_seed", "cover_detail", "cover_contrast", "cover_saturation", "cover_softness"})
+        connect(numbers[key], qOverload<double>(&QDoubleSpinBox::valueChanged), this, [invalidateTexture](double) { invalidateTexture(); });
     layout->addStretch();
 }
 void Window::buildLyrics(QWidget* page) {
-    auto* layout = new QVBoxLayout(page);
+    QVBoxLayout* layout;
+    scrollContent(page, layout);
     layout->setContentsMargins(12, 14, 12, 12);
     auto* actions = row(layout);
     button(actions, "Открыть готовый", [this] { loadLyrics(); });
     button(actions, "Распознать / исправить тайминги", [this] { recognizeLyrics(); }, true);
-    button(actions, "Записать в песню", [this] { saveLyrics(); });
+    button(actions, "Сохранить текст", [this] { saveLyrics(); });
     button(actions, "Импорт TXT/LRC", [this] {
         auto file = QFileDialog::getOpenFileName(this, "Текст песни", {}, "Текст (*.txt *.lrc)");
         if (!file.isEmpty()) {
             QFile input(file);
             if (!input.open(QIODevice::ReadOnly))
                 throw sf::Error(input.errorString());
-            QString text = QString::fromUtf8(input.readAll());
+            QString text = sf::readTextFile(file);
             text.remove(QChar(0xfeff));
             lyrics->setPlainText(text);
             lyricTimes = sf::parseLyrics(text, false);
@@ -939,8 +1039,19 @@ void Window::buildLyrics(QWidget* page) {
     auto* options = row(layout);
     lyricFormat = new QComboBox;
     lyricFormat->addItems({"В песню (MP3, USLT)", "LRC", "TXT"});
+    lyricFormat->setMinimumContentsLength(23);
+    lyricFormat->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    auto updateLyricFormat = [this] {
+        const bool available = linked->isChecked() || QFileInfo(source->text()).suffix().compare("mp3", Qt::CaseInsensitive) == 0;
+        if (auto* model = qobject_cast<QStandardItemModel*>(lyricFormat->model())) model->item(0)->setEnabled(available);
+        if (!available && lyricFormat->currentIndex() == 0) lyricFormat->setCurrentIndex(2);
+    };
+    connect(source, &QLineEdit::textChanged, lyricFormat, updateLyricFormat);
+    connect(linked, &QCheckBox::toggled, lyricFormat, updateLyricFormat);
     options->addWidget(lyricFormat);
     lyricLanguage = new QComboBox;
+    lyricLanguage->setMinimumContentsLength(22);
+    lyricLanguage->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     for (auto pair : QList<QPair<QString, QString>>{{"Авто — русский звук", "other_ru"},
                                                     {"Авто — латиница", "other_en"},
                                                     {"Русский", "ru"},
@@ -966,6 +1077,16 @@ void Window::buildLyrics(QWidget* page) {
             [](int value) { QSettings().setValue("lyrics/quality", value); });
     options->addWidget(lyricQuality);
     options->addStretch();
+    auto* tracks = row(layout);
+    tracks->addWidget(new QLabel(localize("Версия встроенного текста")));
+    lyricTrack = new QComboBox; lyricTrack->addItem(localize("Основная (und)"), "und|"); tracks->addWidget(lyricTrack, 1);
+    connect(lyricTrack, &QComboBox::currentIndexChanged, this, [this](int index) {
+        const int previous = lyricTrack->property("sfPreviousTrack").toInt();
+        if (previous >= 0 && previous < lyricTrack->count() && previous != index) lyricTrack->setItemData(previous, lyricText(), Qt::UserRole + 1);
+        lyricTrack->setProperty("sfPreviousTrack", index);
+        const auto text = lyricTrack->itemData(index, Qt::UserRole + 1).toString();
+        lyricTimes = sf::parseLyrics(text, false); lyrics->setPlainText(showTimes->isChecked() ? text : sf::plainLyrics(text)); markDirty();
+    });
     auto* flags = row(layout);
     overwriteLyrics = check(flags, "overwrite_lyrics", "Перезаписать готовый текст", false);
     showTimes = check(flags, "show_times", "Показывать таймкоды", true);
@@ -1008,13 +1129,9 @@ void Window::buildLyrics(QWidget* page) {
                 lyricTimes = parsed;
             lyrics->setPlainText(sf::plainLyrics(text));
         } else {
-            auto lines = sf::plainLyrics(text).split('\n', Qt::SkipEmptyParts);
-            if (lines.size() == lyricTimes.size() && !lines.isEmpty()) {
-                auto copied = lyricTimes;
-                for (int i = 0; i < lines.size(); ++i)
-                    copied[i].text = lines[i];
-                lyrics->setPlainText(sf::lrc(copied));
-            }
+            QSignalBlocker block(showTimes); showTimes->setChecked(false);
+            const auto canonical = lyricText(); showTimes->setChecked(true);
+            lyrics->setPlainText(canonical);
         }
         cursor.setPosition(qMin(cursor.position(), lyrics->toPlainText().size()));
         lyrics->setTextCursor(cursor);
@@ -1088,9 +1205,17 @@ void Window::buildSettings(QWidget* page) {
     auto* appearance = group(layout, "Интерфейс");
     auto* form = new QFormLayout(appearance);
     auto* languageBox = new QComboBox;
+    languageBox->setObjectName("interfaceLanguage");
+    languageBox->setProperty("sfIgnoreWheel", true);
     languageBox->addItems({"Русский", "English"});
     languageBox->setCurrentIndex(language == "en" ? 1 : 0);
     form->addRow("Язык интерфейса", languageBox);
+    auto* quota = new QSpinBox; quota->setRange(1, 128); quota->setValue(QSettings().value("cache/maxGiB", 8).toInt()); quota->setSuffix(" GiB");
+    form->addRow(localize("Квота рабочего кэша"), quota);
+    connect(quota, &QSpinBox::valueChanged, this, [](int value) { QSettings().setValue("cache/maxGiB", value); });
+    auto* cacheActions = row(layout);
+    button(cacheActions, "Очистить неиспользуемый кэш", [this] { cleanWorkingCache(); sf::cleanCache(); });
+    button(cacheActions, "Очистить историю отмены", [this] { undoHistory.clear(); redoHistory.clear(); cleanWorkingCache(); updateState(); });
     connect(languageBox, &QComboBox::currentIndexChanged, this, [this](int i) {
         language = i ? "en" : "ru";
         loadLanguage();
@@ -1157,6 +1282,7 @@ void Window::startTask(const QString& name, std::function<WorkResult(sf::Progres
     linked->setEnabled(false);
     mixFormat->setEnabled(false);
     lyrics->setReadOnly(true);
+    updateInputs(false);
     watcher = new QFutureWatcher<WorkResult>(this);
     QPointer<Window> safe(this);
     sf::Progress progress = [safe](QString message, double fraction) {
@@ -1187,6 +1313,7 @@ void Window::startTask(const QString& name, std::function<WorkResult(sf::Progres
         linked->setEnabled(true);
         mixFormat->setEnabled(true);
         lyrics->setReadOnly(false);
+        updateInputs(true);
         cancelButton->setEnabled(false);
         progressBar->setRange(0, 1000);
         progressBar->setValue(result.error.isEmpty() ? 1000 : 0);
@@ -1205,6 +1332,7 @@ void Window::startTask(const QString& name, std::function<WorkResult(sf::Progres
                 }
         }
         updateState();
+        cleanWorkingCache();
     });
     auto previousComparison =
         comparisonWatcher ? comparisonWatcher->future() : QFuture<WorkResult>();
@@ -1230,6 +1358,7 @@ void Window::remember() {
     redoHistory.clear();
 }
 void Window::projectChanged() {
+    markDirty();
     scheduleComparison();
     stop();
     if (player) {
@@ -1385,6 +1514,7 @@ void Window::edit(const QString& operation) {
                     c.start = 0;
                     c.end = replacement.duration;
                     c.speed = 1;
+                    c.originalSource = clip.labelSource();
                     double total = c.fadeIn + c.fadeOut;
                     if (total > c.duration()) {
                         c.fadeIn *= c.duration() / total;
@@ -1463,6 +1593,7 @@ void Window::transition() {
             joined.gain = joined.fadeIn = joined.fadeOut = 0;
             joined.volume = joined.speed = 1;
             joined.bass = joined.mid = joined.treble = 0;
+            joined.originalSource = first.labelSource();
             timeline->project.clips.removeIf(
                 [&](const sf::Clip& c) { return c.id == first.id || c.id == second.id; });
             timeline->project.clips << joined;
@@ -1499,6 +1630,8 @@ void Window::separateSelected(bool two) {
             for (int i = 0; i < result.sources.size(); ++i) {
                 QString id = timeline->project.add(
                     result.sources[i], i == 0 ? clip.lane : nextLane + i - 1, clip.position);
+                auto& stem = timeline->project.get(id);
+                stem.originalSource = clip.labelSource();
                 if (i == 0)
                     timeline->selected = id;
             }
@@ -1522,7 +1655,7 @@ void Window::selectCursor() {
     timeline->refresh();
 }
 QString Window::prepare(const sf::Project& project, bool link, const QString& original,
-                        const QString& format) {
+                        const QString&) {
     if (!link) {
         if (!QFileInfo(original).isFile())
             throw sf::Error("Выберите один аудиофайл или включите связь с редактором");
@@ -1538,17 +1671,22 @@ QString Window::prepare(const sf::Project& project, bool link, const QString& or
     }
     QString signature = QString::fromLatin1(
         QCryptographicHash::hash(QJsonDocument(project.json()).toJson(QJsonDocument::Compact) +
-                                     revisions + format.toUtf8(),
+                                      revisions,
                                  QCryptographicHash::Sha256)
             .toHex());
     if (workingSignature == signature && QFile::exists(workingFile))
         return workingFile;
-    workingFile = sf::render(project, sf::uniqueFile("." + format), cancel);
+    const auto previousFile = workingFile;
+    workingFile = sf::render(project, sf::uniqueFile(".wav"), cancel);
+    // The rendered mix has a temporary UUID filename. Carry the original song's
+    // tags and fallback title so every consumer, including artwork, sees its name.
+    if (!previousFile.isEmpty() && previousFile != workingFile) QFile::remove(previousFile);
     workingSignature = signature;
     return workingFile;
 }
-void Window::playFile(const QString& file, bool editor, const QString& context) {
-    pendingSeek = editor ? qRound64(timeline->cursor * 1000) : 0;
+void Window::playFile(const QString& file, bool editor, const QString& context, double origin) {
+    playerOrigin = origin;
+    pendingSeek = editor ? qRound64(qMax(0., timeline->cursor - origin) * 1000) : 0;
     seekIsTimeline = editor;
     playingTimeline = false;
     playerContext = context.isEmpty() ? (editor ? "editor" : "lyrics") : context;
@@ -1596,19 +1734,53 @@ void Window::stop() {
     if (player)
         player->pause();
 }
+void Window::previewRange() {
+    if (busy || timeline->project.clips.isEmpty()) return;
+    const auto snapshot = timeline->project;
+    const double start = timeline->selection ? qMin(timeline->selection->first, timeline->selection->second) : timeline->cursor;
+    const double duration = timeline->selection ? std::abs(timeline->selection->second - timeline->selection->first) : 30;
+    startTask("Подготавливаю фрагмент…", [=, this](sf::Progress progress) {
+        WorkResult result; result.file = sf::render(snapshot, sf::uniqueFile(), cancel, start, duration, progress); return result;
+    }, [this, start](const WorkResult& result) { timeline->cursor = start; playFile(result.file, true, "excerpt", start); });
+}
 void Window::exportAudio() {
     if (busy || timeline->project.clips.isEmpty())
         return;
     QString target = QFileDialog::getSaveFileName(this, "Экспорт монтажа", "SonicForge-edit.wav",
-                                                  "WAV (*.wav);;MP3 (*.mp3);;M4A (*.m4a)");
+                                                  "WAV (*.wav);;MP3 (*.mp3);;M4A (*.m4a);;FLAC (*.flac);;Opus (*.opus)");
     if (target.isEmpty())
         return;
+    QDialog dialog(this); dialog.setWindowTitle(localize("Параметры экспорта"));
+    auto* layout = new QVBoxLayout(&dialog); auto* form = new QFormLayout; layout->addLayout(form);
+    auto* rate = new QComboBox; rate->addItems({localize("Как в исходниках"), "44100", "48000", "96000", "192000"}); form->addRow(localize("Частота, Hz"), rate);
+    auto* channels = new QComboBox; channels->addItems({localize("Как в исходниках"), localize("Моно"), localize("Стерео"), "5.1", "7.1"}); form->addRow(localize("Каналы"), channels);
+    auto* bits = new QComboBox; bits->addItems({"32-bit float", "24-bit PCM", "16-bit PCM"}); form->addRow(localize("Битность WAV"), bits); bits->setEnabled(QFileInfo(target).suffix().compare("wav", Qt::CaseInsensitive) == 0);
+    auto* limit = new QCheckBox(localize("Ограничивать пики до −0,45 dBFS")); form->addRow(limit);
+    auto* hint = new QLabel(localize("MP3 и M4A поддерживают до двух каналов. Внутренняя обработка использует float PCM; кодирование с потерями выполняется один раз.")); hint->setWordWrap(true); layout->addWidget(hint);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel); layout->addWidget(buttons); connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept); connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted) return;
+    sf::RenderOptions renderOptions;
+    renderOptions.sampleRate = rate->currentIndex() ? rate->currentText().toInt() : 0;
+    renderOptions.channels = QList<int>{0, 1, 2, 6, 8}[channels->currentIndex()];
+    renderOptions.bits = QList<int>{32, 24, 16}[bits->currentIndex()]; renderOptions.limiter = limit->isChecked(); renderOptions.quality = audioOptions().quality;
     auto snapshot = timeline->project;
+    for (const auto& source : snapshot.sources) if (QFileInfo(source.path).absoluteFilePath().compare(QFileInfo(target).absoluteFilePath(), Qt::CaseInsensitive) == 0) { failure(localize("Экспорт не должен заменять исходный файл проекта. Выберите другое имя.")); return; }
     startTask(
         "Экспортирую монтаж…",
-        [this, snapshot, target](sf::Progress p) {
+        [this, snapshot, target, renderOptions](sf::Progress p) {
             WorkResult result;
-            result.file = sf::render(snapshot, target, cancel, 0, -1, p);
+            if (!QFileInfo::exists(target)) result.file = sf::render(snapshot, target, cancel, 0, -1, p, renderOptions);
+            else {
+                QTemporaryDir stage(QFileInfo(target).absolutePath() + "/.sf-export-XXXXXX");
+                if (!stage.isValid()) throw sf::Error("Не удалось подготовить экспорт");
+                const auto rendered = sf::render(snapshot, stage.filePath(QFileInfo(target).fileName()), cancel, 0, -1, p, renderOptions);
+                sf::backupFile(target); sf::checkpoint(cancel);
+                QFile input(rendered); QSaveFile output(target);
+                if (!input.open(QIODevice::ReadOnly) || !output.open(QIODevice::WriteOnly)) throw sf::Error("Не удалось заменить файл экспорта");
+                while (!input.atEnd()) { sf::checkpoint(cancel); const auto bytes = input.read(1024 * 1024); if (bytes.isEmpty() && input.error() != QFile::NoError) throw sf::Error(input.errorString()); if (output.write(bytes) != bytes.size()) throw sf::Error(output.errorString()); }
+                if (!output.commit()) throw sf::Error(output.errorString());
+                result.file = target;
+            }
             return result;
         },
         [this](const WorkResult& result) {
@@ -1619,7 +1791,7 @@ void Window::exportAudio() {
 QMap<QString, QString> Window::metadataValues() const {
     QMap<QString, QString> values;
     for (auto i = metadataFields.begin(); i != metadataFields.end(); ++i)
-        values[i.key()] = i.value()->text().trimmed();
+        if (!i.value()->text().trimmed().isEmpty() || i.value()->isModified()) values[i.key()] = i.value()->text().trimmed();
     return values;
 }
 void Window::loadMetadata() {
@@ -1630,7 +1802,7 @@ void Window::loadMetadata() {
         "Читаю метаданные…",
         [this, snapshot, link, original, format](sf::Progress) {
             WorkResult result;
-            auto metadata = sf::readMetadata(prepare(snapshot, link, original, format), cancel);
+            auto metadata = sf::readMetadata(link && !snapshot.clips.isEmpty() ? snapshot.clips.first().labelSource() : prepare(snapshot, link, original, format), cancel);
             for (auto i = metadata.values.begin(); i != metadata.values.end(); ++i)
                 result.data[i.key()] = i.value();
             return result;
@@ -1708,44 +1880,34 @@ void Window::analyzeAudio() {
                     .arg(result.data["modified"].toObject()["integratedLufs"].toString()));
         });
 }
-void Window::generateCover() {
+void Window::generateCover(bool editText) {
     auto snapshot = timeline->project;
     bool link = linked->isChecked();
     QString original = source->text(), format = mixFormat->currentText().toLower();
     auto metadata = metadataValues();
-    auto options = coverOptions;
-    options.symbol = checks["cover_symbol"]->isChecked();
-    options.size = qRound(numbers["cover_size"]->value());
-    options.seed = qRound(numbers["cover_seed"]->value());
-    options.pattern = choices["cover_pattern"]->currentIndex();
-    options.colorSource = choices["cover_color"]->currentIndex();
-    options.detail = qRound(numbers["cover_detail"]->value());
-    options.contrast = qRound(numbers["cover_contrast"]->value());
-    options.saturation = qRound(numbers["cover_saturation"]->value());
-    options.softness = qRound(numbers["cover_softness"]->value());
-    options.title = checks["cover_title"]->isChecked();
-    options.artist = checks["cover_artist"]->isChecked();
+    auto options = currentCoverOptions();
     startTask(
         "Создаю обложку…",
         [this, snapshot, link, original, format, metadata, options](sf::Progress) {
             QString input = prepare(snapshot, link, original, format);
-            auto tags = sf::readMetadata(input, cancel);
+            const auto tagSource = link && !snapshot.clips.isEmpty() ? snapshot.clips.first().labelSource() : input;
+            auto tags = sf::coverMetadata(tagSource, sf::readMetadata(tagSource, cancel));
             for (auto i = metadata.begin(); i != metadata.end(); ++i)
                 if (!i.value().isEmpty())
                     tags.values[i.key()] = i.value();
             WorkResult result;
-            result.image = sf::makeCover(input, tags, options, cancel);
-            result.file = sf::uniqueFile(".png");
-            if (!result.image.save(result.file))
-                throw sf::Error("Не удалось сохранить обложку");
+            result.artwork = sf::makeCoverArtwork(input, tags, options, cancel);
+            result.image = sf::decorateCover(result.artwork, options, cancel);
             return result;
         },
-        [this](const WorkResult& result) {
+        [this, editText](const WorkResult& result) {
             lastCover = result.file;
+            coverArtwork = result.artwork;
+            coverImage = result.image;
             customCoverFile.clear();
-            coverPreview->setPixmap(
-                QPixmap::fromImage(result.image)
-                    .scaled(400, 400, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            coverPreview->setImage(coverImage, sf::layoutCoverText(coverArtwork.metadata, currentCoverOptions()).bounds);
+            markDirty();
+            if (editText) coverTextSettings();
         });
 }
 void Window::coverSettings() {
@@ -1771,7 +1933,7 @@ void Window::coverSettings() {
             item->setBackground(colors[i]);
             item->setForeground(colors[i].lightness() < 128 ? Qt::white : Qt::black);
         }
-        list->setCurrentRow(qMin(selected, int(colors.size()) - 1));
+        list->setCurrentRow(qBound(0, selected, int(colors.size()) - 1));
         gradient->update();
     };
     refresh();
@@ -1784,7 +1946,7 @@ void Window::coverSettings() {
             refresh();
         }
     });
-    button(actions, "Изменить", [&] {
+    auto editColor = [&] {
         int at = list->currentRow();
         if (at < 0)
             return;
@@ -1793,7 +1955,10 @@ void Window::coverSettings() {
             colors[at] = color;
             refresh();
         }
-    });
+    };
+    button(actions, "Изменить", editColor);
+    connect(list, &QListWidget::itemDoubleClicked, &dialog,
+            [&](QListWidgetItem*) { editColor(); });
     button(actions, "Удалить", [&] {
         int at = list->currentRow();
         if (at >= 0 && colors.size() > 1) {
@@ -1805,7 +1970,11 @@ void Window::coverSettings() {
     auto* position = new QDoubleSpinBox;
     position->setRange(0, 100);
     position->setDecimals(1);
-    layout->addWidget(position);
+    position->setSuffix(" %");
+    auto* positionRow = new QFormLayout;
+    positionRow->addRow(localize("Позиция цвета"), position);
+    layout->addLayout(positionRow);
+    position->setValue(stops.value(list->currentRow()) * 100);
     connect(list, &QListWidget::currentRowChanged, &dialog, [&](int i) {
         QSignalBlocker blocker(position);
         if (i >= 0)
@@ -1842,6 +2011,8 @@ void Window::coverSettings() {
             coverOptions.stops << stops[i];
         }
         choices["cover_color"]->setCurrentIndex(3);
+        if (customCoverFile.isEmpty()) coverArtwork.background = {};
+        markDirty();
         savePreferences();
     }
 }
@@ -1852,9 +2023,11 @@ void Window::loadLyrics() {
     startTask(
         "Читаю текст песни…",
         [this, snapshot, link, original, format](sf::Progress) {
-            QString input = prepare(snapshot, link, original, format);
+            QString input = link && !snapshot.clips.isEmpty() ? snapshot.clips.first().labelSource() : prepare(snapshot, link, original, format);
             WorkResult result;
             result.text = sf::readMetadata(input, cancel).values.value("lyrics");
+            const auto metadata = sf::readMetadata(input, cancel);
+            QJsonObject tracks; for (auto it = metadata.lyricTracks.cbegin(); it != metadata.lyricTracks.cend(); ++it) tracks[it.key()] = it.value(); result.data["tracks"] = tracks;
             if (result.text.isEmpty()) {
                 for (auto ext : {".lrc", ".txt"}) {
                     QFile file(QFileInfo(input).absolutePath() + "/" +
@@ -1867,12 +2040,31 @@ void Window::loadLyrics() {
             }
             if (result.text.isEmpty())
                 throw sf::Error("Готовый текст не найден");
+            if (link && !snapshot.clips.isEmpty()) {
+                const auto clip = snapshot.clips.first();
+                if (!clip.originalSource.isEmpty() || snapshot.clips.size() > 1) {
+                    result.text = sf::plainLyrics(result.text); result.data["needsAlignment"] = true;
+                } else {
+                    auto lines = sf::parseLyrics(result.text, false);
+                    if (!lines.isEmpty()) {
+                        lines.removeIf([&](const sf::Lyric& line) { return line.start < clip.start || line.start >= clip.end; });
+                        for (auto& line : lines) { line.start = clip.position + (line.start - clip.start) / (clip.speed > 0 ? clip.speed : 1); }
+                        result.text = sf::lrc(lines);
+                    }
+                }
+            }
             return result;
         },
         [this](const WorkResult& result) {
+            QSignalBlocker block(lyricTrack); lyricTrack->clear();
+            const auto tracks = result.data["tracks"].toObject(); for (auto it = tracks.begin(); it != tracks.end(); ++it) { lyricTrack->addItem(it.key().replace('|', " · "), it.key()); lyricTrack->setItemData(lyricTrack->count()-1, it.value().toString(), Qt::UserRole+1); }
+            if (!lyricTrack->count()) { lyricTrack->addItem(localize("Основная (und)"), "und|"); lyricTrack->setItemData(0, result.text, Qt::UserRole + 1); }
+            for (int i = 0; i < lyricTrack->count(); ++i) if (lyricTrack->itemData(i, Qt::UserRole + 1).toString() == result.text) { lyricTrack->setCurrentIndex(i); break; }
+            lyricTrack->setProperty("sfPreviousTrack", lyricTrack->currentIndex());
             lyricTimes = sf::parseLyrics(result.text, false);
             lyrics->setPlainText(showTimes->isChecked() ? result.text
                                                         : sf::plainLyrics(result.text));
+            if (result.data["needsAlignment"].toBool()) { lyricMode->setCurrentIndex(1); status->setText(localize("Текст взят из первой песни. Для изменённого монтажа выполните коррекцию таймингов.")); }
         });
 }
 void Window::recognizeLyrics() {
@@ -1880,7 +2072,7 @@ void Window::recognizeLyrics() {
     bool link = linked->isChecked(), vocals = separateVocals->isChecked(),
          align = lyricMode->currentIndex() == 1, fast = lyricQuality->currentIndex() == 1;
     QString original = source->text(), format = mixFormat->currentText().toLower(),
-            lang = lyricLanguage->currentData().toString(), text = lyrics->toPlainText();
+            lang = lyricLanguage->currentData().toString(), text = lyricText();
     if (align && sf::plainLyrics(text).isEmpty())
         throw sf::Error("Сначала введите или импортируйте текст");
     startTask(
@@ -1888,8 +2080,10 @@ void Window::recognizeLyrics() {
         [this, snapshot, link, vocals, align, fast, original, format, lang, text](sf::Progress p) {
             QString input = prepare(snapshot, link, original, format);
             QString reference = vocals ? input : QString();
-            if (vocals)
+            if (vocals) {
+                p("Выделяю вокал…", 0);
                 input = sf::separate(input, true, cancel, p).first();
+            }
             WorkResult result;
             result.lyrics = align ? sf::alignLyrics(input, text, lang, cancel, p, reference, fast)
                                   : sf::recognize(input, lang, cancel, p, reference, fast);
@@ -1906,7 +2100,8 @@ void Window::recognizeLyrics() {
         });
 }
 void Window::saveLyrics() {
-    QString text = lyrics->toPlainText();
+    if (busy) return;
+    QString text = lyricText();
     if (text.trimmed().isEmpty())
         throw sf::Error("Нет текста для сохранения");
     auto snapshot = timeline->project;
@@ -1915,25 +2110,49 @@ void Window::saveLyrics() {
             exportFormat = lyricFormat->currentIndex() == 0   ? "embedded"
                            : lyricFormat->currentIndex() == 1 ? "lrc"
                                                               : "txt";
+    if (!link && !lyricSource.isEmpty() && lyricSource != original) throw sf::Error("Текст относится к другой песне. Вернитесь к исходнику или импортируйте текст для выбранной песни.");
+    QString sidecar;
+    const auto track = lyricTrack->currentData().toString();
+    if (exportFormat != "embedded") {
+        const auto suggestion = (link ? (output->text().isEmpty() ? QDir::homePath() : output->text()) + "/SonicForge-mix" : QFileInfo(original).absolutePath() + "/" + QFileInfo(original).completeBaseName()) + "." + exportFormat;
+        sidecar = QFileDialog::getSaveFileName(this, localize("Сохранить текст"), suggestion, exportFormat == "lrc" ? "LRC (*.lrc)" : "TXT (*.txt)");
+        if (sidecar.isEmpty()) return;
+    }
+    auto restore = exportFormat == "embedded"
+                       ? releaseAudioForWrite(link ? workingFile : original) : std::function<void()>([] {});
     startTask(
         "Сохраняю текст…",
-        [this, snapshot, link, original, format, text, exportFormat](sf::Progress) {
+        [this, snapshot, link, original, format, text, exportFormat, sidecar, track](sf::Progress) {
             WorkResult result;
+            if (!sidecar.isEmpty()) { result.file = sf::saveLyricsFile(sidecar, text, exportFormat, cancel); return result; }
+            if (link) { result.file = projectPath; return result; }
             result.file = prepare(snapshot, link, original, format);
-            sf::saveLyrics(result.file, text, exportFormat, cancel);
+            if (!link && exportFormat == "embedded") result.data["backup"] = sf::backupFile(result.file);
+            result.file = sf::saveLyrics(result.file, text, exportFormat, cancel, track.section('|',0,0), track.section('|',1));
+            // The tag replacement is committed. Finish synchronizing the project
+            // even if cancellation arrives while hashing, or our own write looks external.
+            if (snapshot.sources.contains(result.file)) { auto s = snapshot.sources.value(result.file); QFileInfo info(result.file); s.size = info.size(); s.modified = info.lastModified().toMSecsSinceEpoch(); s.fingerprint = sf::fileFingerprint(result.file); result.sources << s; }
             return result;
         },
         [this, link](const WorkResult& result) {
+            for (const auto& s : result.sources) {
+                timeline->project.sources[s.path] = s;
+                for (auto& project : undoHistory) if (project.sources.contains(s.path)) project.sources[s.path] = s;
+                for (auto& project : redoHistory) if (project.sources.contains(s.path)) project.sources[s.path] = s;
+                workingSignature.clear();
+            }
+            lyricSource = source->text(); markDirty();
             status->setText(
                 link ? "Текст сохранён в рабочем монтаже; «Выполнение» запишет его в итоговый файл."
                      : "Текст сохранён: " + result.file);
         });
+    connect(watcher, &QFutureWatcher<WorkResult>::finished, this, [restore] { restore(); });
 }
 void Window::insertStamp(bool live, bool advance) {
     if (busy)
         return;
     double at = live ? (player && !player->source().isEmpty() && playerContext != "comparison"
-                            ? player->position() / 1000.
+                            ? playerOrigin + player->position() / 1000.
                             : timeline->cursor)
                      : sf::parseTime(stamp->text());
     if (live)
@@ -1976,29 +2195,18 @@ void Window::processFiles() {
     QString format = mixFormat->currentText().toLower();
     auto metadata = metadataValues();
     auto audio = audioOptions();
-    QString supplied = lyrics->toPlainText(), language = lyricLanguage->currentData().toString();
+    QString supplied = lyricText(), language = lyricLanguage->currentData().toString();
     bool timing = lyricMode->currentIndex() == 1, fastSpeech = lyricQuality->currentIndex() == 1,
          overwrite = overwriteLyrics->isChecked(), vocals = separateVocals->isChecked(),
          tags = checks["process_metadata"]->isChecked(),
          sound = checks["process_audio"]->isChecked(),
          words = checks["process_lyrics"]->isChecked(), art = checks["process_cover"]->isChecked(),
          replace = checks["overwrite_metadata"]->isChecked(), keepLyrics = true,
-         replaceGenre = checks["overwrite_genre"]->isChecked(),
-         keepCover = checks["keep_cover"]->isChecked(), embed = checks["embed_cover"]->isChecked();
+          replaceGenre = checks["overwrite_genre"]->isChecked(), automaticGenre = checks["auto_genre"]->isChecked();
+    const QString soundFormat = link ? format : choices["output_format"]->currentText().toLower();
     if (!tags && !sound && !words && !art)
         throw sf::Error("Выберите хотя бы один этап");
-    auto cover = coverOptions;
-    cover.symbol = checks["cover_symbol"]->isChecked();
-    cover.size = qRound(numbers["cover_size"]->value());
-    cover.seed = qRound(numbers["cover_seed"]->value());
-    cover.pattern = choices["cover_pattern"]->currentIndex();
-    cover.colorSource = choices["cover_color"]->currentIndex();
-    cover.detail = qRound(numbers["cover_detail"]->value());
-    cover.contrast = qRound(numbers["cover_contrast"]->value());
-    cover.saturation = qRound(numbers["cover_saturation"]->value());
-    cover.softness = qRound(numbers["cover_softness"]->value());
-    cover.title = checks["cover_title"]->isChecked();
-    cover.artist = checks["cover_artist"]->isChecked();
+    auto cover = currentCoverOptions();
     QString custom = customCoverFile;
     tabs->setCurrentIndex(5);
     startTask(
@@ -2033,34 +2241,38 @@ void Window::processFiles() {
                 throw sf::Error("Не удалось создать временную папку");
             QList<QPair<QString, QString>> publishing;
             QSet<QString> names;
+            QMap<QString, QString> planned;
+            QStringList eligible, errors;
+            for (const auto& input : files) {
+                QString relative = link ? "SonicForge-mix." + format : QFileInfo(original).isDir() ? QDir(original).relativeFilePath(input) : QFileInfo(input).fileName();
+                if (sound) relative = QFileInfo(relative).path() + "/" + QFileInfo(relative).completeBaseName() + "." + soundFormat;
+                relative = QDir::cleanPath(relative);
+                const auto target = QDir(destinationAbsolute).filePath(relative);
+                if (relative.startsWith("..") || QDir::isAbsolutePath(relative) || QFileInfo::exists(target) || names.contains(target.toCaseFolded())) { errors << "Пропущено (путь или имя заняты): " + input; continue; }
+                names.insert(target.toCaseFolded()); planned[input] = relative; eligible << input;
+            }
+            files = eligible;
+            names.clear();
+            if (files.isEmpty()) throw sf::Error(errors.join('\n'));
             for (int index = 0; index < files.size(); ++index) {
                 sf::checkpoint(cancel);
                 QString input = files[index];
-                QString relative = link ? "SonicForge-mix." + format
-                                   : QFileInfo(original).isDir()
-                                       ? QDir(original).relativeFilePath(input)
-                                       : QFileInfo(input).fileName();
-                if (sound)
-                    relative = QFileInfo(relative).path() + "/" +
-                               QFileInfo(relative).completeBaseName() + ".mp3";
-                relative = QDir::cleanPath(relative);
-                if (relative.startsWith("..") || QDir::isAbsolutePath(relative))
-                    throw sf::Error("Неверный путь результата");
-                QString target = QDir(destinationAbsolute).filePath(relative);
-                if (QFileInfo::exists(target) || names.contains(target.toCaseFolded()))
-                    throw sf::Error("Выберите новую папку: файл результата уже существует — " +
-                                    target);
-                names.insert(target.toCaseFolded());
-                QString staged = staging.filePath(relative);
+                const QString relative = planned.value(input);
+                QTemporaryDir track(staging.filePath(".track-XXXXXX"));
+                if (!track.isValid()) throw sf::Error("Не удалось создать временную папку трека");
+                QString staged = track.filePath(relative);
                 QDir().mkpath(QFileInfo(staged).absolutePath());
                 progress(QString("[%1/%2] %3")
                              .arg(index + 1)
                              .arg(files.size())
                              .arg(QFileInfo(input).fileName()),
                          double(index) / files.size());
-                auto originalTags = sf::readMetadata(input, cancel);
+                try {
+                const auto tagSource = link && !snapshot.clips.isEmpty() ? snapshot.clips.first().labelSource() : input;
+                auto originalTags = sf::coverMetadata(tagSource, sf::readMetadata(tagSource, cancel));
                 if (sound) {
                     sf::normalize(input, staged, audio, cancel, progress);
+                    if (originalTags.values.contains("lyrics")) originalTags.values["lyrics"] = sf::scaleLyrics(originalTags.values["lyrics"], audio.speed);
                     sf::writeMetadata(staged, originalTags.values, false, false, originalTags.cover,
                                       !originalTags.cover.isEmpty(), cancel);
                 } else if (!QFile::copy(input, staged))
@@ -2074,7 +2286,7 @@ void Window::processFiles() {
                     if (!replaceGenre && !originalTags.values.value("genre").isEmpty() &&
                         values.value("genre").isEmpty())
                         values["genre"] = originalTags.values.value("genre");
-                    else if (values.value("genre").isEmpty()) {
+                    else if (values.value("genre").isEmpty() && automaticGenre) {
                         QString recognized = sf::genre(input, cancel, progress);
                         if (!recognized.isEmpty())
                             values["genre"] = recognized;
@@ -2090,7 +2302,8 @@ void Window::processFiles() {
                             QFile sidecar(QFileInfo(input).absolutePath() + "/" +
                                           QFileInfo(input).completeBaseName() + ext);
                             if (sidecar.open(QIODevice::ReadOnly)) {
-                                existing = QString::fromUtf8(sidecar.readAll());
+                                existing = sf::readTextFile(sidecar.fileName());
+                                if (sound) existing = sf::scaleLyrics(existing, audio.speed);
                                 break;
                             }
                         }
@@ -2098,50 +2311,48 @@ void Window::processFiles() {
                     QString text = link && !supplied.trimmed().isEmpty() ? supplied : existing;
                     if (timing) {
                         if (!text.trimmed().isEmpty()) {
-                            QString speech = input;
-                            if (vocals)
-                                speech = sf::separate(input, true, cancel, progress).first();
+                            QString speech = sound ? staged : input;
+                            if (vocals) {
+                                progress("Выделяю вокал…", 0);
+                                speech = sf::separate(speech, true, cancel, progress).first();
+                            }
                             auto aligned = sf::alignLyrics(speech, text, language, cancel, progress,
-                                                           vocals ? input : QString(), fastSpeech);
+                                                           vocals ? (sound ? staged : input) : QString(), fastSpeech);
                             text = sf::lrc(aligned);
                             sf::saveLyrics(staged, text,
                                            QFileInfo(staged).suffix() == "mp3" ? "embedded" : "lrc",
                                            cancel);
                         }
                     } else if (link && !supplied.trimmed().isEmpty())
-                        sf::saveLyrics(staged, supplied,
+                        sf::saveLyrics(staged, sound ? sf::scaleLyrics(supplied, audio.speed) : supplied,
                                        QFileInfo(staged).suffix() == "mp3" ? "embedded"
                                        : supplied.contains(QRegularExpression("\\[\\d+:")) ? "lrc"
                                                                                            : "txt",
                                        cancel);
                     else if (existing.isEmpty() || overwrite) {
-                        QString speech = input;
+                        QString speech = sound ? staged : input;
                         if (vocals)
-                            speech = sf::separate(input, true, cancel, progress).first();
+                            speech = sf::separate(speech, true, cancel, progress).first();
                         auto recognized = sf::recognize(speech, language, cancel, progress,
-                                                        vocals ? input : QString(), fastSpeech);
+                                                        vocals ? (sound ? staged : input) : QString(), fastSpeech);
                         if (!recognized.isEmpty())
                             sf::saveLyrics(staged, sf::lrc(recognized),
                                            QFileInfo(staged).suffix() == "mp3" ? "embedded" : "lrc",
                                            cancel);
                     }
                 }
-                if (art && !keepCover) {
+                if (art) {
+                    const auto suffix = QFileInfo(staged).suffix().toLower();
+                    if (!QStringList{"mp3", "flac", "m4a", "ogg", "opus"}.contains(suffix))
+                        throw sf::Error("Встраивание обложки недоступно для формата " + suffix.toUpper() +
+                                        ". Используйте MP3, FLAC, M4A, Ogg или Opus.");
                     QImage image;
+                    auto values = originalTags;
+                    for (auto i = metadata.begin(); i != metadata.end(); ++i)
+                        if (!i.value().isEmpty()) values.values[i.key()] = i.value();
                     if (!custom.isEmpty()) {
-                        image.load(custom);
-                        if (image.isNull())
-                            throw sf::Error("Не удалось прочитать свою обложку");
-                        image = image.scaled(cover.size, cover.size, Qt::KeepAspectRatioByExpanding,
-                                             Qt::SmoothTransformation);
-                        int left = (image.width() - cover.size) / 2,
-                            top = (image.height() - cover.size) / 2;
-                        image = image.copy(left, top, cover.size, cover.size);
+                        image = sf::decorateCover(sf::coverArtworkFromImage(QImage(custom), values, cover), cover, cancel);
                     } else {
-                        auto values = originalTags;
-                        for (auto i = metadata.begin(); i != metadata.end(); ++i)
-                            if (!i.value().isEmpty())
-                                values.values[i.key()] = i.value();
                         image = sf::makeCover(input, values, cover, cancel);
                     }
                     QByteArray bytes;
@@ -2149,15 +2360,20 @@ void Window::processFiles() {
                     buffer.open(QIODevice::WriteOnly);
                     if (!image.save(&buffer, "JPEG", 94))
                         throw sf::Error("Не удалось закодировать обложку");
-                    if (embed)
-                        sf::writeMetadata(staged, {}, false, true, bytes, true, cancel);
-                    QString coverRelative = QFileInfo(relative).path() + "/" +
-                                            QFileInfo(relative).completeBaseName() + ".png";
-                    QString coverFile = staging.filePath(coverRelative);
-                    if (!image.save(coverFile))
-                        throw sf::Error("Не удалось сохранить PNG");
+                    sf::writeMetadata(staged, {}, false, true, bytes, true, cancel);
                 }
-                publishing << qMakePair(staged, target);
+                QList<QPair<QString, QString>> completedTrack;
+                QDirIterator generated(track.path(), QDir::Files, QDirIterator::Subdirectories);
+                while (generated.hasNext()) {
+                    const auto from = generated.next(), to = staging.filePath(QDir(track.path()).relativeFilePath(from));
+                    QDir().mkpath(QFileInfo(to).absolutePath());
+                    completedTrack << qMakePair(from, to);
+                }
+                sf::publishFiles(completedTrack);
+                } catch (const std::exception& error) {
+                    sf::checkpoint(cancel);
+                    errors << QFileInfo(input).fileName() + ": " + QString::fromUtf8(error.what());
+                }
             }
             sf::checkpoint(cancel);
             QDirIterator all(staging.path(), QDir::Files, QDirIterator::Subdirectories);
@@ -2175,17 +2391,21 @@ void Window::processFiles() {
                         relative = QDir(staging.path()).relativeFilePath(staged),
                         target = QDir(destinationAbsolute).filePath(relative);
                 QDir().mkpath(QFileInfo(target).absolutePath());
-                if (!QFile::rename(staged, target))
-                    throw sf::Error("Не удалось опубликовать результат: " + target);
+                publishing << qMakePair(staged, target);
                 result.files << target;
             }
+            sf::publishFiles(publishing);
+            result.data["warnings"] = QJsonArray::fromStringList(errors);
+            if (result.files.isEmpty() && !errors.isEmpty()) throw sf::Error(errors.join('\n'));
             progress("Обработка завершена", 1);
             return result;
         },
         [this](const WorkResult& result) {
             for (auto& file : result.files)
                 appendLog("Сохранено: " + file);
-            status->setText("Готово. Файлов: " + QString::number(result.files.size()));
+            const auto warnings = result.data["warnings"].toArray();
+            for (const auto& warning : warnings) appendLog(warning.toString());
+            status->setText(localize("Готово. Файлов: ") + QString::number(result.files.size()) + (warnings.isEmpty() ? QString() : localize(" · Пропущено: ") + QString::number(warnings.size())));
         });
 }
 void Window::loadPreferences() {
@@ -2209,6 +2429,14 @@ void Window::loadPreferences() {
     integer("softness", coverOptions.softness);
     integer("size", coverOptions.size);
     integer("seed", coverOptions.seed);
+    coverOptions.text = options["text"].toString();
+    coverOptions.fontFamily = options["font"].toString("Unbounded");
+    coverOptions.textSize = qBound(1., options["text_size"].toDouble(7.2), 20.);
+    coverOptions.textX = qBound(0., options["text_x"].toDouble(50), 100.);
+    coverOptions.textY = qBound(0., options["text_y"].toDouble(76), 100.);
+    coverOptions.ink = QColor(options["ink"].toString());
+    coverOptions.title = options["title"].toBool(true);
+    coverOptions.artist = options["artist"].toBool(false);
     if (options["pattern"].isString())
         coverOptions.pattern = options["pattern"] == "legacy"   ? 0
                                : options["pattern"] == "modern" ? 1
@@ -2222,6 +2450,8 @@ void Window::loadPreferences() {
                                                                          : 2;
     else
         integer("color_source", coverOptions.colorSource);
+    if (!options["reference_palettes"].toBool() && coverOptions.colorSource != 3)
+        coverOptions.colorSource = 4;
     QStringList palette = settings.value("cover/palette").toStringList();
     auto positions = settings.value("cover/positions").toList();
     if (palette.isEmpty()) {
@@ -2256,6 +2486,15 @@ void Window::savePreferences() {
     settings.setValue("cover/palette", palette);
     settings.setValue("cover/positions", stops);
     QJsonObject options;
+    options["text"] = coverOptions.text;
+    options["font"] = coverOptions.fontFamily;
+    options["text_size"] = coverOptions.textSize;
+    options["text_x"] = coverOptions.textX;
+    options["text_y"] = coverOptions.textY;
+    options["ink"] = coverOptions.ink.isValid() ? coverOptions.ink.name() : QString();
+    options["title"] = checks["cover_title"]->isChecked();
+    options["artist"] = checks["cover_artist"]->isChecked();
+    options["reference_palettes"] = true;
     for (const auto& key : {"size", "seed", "detail", "contrast", "saturation", "softness"})
         if (numbers.contains("cover_" + QString(key)))
             options[key] = numbers["cover_" + QString(key)]->value();
@@ -2264,26 +2503,27 @@ void Window::savePreferences() {
     if (choices.contains("cover_color"))
         options["color_source"] = choices["cover_color"]->currentIndex();
     settings.setValue("cover/options", QJsonDocument(options).toJson(QJsonDocument::Compact));
+    const auto state = workspaceState();
+    settings.setValue("workspace/preferences", QJsonDocument(QJsonObject{{"numbers", state["numbers"]}, {"checks", state["checks"]}, {"choices", state["choices"]}}).toJson());
+    settings.setValue("window/geometry", saveGeometry());
 }
 void Window::closeEvent(QCloseEvent* event) {
     QElapsedTimer elapsed;
     elapsed.start();
-#ifdef Q_OS_WIN
-    std::thread([] {
-        std::this_thread::sleep_for(std::chrono::seconds(10));
-        TerminateProcess(GetCurrentProcess(), 0);
-    }).detach();
-#endif
+    if (!closing && dirty && !property("sfTesting").toBool()) {
+        const auto answer = QMessageBox::question(this, "Sonic Forge", localize("Сохранить монтаж и текст перед закрытием?"), QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+        if (answer == QMessageBox::Cancel) { event->ignore(); return; }
+        if (answer == QMessageBox::Save) { event->ignore(); if (busy) { failure(localize("Дождитесь завершения задачи или отмените её перед сохранением проекта.")); return; } closeAfterSave = true; saveProject(); return; }
+    }
+    closing = true;
+    if (autosaveTimer) autosaveTimer->stop();
     comparisonTimer->stop();
     comparisonCancel->store(true);
     cancel->store(true);
     sf::shutdownWorkers();
-    if (comparisonWatcher)
-        comparisonWatcher->waitForFinished();
-    if (busy) {
-        cancel->store(true);
-        if (watcher)
-            watcher->waitForFinished();
+    if ((comparisonWatcher && !comparisonWatcher->isFinished()) || (watcher && !watcher->isFinished()) || (autosaveWatcher && !autosaveWatcher->isFinished())) {
+        event->ignore(); status->setText(localize("Завершаю задачи и сохраняю данные…"));
+        QTimer::singleShot(50, this, &QWidget::close); return;
     }
     stop();
     player->stop();
@@ -2293,6 +2533,7 @@ void Window::closeEvent(QCloseEvent* event) {
     processedPane->media->stop();
     processedPane->media->setSource({});
     savePreferences();
+    disposeRecovery();
     if (property("sfCloseReport").isValid()) {
         QFile report(property("sfCloseReport").toString());
         if (report.open(QIODevice::WriteOnly))
@@ -2308,7 +2549,12 @@ void Window::closeEvent(QCloseEvent* event) {
     qApp->quit();
 }
 bool Window::eventFilter(QObject* object, QEvent* event) {
+    if (event->type() == QEvent::Wheel && object->property("sfIgnoreWheel").toBool()) {
+        event->ignore();
+        return true;
+    }
     if (event->type() == QEvent::ContextMenu) {
+        if (qobject_cast<QLineEdit*>(object) || qobject_cast<QTextEdit*>(object) || qobject_cast<QPlainTextEdit*>(object)) return false;
         if (object->property("sfAction").isValid())
             return false;
         auto* context = static_cast<QContextMenuEvent*>(event);
@@ -2421,6 +2667,7 @@ bool Window::smokeTest(const QString& directory) {
         QTimer::singleShot(30, this, [=] {
             if (auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
                 auto values = dialog->findChildren<QDoubleSpinBox*>();
+                values.removeIf([](QDoubleSpinBox* value) { return !value->property("sfSliderControl").isValid(); });
                 auto sliders = dialog->findChildren<QSlider*>();
                 *clipDialog = values.size() == 5 && sliders.size() == 5 &&
                               values[0]->value() == 1 && values[1]->value() == 1 &&
@@ -2441,6 +2688,39 @@ bool Window::smokeTest(const QString& directory) {
             timeline->project.get(first).speed == 2 && timeline->project.get(first).bass == 3 &&
             timeline->project.clips[1].position == 45;
         history(false);
+        {
+            auto greenPixels = [](const QImage& image) {
+                int count = 0;
+                for (int y = 0; y < image.height(); ++y)
+                    for (int x = 0; x < image.width(); ++x)
+                        count += image.pixelColor(x, y) == QColor("#169c50");
+                return count;
+            };
+            timeline->project.get(first).fadeIn = 5;
+            timeline->refresh();
+            QApplication::processEvents();
+            report["editor_without_green_sound_marks"] =
+                greenPixels(timeline->viewport()->grab().toImage()) == 0;
+            timeline->project.get(first).fadeIn = 0;
+            tabs->setCurrentIndex(2);
+            processedPane->show();
+            processedPane->seek->setRange(0, 10000);
+            processedPane->seek->setChanges({{1, 3}, {7, 9}});
+            QApplication::processEvents();
+            report["sound_seek_paints_green_changes"] =
+                greenPixels(processedPane->seek->grab().toImage()) > 150;
+            report["original_seek_without_green_changes"] =
+                originalPane->seek->changes().isEmpty() &&
+                greenPixels(originalPane->seek->grab().toImage()) == 0;
+            for (auto* scroll : tabs->widget(2)->findChildren<QScrollArea*>())
+                scroll->ensureWidgetVisible(processedPane);
+            QApplication::processEvents();
+            grab().save(directory + "/sound-change-marks.png");
+            processedPane->seek->setChanges({});
+            processedPane->seek->setRange(0, 0);
+            processedPane->hide();
+            tabs->setCurrentIndex(0);
+        }
         lyrics->setPlainText("Первая строка\nВторая строка");
         QTextCursor cursor = lyrics->textCursor();
         cursor.setPosition(0);
@@ -2457,7 +2737,7 @@ bool Window::smokeTest(const QString& directory) {
         projectChanged();
         history(false);
         report["text_survives_tabs_and_edits"] = lyrics->toPlainText() == text;
-        report["timeline_compact"] = timeline->height() == 225;
+        report["timeline_compact"] = timeline->height() >= 160 && timeline->height() <= 420;
         report["navigation_full_width"] = navigation->width() >= centralWidget()->width() - 40;
         report["navigation_above_controls"] =
             navigation->mapTo(this, QPoint(0, 0)).y() < linked->mapTo(this, QPoint(0, 0)).y();
@@ -2467,6 +2747,109 @@ bool Window::smokeTest(const QString& directory) {
         report["audio_sliders"] = numbers["gain"]->parentWidget()->property("sfSlider").toBool();
         report["effects_collapsed"] = findChild<QWidget*>("audioAdvanced")->isHidden();
         report["cover_advanced_collapsed"] = findChild<QWidget*>("coverAdvanced")->isHidden();
+        bool coverSliders = true;
+        for (const auto& key : {"cover_detail", "cover_contrast", "cover_saturation", "cover_softness"})
+            coverSliders &= numbers[key]->parentWidget()->property("sfSlider").toBool();
+        report["cover_sliders"] = coverSliders;
+        report["cover_embedding_uses_execution_step"] = !checks.contains("embed_cover") && !checks.contains("keep_cover");
+        {
+            const int pattern=choices["cover_pattern"]->currentIndex(),color=choices["cover_color"]->currentIndex();
+            choices["cover_color"]->setCurrentIndex(2);
+            choices["cover_pattern"]->setCurrentIndex((pattern+1)%3);
+            report["cover_pattern_keeps_selected_color"] = choices["cover_color"]->currentIndex()==2;
+            choices["cover_pattern"]->setCurrentIndex(pattern);
+            choices["cover_color"]->setCurrentIndex(color);
+        }
+        auto* paletteButton = findChild<QPushButton*>("coverPaletteButton");
+        int previousColor = choices["cover_color"]->currentIndex();
+        choices["cover_color"]->setCurrentIndex(3);
+        report["custom_palette_available"] = !paletteButton->isHidden();
+        auto paletteWorks = std::make_shared<bool>(false);
+        QTimer::singleShot(30, this, [this, paletteWorks] {
+            if (auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
+                auto* list = dialog->findChild<QListWidget*>();
+                if (list && list->currentRow() == 0) {
+                    QPushButton* edit = nullptr;
+                    for (auto* button : dialog->findChildren<QPushButton*>())
+                        if (button->text() == "Изменить") edit = button;
+                    if (edit) {
+                        QTimer::singleShot(30, this, [] {
+                            if (auto* colors = qobject_cast<QColorDialog*>(QApplication::activeModalWidget())) {
+                                colors->setCurrentColor(QColor("#ff1122"));
+                                colors->accept();
+                            }
+                        });
+                        edit->click();
+                        *paletteWorks = list->item(0)->background().color() == QColor("#ff1122");
+                    }
+                }
+                dialog->reject();
+            }
+        });
+        coverSettings();
+        report["palette_color_edit"] = *paletteWorks;
+        choices["cover_color"]->setCurrentIndex(previousColor);
+        auto* languageBox = findChild<QComboBox*>("interfaceLanguage");
+        int languageIndex = languageBox->currentIndex();
+        QWheelEvent wheel(QPointF(10,10), QPointF(languageBox->mapToGlobal(QPoint(10,10))),
+                          QPoint(), QPoint(0,-120), Qt::NoButton, Qt::NoModifier,
+                          Qt::NoScrollPhase, false);
+        QApplication::sendEvent(languageBox, &wheel);
+        report["language_ignores_mouse_wheel"] = languageBox->currentIndex() == languageIndex;
+        {
+            QTemporaryDir temporary;
+            QString song = temporary.filePath("Ночная песня.wav");
+            sf::writeWav(song, QVector<float>(8000, .01f), 8000, 1);
+            sf::Project named;
+            named.add(sf::readSource(song));
+            auto mix = prepare(named, true, song, "mp3");
+            const auto origin = named.clips.first().labelSource();
+            report["linked_cover_keeps_song_title"] = sf::coverMetadata(origin, sf::readMetadata(origin)).values["title"] == "Ночная песня" && sf::readSource(mix, {}, false).bits == 32;
+        }
+        {
+            auto previousOptions = currentCoverOptions();
+            auto previousArtwork = coverArtwork;
+            QImage background(512, 512, QImage::Format_RGB32);
+            background.fill(QColor("#23414a"));
+            sf::Metadata metadata;
+            metadata.values = {{"title", "Ночная песня"}, {"artist", "SonicForge"}};
+            coverArtwork = sf::coverArtworkFromImage(background, metadata, currentCoverOptions());
+            auto editorWorks = std::make_shared<bool>(false);
+            QTimer::singleShot(40, this, [this, directory, editorWorks] {
+                auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+                if (!dialog || dialog->objectName() != "coverTextDialog") return;
+                auto* text = dialog->findChild<QPlainTextEdit*>("coverTextValue");
+                auto* font = dialog->findChild<QFontComboBox*>("coverTextFont");
+                auto* size = dialog->findChild<QDoubleSpinBox*>("coverTextSize");
+                auto* x = dialog->findChild<QDoubleSpinBox*>("coverTextX");
+                auto* y = dialog->findChild<QDoubleSpinBox*>("coverTextY");
+                auto* preview = dialog->findChild<QWidget*>("coverTextPreview");
+                text->setPlainText("Новая надпись");
+                font->setCurrentFont(QFont("Noto Serif"));
+                size->setValue(5.5);
+                x->setValue(50);
+                y->setValue(75);
+                QPointF start(preview->width() / 2., (preview->height() - qMin(preview->width(),preview->height())) / 2. + qMin(preview->width(),preview->height()) * .75);
+                QMouseEvent press(QEvent::MouseButtonPress, start, preview->mapToGlobal(start.toPoint()), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                QApplication::sendEvent(preview, &press);
+                QMouseEvent move(QEvent::MouseMove, start + QPointF(0,-40), preview->mapToGlobal((start+QPointF(0,-40)).toPoint()), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+                QApplication::sendEvent(preview, &move);
+                QMouseEvent release(QEvent::MouseButtonRelease, start+QPointF(0,-40), preview->mapToGlobal((start+QPointF(0,-40)).toPoint()), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                QApplication::sendEvent(preview, &release);
+                *editorWorks = y->value() < 74 && text->toPlainText() == "Новая надпись" && size->value() == 5.5;
+                dialog->grab().save(directory + "/cover-text-editor.png");
+                dialog->accept();
+            });
+            coverTextSettings();
+            report["cover_text_edit_font_size_and_drag"] = *editorWorks &&
+                coverOptions.text == "Новая надпись" && coverOptions.fontFamily == "Noto Serif" && coverOptions.textY < 74;
+            coverOptions = previousOptions;
+            coverArtwork = previousArtwork;
+            QSignalBlocker a(checks["cover_title"]), b(checks["cover_artist"]), c(checks["cover_symbol"]);
+            checks["cover_title"]->setChecked(previousOptions.title);
+            checks["cover_artist"]->setChecked(previousOptions.artist);
+            checks["cover_symbol"]->setChecked(previousOptions.symbol);
+        }
         double before = timeline->zoom;
         timeline->zoomBy(1.25);
         report["zoom"] = timeline->zoom > before;
@@ -2482,6 +2865,14 @@ bool Window::smokeTest(const QString& directory) {
             QApplication::processEvents();
             grab().save(directory + QString("/tab-%1.png").arg(i));
         }
+        tabs->setCurrentIndex(3);
+        choices["cover_color"]->setCurrentIndex(3);
+        auto* coverAdvanced = findChild<QWidget*>("coverAdvanced");
+        coverAdvanced->show();
+        QApplication::processEvents();
+        grab().save(directory + "/cover-custom-sliders.png");
+        coverAdvanced->hide();
+        choices["cover_color"]->setCurrentIndex(previousColor);
         QString previousLanguage = language;
         language = "en";
         loadLanguage();

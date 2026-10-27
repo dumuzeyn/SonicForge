@@ -1,9 +1,16 @@
 #include "core.h"
+#include "cover_symbols.h"
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 namespace sf {
-QImage restoredTexture(const QString&, const CoverOptions&, const Cancel&);
+QImage restoredTexture(const QString&, const CoverOptions&, const Cancel&, QVector<double>*);
+Metadata coverMetadata(const QString& audio, const Metadata& metadata) {
+    auto result = metadata;
+    if (result.values.value("title").trimmed().isEmpty())
+        result.values["title"] = QFileInfo(audio).completeBaseName();
+    return result;
+}
 static QImage blur(QImage input, int radius) {
     if (radius <= 0)
         return input;
@@ -49,87 +56,121 @@ static QImage blur(QImage input, int radius) {
     }
     return out;
 }
-QImage makeCover(const QString& audio, const Metadata& metadata, const CoverOptions& options,
-                 const Cancel& cancel) {
+CoverArtwork makeCoverArtwork(const QString& audio, const Metadata& metadata, const CoverOptions& options,
+                              const Cancel& cancel) {
     if (options.size < 128 || options.size > 4096)
         throw Error("Размер обложки: от 128 до 4096 пикселей");
-    QImage image = restoredTexture(audio, options, cancel);
+    QVector<double> music;
+    QImage image = restoredTexture(audio, options, cancel, &music);
     image = blur(std::move(image), qRound(options.softness * qMin(options.size, 640) / 9000.));
     image =
         image.scaled(options.size, options.size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
     if (image.isNull())
         throw Error("Недостаточно памяти для обложки. Уменьшите размер изображения.");
+    return {image, coverMetadata(audio, metadata), music};
+}
+CoverArtwork coverArtworkFromImage(const QImage& image, const Metadata& metadata,
+                                   const CoverOptions& options) {
+    if (image.isNull())
+        throw Error("Не удалось прочитать свою обложку");
+    QImage background = image.scaled(options.size, options.size, Qt::KeepAspectRatioByExpanding,
+                                     Qt::SmoothTransformation);
+    background = background.copy((background.width() - options.size) / 2,
+                                  (background.height() - options.size) / 2,
+                                  options.size, options.size).convertToFormat(QImage::Format_RGB32);
+    auto small = image.scaled(32, 32, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    auto digest = QCryptographicHash::hash(
+        QByteArrayView(reinterpret_cast<const char*>(small.constBits()), small.sizeInBytes()),
+        QCryptographicHash::Sha256);
+    return {background, metadata, {.4, .4, .3, .4, double(qFromLittleEndian<quint32>(digest.constData()))}};
+}
+CoverTextLayout layoutCoverText(const Metadata& metadata, const CoverOptions& options) {
+    CoverTextLayout layout;
     int size = options.size;
-    auto digest = QCryptographicHash::hash(metadata.values.value("title").toUtf8() +
-                                               QByteArray::number(options.seed),
-                                           QCryptographicHash::Sha256);
-    QRandomGenerator random(qFromLittleEndian<quint32>(digest.constData()));
-    QPainter painter(&image);
+    if (options.title) {
+        layout.title = options.text.trimmed().isEmpty() ? metadata.values.value("title") : options.text;
+        layout.title.remove(QRegularExpression("\\s*\\[[A-Za-z0-9_-]{8,}\\]"));
+    }
+    if (options.artist)
+        layout.artist = metadata.values.value("artist");
+    layout.titleFont = QFont(options.fontFamily);
+    layout.titleFont.setStyleStrategy(QFont::StyleStrategy(QFont::PreferAntialias | QFont::NoSubpixelAntialias));
+    layout.titleFont.setHintingPreference(QFont::PreferNoHinting);
+    layout.titleFont.setWeight(QFont::DemiBold);
+    layout.titleFont.setPixelSize(qMax(1, qRound(size * options.textSize / 100)));
+    layout.artistFont = QFont(options.fontFamily);
+    layout.artistFont.setStyleStrategy(layout.titleFont.styleStrategy());
+    layout.artistFont.setHintingPreference(QFont::PreferNoHinting);
+    layout.artistFont.setPixelSize(qMax(1, qRound(size * options.textSize / 100 * .45)));
+    auto measure = [&](const QString& text, const QFont& font) {
+        if (text.isEmpty()) return QSizeF();
+        QRectF bounds = QFontMetricsF(font).boundingRect(QRectF(0, 0, size * .9, size * 20),
+                                                       Qt::TextWordWrap, text);
+        return QSizeF(qMin(size * .9, bounds.width() + 2), bounds.height() + 2);
+    };
+    QSizeF titleSize = measure(layout.title, layout.titleFont),
+           artistSize = measure(layout.artist, layout.artistFont);
+    double gap = !layout.title.isEmpty() && !layout.artist.isEmpty() ? size * .015 : 0;
+    double width = qMax(titleSize.width(), artistSize.width());
+    double height = titleSize.height() + artistSize.height() + gap;
+    if (width <= 0 || height <= 0) return layout;
+    double x = qBound(0., size * options.textX / 100 - width / 2, qMax(0., size - width)),
+           y = qBound(0., size * options.textY / 100 - height / 2, qMax(0., size - height));
+    layout.titleBounds = QRectF(x, y, width, titleSize.height());
+    layout.artistBounds = QRectF(x, y + titleSize.height() + gap, width, artistSize.height());
+    layout.bounds = QRectF(x, y, width, height);
+    return layout;
+}
+QImage decorateCover(const CoverArtwork& artwork, const CoverOptions& options, const Cancel& cancel) {
+    checkpoint(cancel);
+    QImage image = artwork.background.scaled(options.size, options.size, Qt::IgnoreAspectRatio,
+                                             Qt::SmoothTransformation);
+    if (image.isNull()) throw Error("Сначала создайте обложку или выберите изображение");
+    image = image.convertToFormat(QImage::Format_RGB32);
+    const int size = options.size;
+    auto colors = coverColors(image);
+    if (options.ink.isValid()) {
+        QColor ink = options.ink;
+        ink.setAlpha(255);
+        colors.symbol = colors.title = colors.artist = colors.highlight = ink;
+    }
+    if (!options.symbol && !options.title && !options.artist) return image;
+    // Rasterize lettering and vector edges above the export resolution. Keep the
+    // texture untouched, and bound the temporary layer to 4096 pixels per side.
+    const int supersampling = qBound(1, 4096 / size, 4);
+    QImage decoration(size * supersampling, size * supersampling, QImage::Format_ARGB32_Premultiplied);
+    if (decoration.isNull()) throw Error("Недостаточно памяти для оформления обложки");
+    decoration.fill(Qt::transparent);
+    QPainter painter(&decoration);
+    painter.scale(supersampling, supersampling);
     painter.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing |
                            QPainter::SmoothPixmapTransform);
-    if (options.symbol) {
-        painter.setCompositionMode(QPainter::CompositionMode_Screen);
-        QPainterPath gesture;
-        double centerX = size * (.47 + random.generateDouble() * .08), centerY = size * .35;
-        gesture.moveTo(centerX - size * .22, centerY + size * .11);
-        gesture.cubicTo(centerX - size * .04, centerY - size * .27, centerX + size * .08,
-                        centerY + size * .24, centerX + size * .23, centerY - size * .1);
-        QPen pen(QColor(255, 235, 206, 100), size * .008, Qt::SolidLine, Qt::RoundCap);
-        painter.setPen(pen);
-        painter.drawPath(gesture);
-        pen.setColor(QColor(255, 244, 222, 180));
-        pen.setWidthF(size * .002);
-        painter.setPen(pen);
-        painter.drawPath(gesture);
-    }
-    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-    QString title = metadata.values.value("title", QFileInfo(audio).completeBaseName());
-    if (title.isEmpty())
-        title = QFileInfo(audio).completeBaseName();
-    title.remove(QRegularExpression("\\s*\\[[A-Za-z0-9_-]{8,}\\]"));
-    QString artist = metadata.values.value("artist");
-    QStringList text;
-    if (options.title)
-        text << title;
-    if (options.artist && !artist.isEmpty())
-        text << artist;
-    if (!text.isEmpty()) {
-        QLinearGradient shade(0, size * .5, 0, size);
-        shade.setColorAt(0, QColor(0, 0, 0, 0));
-        shade.setColorAt(.65, QColor(0, 0, 0, 155));
-        shade.setColorAt(1, QColor(0, 0, 0, 205));
-        painter.fillRect(QRectF(0, size * .45, size, size * .55), shade);
-        double left = size * .075, width = size * .85, y = size * .64;
-        QFont font("Unbounded");
-        font.setWeight(QFont::DemiBold);
-        int pixels = qRound(size * .072);
-        QString headline = text.first();
-        for (; pixels > size * .025; --pixels) {
-            font.setPixelSize(pixels);
-            QFontMetrics metrics(font);
-            auto rect =
-                metrics.boundingRect(QRect(0, 0, int(width), size), Qt::TextWordWrap, headline);
-            if (rect.height() <= size * .235)
-                break;
-        }
-        font.setPixelSize(pixels);
+    if (options.symbol)
+        paintCoverSymbol(painter, size, artwork.metadata.values.value("title"), artwork.music, colors);
+    const auto text = layoutCoverText(artwork.metadata, options);
+    QColor shadow = colors.title.lightnessF() > .5 ? QColor(0,0,0,190) : QColor(255,255,255,190);
+    auto draw = [&](const QString& value, const QFont& font, const QRectF& bounds) {
+        if (value.isEmpty()) return;
         painter.setFont(font);
-        painter.setPen(QColor(252, 250, 247));
-        QRectF bounds(left, y, width, size * .25);
-        painter.drawText(bounds, Qt::AlignLeft | Qt::AlignVCenter | Qt::TextWordWrap, headline);
-        if (text.size() > 1) {
-            QFont second("Noto Sans");
-            second.setPixelSize(qRound(size * .029));
-            second.setLetterSpacing(QFont::AbsoluteSpacing, size * .001);
-            painter.setFont(second);
-            painter.setPen(QColor(245, 235, 229, 220));
-            painter.drawText(
-                QRectF(left, size * .9, width, size * .055), Qt::AlignLeft | Qt::AlignVCenter,
-                QFontMetrics(second).elidedText(text.last(), Qt::ElideRight, int(width)));
-        }
-    }
+        painter.setPen(shadow);
+        painter.drawText(bounds.translated(size * .0015, size * .002),
+                         Qt::AlignHCenter | Qt::AlignTop | Qt::TextWordWrap, value);
+        painter.setPen(colors.title);
+        painter.drawText(bounds, Qt::AlignHCenter | Qt::AlignTop | Qt::TextWordWrap, value);
+    };
+    draw(text.title, text.titleFont, text.titleBounds);
+    draw(text.artist, text.artistFont, text.artistBounds);
     painter.end();
     checkpoint(cancel);
+    if (supersampling > 1)
+        decoration = decoration.scaled(size, size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    QPainter composite(&image);
+    composite.drawImage(0, 0, decoration);
+    composite.end();
     return image;
+}
+QImage makeCover(const QString& audio, const Metadata& metadata, const CoverOptions& options,
+                 const Cancel& cancel) {
+    return decorateCover(makeCoverArtwork(audio, metadata, options, cancel), options, cancel);
 }
 } // namespace sf

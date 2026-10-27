@@ -1,0 +1,34 @@
+name: Windows packaging and source checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  packaging:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Validate PowerShell and JSON
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-ChildItem scripts -Filter *.ps1 | ForEach-Object {
+            $tokens = $null; $errors = $null
+            [void][Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors)
+            if ($errors) { throw ($errors | Out-String) }
+          }
+          Get-ChildItem native,assets/models/genre -Filter *.json -Recurse | ForEach-Object {
+            Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json -AsHashtable | Out-Null
+          }
+      - name: Build independent uninstaller launcher
+        shell: pwsh
+        run: |
+          cmake -S packaging -B build/packaging -A x64
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build build/packaging --config Release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $check = Start-Process build/packaging/Release/SonicForge-Uninstall.exe -ArgumentList '--check' -WindowStyle Hidden -Wait -PassThru
+          if ($check.ExitCode -ne 2) { throw 'Uninstaller should report that no Sonic Forge installation exists on the clean runner' }

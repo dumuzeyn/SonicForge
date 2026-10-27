@@ -1,15 +1,19 @@
-#define MyAppName "SonicForge"
-#define MyAppVersion "3.1.0"
+#define MyAppName "Sonic Forge"
+#define MyAppVersion "3.2.0"
 #define MyAppPublisher "Dumuzeyn"
 #define MyAppExeName "SonicForge.exe"
 #define MyAppUserModelID "Dumuzeyn.SonicForge"
+#ifndef MyAppId
+#define MyAppId "1B9EA71F-7D06-4F35-88B7-F71B12642E50"
+#endif
 #ifndef SourceRoot
 #define SourceRoot "..\dist\SonicForge"
 #endif
 
 [Setup]
-AppId={{1B9EA71F-7D06-4F35-88B7-F71B12642E50}
+AppId={{{#MyAppId}}
 AppName={#MyAppName}
+AppMutex=Local\Dumuzeyn.SonicForge.InstallLock
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -24,15 +28,18 @@ ArchitecturesAllowed=x64compatible
 OutputDir=..\dist
 OutputBaseFilename=SonicForge-Setup
 SetupIconFile=..\assets\sonic_forge_mark.ico
+Uninstallable=yes
+CreateUninstallRegKey=yes
+UninstallFilesDir={app}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
 Compression=lzma2/fast
 SolidCompression=yes
 WizardStyle=modern
-CloseApplications=yes
+CloseApplications=no
 RestartApplications=no
 ChangesAssociations=yes
-VersionInfoVersion=3.1.0.0
+VersionInfoVersion=3.2.0.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=SonicForge installer
 VersionInfoProductName={#MyAppName}
@@ -43,16 +50,14 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; GroupDescription: "Дополнительные ярлыки:"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#SourceRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-
-[InstallDelete]
-Type: filesandordirs; Name: "{app}\_internal"
+Source: "{#SourceRoot}\*"; DestDir: "{app}"; Excludes: "models\ggml-*.bin,models\ctc-*.onnx"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\Sonic Forge"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\sonic_forge_mark.ico"; AppUserModelID: "{#MyAppUserModelID}"
+Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\Sonic Forge"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\sonic_forge_mark.ico"; Tasks: desktopicon; AppUserModelID: "{#MyAppUserModelID}"
 
 [Registry]
@@ -79,4 +84,4 @@ Root: HKCU; Subkey: "Software\Dumuzeyn\SonicForge\Capabilities\FileAssociations"
 #for {ExtIndex = 0; ExtIndex < DimOf(AudioExts); ExtIndex++} RegisterAudioExtension
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Запустить Sonic Forge"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent

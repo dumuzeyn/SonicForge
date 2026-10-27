@@ -25,19 +25,36 @@ QString executable(const QString& name) {
     return path;
 }
 QString cacheDirectory() {
-    QString path = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/edits";
-    QDir().mkpath(path);
-    return path;
+    struct Cache {
+        QString path;
+        std::unique_ptr<QLockFile> lease;
+        Cache() {
+            path = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/edits/session-" + QUuid::createUuid().toString(QUuid::Id128);
+            if (!QDir().mkpath(path)) throw Error("Не удалось создать папку кэша: " + path);
+            lease = std::make_unique<QLockFile>(path + "/session.lock");
+            lease->setStaleLockTime(0);
+            if (!lease->tryLock()) throw Error("Папка кэша занята");
+        }
+    };
+    static Cache cache;
+    return cache.path;
 }
 QString uniqueFile(const QString& suffix) {
-    return cacheDirectory() + "/" + QUuid::createUuid().toString(QUuid::Id128) + suffix;
+    const auto result = cacheDirectory() + "/" + QUuid::createUuid().toString(QUuid::Id128) + suffix;
+    checkCacheCapacity(result); return result;
 }
 QByteArray process(const QString& program, const QStringList& args, const Cancel& cancel,
                    Progress progress, bool capture, bool mergeError) {
     checkpoint(cancel);
     QProcess p;
     p.setProgram(program);
-    p.setArguments(args);
+    auto safeArgs = args;
+    if (QFileInfo(program).completeBaseName().compare("ffmpeg", Qt::CaseInsensitive) == 0) {
+        for (int i = 0; i < safeArgs.size(); ++i)
+            if (safeArgs[i] == "-i") { safeArgs.insert(i++, "-protocol_whitelist"); safeArgs.insert(i++, "file,pipe"); }
+    } else if (QFileInfo(program).completeBaseName().compare("ffprobe", Qt::CaseInsensitive) == 0)
+        safeArgs = QStringList{"-protocol_whitelist", "file,pipe"} + safeArgs;
+    p.setArguments(safeArgs);
     if (mergeError)
         p.setProcessChannelMode(QProcess::MergedChannels);
 #ifdef Q_OS_WIN
@@ -51,6 +68,10 @@ QByteArray process(const QString& program, const QStringList& args, const Cancel
     QByteArray output, errors;
     QElapsedTimer timer;
     timer.start();
+    QElapsedTimer totalTime; totalTime.start();
+    QElapsedTimer storageTime; storageTime.start();
+    const qint64 timeout = qMax(1000, qEnvironmentVariableIntValue("SF_PROCESS_TIMEOUT_MS") > 0 ?
+                                      qEnvironmentVariableIntValue("SF_PROCESS_TIMEOUT_MS") : 21600000);
     while (p.state() != QProcess::NotRunning) {
         p.waitForFinished(50);
         if (capture)
@@ -61,6 +82,16 @@ QByteArray process(const QString& program, const QStringList& args, const Cancel
             errors += p.readAllStandardError();
         if (errors.size() > 32768)
             errors = errors.right(32768);
+        if (mergeError && output.size() > 1024 * 1024) output = output.right(1024 * 1024);
+        if (storageTime.elapsed() > 2000 && !args.isEmpty()) {
+            try { checkCacheCapacity(args.last()); }
+            catch (...) { p.kill(); p.waitForFinished(5000); throw; }
+            storageTime.restart();
+        }
+        if (totalTime.elapsed() > timeout || (!mergeError && output.size() > 512LL * 1024 * 1024)) {
+            p.kill(); p.waitForFinished(5000);
+            throw Error(totalTime.elapsed() > timeout ? "Превышено время выполнения задачи: " + QFileInfo(program).fileName() + "\n" + QString::fromUtf8(errors.right(4000)) : "Слишком большой результат декодирования; обрабатывайте звук блоками");
+        }
         if (cancel && cancel->load()) {
             p.kill();
             p.waitForFinished(5000);
@@ -72,7 +103,11 @@ QByteArray process(const QString& program, const QStringList& args, const Cancel
             double completed = -1;
             while (matches.hasNext())
                 completed = matches.next().captured(1).toDouble();
-            progress({}, completed);
+            static const QRegularExpression stage("stage=([^\\r\\n]+)");
+            auto stages = stage.globalMatch(QString::fromUtf8(errors.right(2000)));
+            QString label;
+            while (stages.hasNext()) label = stages.next().captured(1);
+            progress(label, completed);
             timer.restart();
         }
     }
@@ -94,7 +129,7 @@ QVector<float> decode(const QString& file, int rate, int channels, double start,
     QStringList args;
     if (start > 0)
         args << "-ss" << n(start);
-    args << "-i" << file << "-vn";
+    args << "-i" << file << "-map" << "0:a:0" << "-vn";
     if (length > 0)
         args << "-t" << n(length);
     args << "-ac" << QString::number(channels) << "-ar" << QString::number(rate) << "-f" << "f32le"
@@ -155,8 +190,12 @@ QString Project::add(const Source& source, int lane, double position) {
             if (c.lane == lane)
                 position = qMax(position, c.position + c.duration());
     }
-    Clip c{QUuid::createUuid().toString(QUuid::Id128),   source.path, lane, 0, source.duration,
-           freePosition(lane, position, source.duration)};
+    Clip c;
+    c.id = QUuid::createUuid().toString(QUuid::Id128);
+    c.source = source.path;
+    c.lane = lane;
+    c.end = source.duration;
+    c.position = freePosition(lane, position, source.duration);
     clips << c;
     validate();
     return c.id;
@@ -180,7 +219,11 @@ QString Project::split(const QString& id, double at) {
     return right.id;
 }
 void Project::validate() const {
+    QSet<QString> ids;
+    for (int lane : muted) if (lane < 0 || lane > 10000) throw Error("Неверная дорожка");
     for (const auto& c : clips) {
+        if (c.id.isEmpty() || ids.contains(c.id)) throw Error("Повторяющийся идентификатор фрагмента");
+        ids.insert(c.id);
         if (!sources.contains(c.source) || !std::isfinite(c.position) || !std::isfinite(c.gain) ||
             !std::isfinite(c.start) || !std::isfinite(c.end) || !std::isfinite(c.fadeIn) ||
             !std::isfinite(c.fadeOut) || c.start < 0 || c.end > sources[c.source].duration + .002 ||
@@ -188,7 +231,7 @@ void Project::validate() const {
             c.speed < 0 || c.speed > 4 || !std::isfinite(c.bass) || !std::isfinite(c.mid) ||
             !std::isfinite(c.treble) || std::abs(c.bass) > 18 || std::abs(c.mid) > 18 ||
             std::abs(c.treble) > 18 || c.duration() < .01 || c.position < 0 || c.lane < 0 ||
-            c.gain < -60 || c.gain > 18 || c.fadeIn < 0 || c.fadeOut < 0 ||
+            c.lane > 10000 || c.gain < -60 || c.gain > 18 || c.fadeIn < 0 || c.fadeOut < 0 ||
             c.fadeIn + c.fadeOut > c.duration() + 1e-7 || c.position + c.duration() > 604800)
             throw Error("Недопустимые параметры фрагмента");
         for (const auto& b : clips)
@@ -204,13 +247,20 @@ QJsonObject Project::json() const {
                             {"start", c.start},   {"end", c.end},       {"position", c.position},
                             {"gain", c.gain},     {"fadeIn", c.fadeIn}, {"fadeOut", c.fadeOut},
                             {"volume", c.volume}, {"speed", c.speed},   {"bass", c.bass},
-                            {"mid", c.mid},       {"treble", c.treble}};
+                            {"mid", c.mid},       {"treble", c.treble}, {"originalSource", c.originalSource}};
     QJsonArray m;
     for (int lane : muted)
         m << lane;
-    return {{"clips", list}, {"muted", m}};
+    QJsonArray sourceList;
+    for (const auto& s : sources) {
+        QJsonArray peaks; for (float value : s.peaks) peaks << double(value);
+        sourceList << QJsonObject{{"path", s.path}, {"duration", s.duration}, {"size", s.size},
+            {"modified", s.modified}, {"fingerprint", QString::fromLatin1(s.fingerprint.toHex())},
+            {"sampleRate", s.sampleRate}, {"channels", s.channels}, {"bits", s.bits}, {"peaks", peaks}};
+    }
+    return {{"clips", list}, {"muted", m}, {"sources", sourceList}};
 }
-Source readSource(const QString& file, const Cancel& c) {
+Source readSource(const QString& file, const Cancel& c, bool withWaveform) {
     QFileInfo info(file);
     if (!info.isFile())
         throw Error("Аудиофайл не найден: " + file);
@@ -218,13 +268,22 @@ Source readSource(const QString& file, const Cancel& c) {
         executable("ffprobe"),
         {"-v", "error", "-show_format", "-show_streams", "-of", "json", info.absoluteFilePath()},
         c));
-    double duration = doc.object()["format"].toObject()["duration"].toString().toDouble();
+    QJsonObject audioStream;
+    for (const auto& stream : doc.object()["streams"].toArray())
+        if (stream.toObject()["codec_type"] == "audio") { audioStream = stream.toObject(); break; }
+    if (audioStream.isEmpty()) throw Error("В файле нет аудиодорожки");
+    double duration = audioStream["duration"].toString().toDouble();
+    if (duration <= 0) duration = doc.object()["format"].toObject()["duration"].toString().toDouble();
     if (duration <= 0 || duration >= 86400)
         throw Error("Нужен аудиофайл с длительностью от нуля до 24 часов");
+    const int sampleRate = audioStream["sample_rate"].toString().toInt();
+    const int channels = audioStream["channels"].toInt(2);
+    const int bits = audioStream["bits_per_raw_sample"].toString().isEmpty() ? audioStream["bits_per_sample"].toInt(16) : audioStream["bits_per_raw_sample"].toString().toInt();
+    if (!withWaveform) return {info.absoluteFilePath(), duration, {}, info.size(), info.lastModified().toMSecsSinceEpoch(), {}, sampleRate, channels, bits};
     // Aggregate waveform bins while decoding, independent of song length.
     QProcess decoder;
     decoder.setProgram(executable("ffmpeg"));
-    decoder.setArguments({"-hide_banner", "-nostdin", "-v", "error", "-i", file, "-vn", "-ac", "1",
+    decoder.setArguments({"-hide_banner", "-nostdin", "-v", "error", "-protocol_whitelist", "file,pipe", "-i", file, "-map", "0:a:0", "-vn", "-ac", "1",
                           "-ar", "8000", "-f", "f32le", "pipe:1"});
 #ifdef Q_OS_WIN
     decoder.setCreateProcessArgumentsModifier(
@@ -239,14 +298,16 @@ Source readSource(const QString& file, const Cancel& c) {
     QByteArray pending, errors;
     float peak = 0;
     int count = 0;
+    QElapsedTimer idle, elapsed; idle.start(); elapsed.start();
     do {
         decoder.waitForReadyRead(50);
+        if (idle.elapsed() > 60000 || elapsed.elapsed() > 6 * 60 * 60 * 1000) { decoder.kill(); decoder.waitForFinished(5000); throw Error("Превышено время чтения звука"); }
         if (c && c->load()) {
             decoder.kill();
             decoder.waitForFinished(5000);
             checkpoint(c);
         }
-        pending += decoder.readAllStandardOutput();
+        const auto bytes = decoder.readAllStandardOutput(); if (!bytes.isEmpty()) idle.restart(); pending += bytes;
         errors += decoder.readAllStandardError();
         if (errors.size() > 4000)
             errors = errors.right(4000);
@@ -274,17 +335,52 @@ Source readSource(const QString& file, const Cancel& c) {
     if (after.size() != info.size() || after.lastModified() != info.lastModified())
         throw Error("Исходник изменился во время чтения");
     return {info.absoluteFilePath(), duration, peaks, info.size(),
-            info.lastModified().toMSecsSinceEpoch()};
+            info.lastModified().toMSecsSinceEpoch(), fileFingerprint(file, c),
+            sampleRate, channels, bits};
 }
 QString render(const Project& project, const QString& target, const Cancel& c, double start,
-               double length, Progress p) {
+               double length, Progress p, RenderOptions options) {
     project.validate();
     if (QFile::exists(target))
         throw Error("Выберите новое имя выходного файла");
     double end = length > 0 ? qMin(project.duration(), start + length) : project.duration();
     if (end <= start)
         throw Error("Нет звука для экспорта");
-    QStringList args, filters, labels;
+    int rate = options.sampleRate, channels = options.channels;
+    QSet<QString> verified;
+    for (const auto& clip : project.clips) {
+        const auto source = project.sources.value(clip.source);
+        if (!options.sampleRate) rate = qMax(rate, source.sampleRate);
+        if (!options.channels) channels = qMax(channels, source.channels);
+        if (!verified.contains(clip.source) && !source.fingerprint.isEmpty() && fileFingerprint(clip.source, c) != source.fingerprint)
+            throw Error("Содержимое исходного файла изменилось: " + clip.source);
+        verified.insert(clip.source);
+    }
+    rate = qBound(8000, rate, 384000); channels = qBound(1, channels, 8);
+    const QString ext = QFileInfo(target).suffix().toLower();
+    if (ext == "mp3" || ext == "m4a") channels = qMin(2, channels);
+    if (ext == "opus") rate = 48000;
+    const QStringList layouts{"", "mono", "stereo", "3.0", "quad", "5.0", "5.1", "6.1", "7.1"};
+    // Bound both the Windows input argument list and FFmpeg's open-input count.
+    constexpr int groupSize = 8;
+    if (project.clips.size() > groupSize) {
+        QTemporaryDir parts(cacheDirectory() + "/render-XXXXXX");
+        if (!parts.isValid()) throw Error("Не удалось создать временную папку монтажа");
+        Project mixed;
+        for (int i = 0; i < project.clips.size(); i += groupSize) {
+            Project batch = project; batch.clips = project.clips.mid(i, groupSize);
+            bool audible = false;
+            for (const auto& clip : batch.clips) audible |= !batch.muted.contains(clip.lane) && clip.position < end && clip.position + clip.duration() > start;
+            if (!audible) continue;
+            const auto part = parts.filePath(QString::number(i) + ".wav");
+            render(batch, part, c, start, length, p, {rate, channels, 32, false});
+            mixed.add(readSource(part, c), mixed.lanes(), 0);
+        }
+        if (mixed.clips.isEmpty()) throw Error("Нет включённых дорожек");
+        return render(mixed, target, c, 0, end - start, p, {rate, channels, options.bits, options.limiter, options.quality});
+    }
+    // Keep decoder/graph threading bounded independently of host CPU count.
+    QStringList args{"-filter_complex_threads", "1", "-v", qEnvironmentVariable("SF_RENDER_LOGLEVEL", "error")}, filters, labels;
     int index = 0;
     for (auto& clip : project.clips) {
         if (project.muted.contains(clip.lane) || clip.position >= end ||
@@ -297,11 +393,11 @@ QString render(const Project& project, const QString& target, const Cancel& c, d
             throw Error("Исходный файл изменился: " + clip.source);
         double offset = qMax(0., start - clip.position),
                duration = qMin(clip.duration() - offset, end - qMax(start, clip.position));
-        const double rate = clip.speed > 0 ? clip.speed : 1;
-        args << "-ss" << n(clip.start + offset * rate) << "-t" << n(duration * rate) << "-i"
+        const double playbackRate = clip.speed > 0 ? clip.speed : 1;
+        args << "-threads" << "1" << "-ss" << n(clip.start + offset * playbackRate) << "-t" << n(duration * playbackRate) << "-i"
              << clip.source;
-        QStringList chain{"asetpts=PTS-STARTPTS", "aresample=44100",
-                          "aformat=channel_layouts=stereo", "volume=" + n(clip.gain) + "dB"};
+        QStringList chain{"asetpts=N/SR/TB", "aresample=" + QString::number(rate),
+                          "aformat=sample_fmts=fltp:channel_layouts=" + layouts[channels], "volume=" + n(clip.gain) + "dB"};
         if (clip.speed > 0) {
             double tempo = clip.speed;
             while (tempo > 2) {
@@ -329,7 +425,7 @@ QString render(const Project& project, const QString& target, const Cancel& c, d
             if (clip.fadeOut > 0)
                 chain << "afade=t=out:st=" + n(clip.duration() - clip.fadeOut) +
                              ":d=" + n(clip.fadeOut);
-            chain << "asetpts=PTS-STARTPTS";
+            chain << "asetpts=N/SR/TB";
         }
         chain << "adelay=" + QString::number(qRound64(qMax(0., clip.position - start) * 1000)) +
                      ":all=1";
@@ -340,19 +436,23 @@ QString render(const Project& project, const QString& target, const Cancel& c, d
     }
     if (!index)
         throw Error("Нет включённых дорожек");
+    const auto samples = QString::number(qMax(qint64(1), qRound64((end - start) * rate)));
     filters << labels.join("") + "amix=inputs=" + QString::number(index) +
-                   ":normalize=0:duration=longest,apad,atrim=duration=" + n(end - start) +
-                   ",alimiter=limit=0.95:level=0:latency=1[out]";
-    args << "-filter_complex" << filters.join(';') << "-map" << "[out]" << "-vn";
-    QString ext = QFileInfo(target).suffix().toLower();
+                   ":normalize=0:duration=longest,asetpts=N/SR/TB,apad=whole_len=" + samples + ",atrim=end_sample=" + samples + ",asetpts=N/SR/TB" +
+                   (options.limiter ? ",alimiter=limit=0.95:level=0:latency=1[out]" : "[out]");
+    QTemporaryFile graph(cacheDirectory() + "/graph-XXXXXX.txt");
+    if (!graph.open() || graph.write(filters.join(';').toUtf8()) < 0) throw Error("Не удалось сохранить сценарий фильтров");
+    graph.close();
+    args << "-filter_complex_script" << graph.fileName() << "-map" << "[out]" << "-vn" << "-t" << n(end - start) << "-ar" << QString::number(rate) << "-ac" << QString::number(channels);
     if (ext == "mp3")
-        args << "-c:a" << "libmp3lame" << "-q:a" << "0";
+        args << "-c:a" << "libmp3lame" << "-q:a" << QString::number(options.quality);
     else if (ext == "m4a")
         args << "-c:a" << "aac" << "-b:a" << "256k";
     else if (ext == "wav")
-        args << "-c:a" << "pcm_s16le" << "-rf64" << "auto";
-    else
-        throw Error("Поддерживаются WAV, MP3 и M4A");
+        args << "-c:a" << (options.bits == 16 ? "pcm_s16le" : options.bits == 24 ? "pcm_s24le" : "pcm_f32le") << "-rf64" << "auto";
+    else if (ext == "flac") args << "-c:a" << "flac";
+    else if (ext == "opus") args << "-c:a" << "libopus" << "-b:a" << "192k";
+    else throw Error("Поддерживаются WAV, MP3, M4A, FLAC и Opus");
     QString temporary = QFileInfo(target).absolutePath() + "/.sonicforge-" +
                         QUuid::createUuid().toString(QUuid::Id128) + "." + ext;
     QDir().mkpath(QFileInfo(target).absolutePath());
@@ -377,6 +477,7 @@ Source cutAudio(const Project& project, const Clip& clip, double a, double b, co
     QString input = clip.source;
     double sourceStart = clip.start;
     QString baked;
+    auto cleanupBaked = qScopeGuard([&] { if (!baked.isEmpty()) QFile::remove(baked); });
     if (clip.speed != 1) {
         Project one = project;
         auto plain = clip;
@@ -407,12 +508,15 @@ Source cutAudio(const Project& project, const Clip& clip, double a, double b, co
     else
         filters << "[p0]anull[out]";
     QString output = uniqueFile();
+    bool complete = false;
+    auto cleanupOutput = qScopeGuard([&] { if (!complete) QFile::remove(output); });
     ffmpeg(args + QStringList{"-filter_complex", filters.join(';'), "-map", "[out]", "-c:a",
                               "pcm_f32le", output},
            c);
     auto result = readSource(output, c);
     if (!baked.isEmpty())
         QFile::remove(baked);
+    complete = true;
     return result;
 }
 Source crossfade(const Project& p, const Clip& first, const Clip& next, const Cancel& c,
@@ -423,6 +527,7 @@ Source crossfade(const Project& p, const Clip& first, const Clip& next, const Ca
     if (overlap <= 0)
         throw Error("Недопустимая длина перехода");
     QString a = uniqueFile(), b = uniqueFile();
+    auto cleanupInputs = qScopeGuard([&] { QFile::remove(a); QFile::remove(b); });
     Project one = p;
     one.muted.clear();
     Clip left = first;
@@ -454,6 +559,8 @@ Source crossfade(const Project& p, const Clip& first, const Clip& next, const Ca
         n(overlap) + ")/" + n(overlap) + ",0,1)':eval=frame[b];[a][b]acrossfade=d=" + n(overlap) +
         ":c1=qsin:c2=qsin,alimiter=limit=0.95:level=0:latency=1[out]";
     QString out = uniqueFile();
+    bool complete = false;
+    auto cleanupOutput = qScopeGuard([&] { if (!complete) QFile::remove(out); });
     try {
         ffmpeg({"-i", a, "-i", b, "-filter_complex", filter, "-map", "[out]", "-c:a", "pcm_f32le",
                 out},
@@ -465,7 +572,7 @@ Source crossfade(const Project& p, const Clip& first, const Clip& next, const Ca
     }
     QFile::remove(a);
     QFile::remove(b);
-    return readSource(out, c);
+    auto result = readSource(out, c); complete = true; return result;
 }
 QString timestamp(double value, int decimals) {
     if (!std::isfinite(value) || value < 0)
@@ -543,6 +650,7 @@ QString lrc(const QList<Lyric>& lines) {
 QString plainLyrics(const QString& text) {
     QString result = text;
     result.remove(QRegularExpression("\\[\\d{1,6}:\\d{2}(?:[.:]\\d{1,3})?\\]"));
+    result.remove(QRegularExpression("^\\s*\\[(?:ar|al|ti|au|by|re|ve|length|offset):[^\\]]*\\]\\s*$", QRegularExpression::MultilineOption | QRegularExpression::CaseInsensitiveOption));
     return result.trimmed();
 }
 QList<std::complex<double>> fft(QList<std::complex<double>> a) {
@@ -616,15 +724,9 @@ QStringList AudioOptions::filters(double duration) const {
     return f;
 }
 QJsonObject analyze(const QString& audio, const Cancel& cancel) {
-    auto samples = decode(audio, 16000, 1, 0, 60, cancel);
+    const auto source = readSource(audio, cancel, false);
     double sum = 0, peak = 0, quiet = 0;
-    for (float x : samples) {
-        sum += x * x;
-        peak = qMax(peak, std::abs(double(x)));
-        if (std::abs(x) < .01)
-            quiet++;
-    }
-    double rms = std::sqrt(sum / qMax(qsizetype(1), samples.size()));
+    qint64 sampleCount = 0;
     auto stats = process(executable("ffmpeg"),
                          {"-hide_banner", "-nostdin", "-i", audio, "-af",
                           "loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"},
@@ -635,14 +737,21 @@ QJsonObject analyze(const QString& audio, const Cancel& cancel) {
         loudness = QJsonDocument::fromJson(stats.mid(begin, end - begin + 1)).object();
     double bass = 0, mid = 0, treble = 0, weighted = 0, total = 0, flatness = 0;
     int frames = 0;
-    for (qsizetype at = 0; at + 1024 <= samples.size(); at += 4096) {
-        QList<std::complex<double>> window(1024);
-        for (int i = 0; i < 1024; ++i)
-            window[i] = samples[at + i] * (.5 - .5 * std::cos(2 * std::numbers::pi * i / 1024));
+    for (double begin = 0; begin < source.duration; begin += 30) {
+      checkpoint(cancel);
+      const auto samples = decode(audio, 48000, 2, begin, qMin(30., source.duration - begin), cancel);
+      for (float x : samples) {
+        if (!std::isfinite(x)) continue;
+        sum += double(x) * x; peak = qMax(peak, std::abs(double(x))); quiet += std::abs(x) < .01; ++sampleCount;
+      }
+      for (qsizetype at = 0; at + 4096 <= samples.size(); at += 24000) for (int channel = 0; channel < 2; ++channel) {
+        QList<std::complex<double>> window(2048);
+        for (int i = 0; i < 2048; ++i)
+            window[i] = samples[at + i * 2 + channel] * (.5 - .5 * std::cos(2 * std::numbers::pi * i / 2048));
         auto bins = fft(window);
         double logarithm = 0, sumPower = 0;
-        for (int k = 1; k <= 512; ++k) {
-            double energy = std::norm(bins[k]), hz = k * 16000. / 1024;
+        for (int k = 1; k <= 1024; ++k) {
+            double energy = std::norm(bins[k]), hz = k * 48000. / 2048;
             total += energy;
             weighted += energy * hz;
             if (hz < 250)
@@ -654,12 +763,14 @@ QJsonObject analyze(const QString& audio, const Cancel& cancel) {
             logarithm += std::log(qMax(1e-20, energy));
             sumPower += energy;
         }
-        flatness += std::exp(logarithm / 512) / qMax(1e-20, sumPower / 512);
+        flatness += std::exp(logarithm / 1024) / qMax(1e-20, sumPower / 1024);
         ++frames;
+      }
     }
+    const double rms = std::sqrt(sum / qMax(qint64(1), sampleCount));
     return {{"rmsDb", 20 * std::log10(qMax(1e-12, rms))},
             {"peakDb", 20 * std::log10(qMax(1e-12, peak))},
-            {"quietFraction", quiet / qMax(qsizetype(1), samples.size())},
+            {"quietFraction", quiet / qMax(qint64(1), sampleCount)}, {"analyzedSeconds", source.duration}, {"spectralSampleRate", 48000},
             {"integratedLufs", loudness["input_i"].toString()},
             {"truePeak", loudness["input_tp"].toString()},
             {"lra", loudness["input_lra"].toString()},
@@ -673,7 +784,7 @@ QJsonObject analyze(const QString& audio, const Cancel& cancel) {
 }
 QString normalize(const QString& source, const QString& target, const AudioOptions& options,
                   const Cancel& c, Progress p) {
-    auto info = readSource(source, c);
+    auto info = readSource(source, c, false);
     auto effective = options;
     if (options.autoDenoise && !options.denoise) {
         auto measurements = analyze(source, c);
@@ -700,6 +811,14 @@ QString normalize(const QString& source, const QString& target, const AudioOptio
         double value = stats[key].toString().toDouble(&ok);
         finite &= ok && std::isfinite(value);
     }
+    // FFmpeg can measure positive LUFS on high-frequency/square signals, but its
+    // two-pass measured_I parameter accepts only [-99, 0]. Use the dynamic pass
+    // whenever a measurement is outside the filter's accepted parameter range.
+    finite &= stats["input_i"].toString().toDouble() >= -99 && stats["input_i"].toString().toDouble() <= 0;
+    finite &= stats["input_lra"].toString().toDouble() >= 0 && stats["input_lra"].toString().toDouble() <= 99;
+    finite &= stats["input_tp"].toString().toDouble() >= -99 && stats["input_tp"].toString().toDouble() <= 99;
+    finite &= stats["input_thresh"].toString().toDouble() >= -99 && stats["input_thresh"].toString().toDouble() <= 0;
+    finite &= std::abs(stats["target_offset"].toString().toDouble()) <= 99;
     if (finite)
         normalization += ":measured_I=" + stats["input_i"].toString() +
                          ":measured_TP=" + stats["input_tp"].toString() +
@@ -712,7 +831,7 @@ QString normalize(const QString& source, const QString& target, const AudioOptio
     if (options.limiter)
         filters << "alimiter=limit=" + n(std::pow(10, options.truePeak / 20)) +
                        ":level=0:latency=1";
-    QStringList args{"-i", source, "-vn", "-af", filters.join(',')};
+    QStringList args{"-i", source, "-map", "0:a:0", "-vn", "-af", filters.join(',')};
     if (options.sampleRate)
         args << "-ar" << QString::number(options.sampleRate);
     if (options.channels)
@@ -721,18 +840,35 @@ QString normalize(const QString& source, const QString& target, const AudioOptio
     if (suffix == "mp3")
         args << "-c:a" << "libmp3lame" << "-q:a" << QString::number(options.quality);
     else if (suffix == "wav")
-        args << "-c:a" << "pcm_s16le" << "-rf64" << "auto";
-    else
+        args << "-c:a" << "pcm_f32le" << "-rf64" << "auto";
+    else if (suffix == "flac") args << "-c:a" << "flac";
+    else if (suffix == "opus") args << "-c:a" << "libopus" << "-b:a" << "192k";
+    else if (suffix == "ogg") args << "-c:a" << "libvorbis" << "-q:a" << "6";
+    else if (suffix == "m4a")
         args << "-c:a" << "aac" << "-b:a" << "256k";
+    else throw Error("Неподдерживаемый формат результата: " + suffix);
     if (QFile::exists(target))
         throw Error("Результат уже существует: " + target);
-    try {
-        ffmpeg(args + QStringList{target}, c, p);
-        checkpoint(c);
-    } catch (...) {
-        QFile::remove(target);
-        throw;
+    QDir().mkpath(QFileInfo(target).absolutePath());
+    const QString temporary = QFileInfo(target).absolutePath() + "/.sonicforge-" + QUuid::createUuid().toString(QUuid::Id128) + "." + suffix;
+    auto cleanup = qScopeGuard([&] { QFile::remove(temporary); });
+    ffmpeg(args + QStringList{temporary}, c, p);
+    if (options.limiter && (suffix == "mp3" || suffix == "m4a" || suffix == "opus" || suffix == "ogg")) {
+        double correction = 0;
+        for (int attempt = 0; attempt < 4; ++attempt) {
+            const auto measured = process(executable("ffmpeg"), {"-hide_banner", "-nostdin", "-i", temporary, "-af", "loudnorm=I=-14:TP=-1:LRA=11:print_format=json", "-f", "null", "-"}, c, {}, true, true);
+            const auto begin = measured.lastIndexOf('{'), end = measured.lastIndexOf('}');
+            bool ok = false; const auto value = QJsonDocument::fromJson(measured.mid(begin, end - begin + 1)).object()["input_tp"].toString(); const double peak = value.toDouble(&ok);
+            if (value == "-inf" || (ok && peak <= options.truePeak + .05)) break;
+            if (!ok || attempt == 3) throw Error("Не удалось подтвердить true peak закодированного результата");
+            correction -= peak - options.truePeak + .15;
+            auto adjusted = args; adjusted[adjusted.indexOf("-af") + 1] = filters.join(',') + ",volume=" + n(correction) + "dB";
+            ffmpeg(adjusted + QStringList{"-y", temporary}, c, p);
+        }
     }
+    transferLyrics(source, temporary, options.speed, c);
+    checkpoint(c);
+    publishFiles({{temporary, target}});
     return target;
 }
 } // namespace sf

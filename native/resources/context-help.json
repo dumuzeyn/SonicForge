@@ -892,12 +892,12 @@
     "en": "Format for mix export and linked processing: MP3, WAV or M4A. Preview uses lossless working audio."
   },
   "cover_color": {
-    "ru": "M2Pv1 — классическая окраска; M2Pv2 — цвета характера песни; M2Pv3 — скорость ритма: медленнее — холодные оттенки, быстрее — тёплые. Оценка темпа может ошибаться вдвое.",
-    "en": "M2Pv1 — classic colors; M2Pv2 — musical character; M2Pv3 — rhythmic speed: slower is cooler, faster is warmer. Tempo estimates may be half or double time."
+    "ru": "M2Pv1 — классическая окраска; M2Pv2 — цвета характера песни. Цвет M2Pv3 показывает локальную скорость и плотность ритма слева направо: медленные фазы — холодные, быстрые — красноватые. Фактура меняет яркость, сохраняя оттенок текущего момента.",
+    "en": "M2Pv1 — classic colors; M2Pv2 — musical character. M2Pv3 maps local pulse speed and attack density from left to right: slow phases are cool, fast phases reddish. Texture changes brightness while preserving each moment's hue."
   },
   "Цвет": {
-    "ru": "M2Pv1 — классическая окраска; M2Pv2 — цвета характера песни; M2Pv3 — скорость ритма: медленнее — холодные оттенки, быстрее — тёплые. Оценка темпа может ошибаться вдвое.",
-    "en": "M2Pv1 — classic colors; M2Pv2 — musical character; M2Pv3 — rhythmic speed: slower is cooler, faster is warmer. Tempo estimates may be half or double time."
+    "ru": "M2Pv1 — классическая окраска; M2Pv2 — цвета характера песни. Цвет M2Pv3 показывает локальную скорость и плотность ритма слева направо: медленные фазы — холодные, быстрые — красноватые. Фактура меняет яркость, сохраняя оттенок текущего момента.",
+    "en": "M2Pv1 — classic colors; M2Pv2 — musical character. M2Pv3 maps local pulse speed and attack density from left to right: slow phases are cool, fast phases reddish. Texture changes brightness while preserving each moment's hue."
   },
   "cover_pattern": {
     "ru": "M2Pv1 — спектральные деформации; M2Pv2 — органические складки; M2Pv3 — узор поверх структуры песни, начало слева, конец справа.",
@@ -988,8 +988,8 @@
     "en": "Adjust audio sliders, analyze and apply recommendations. Original and automatically processed playback are below the settings. Collapsed filters remain active."
   },
   "tab_cover": {
-    "ru": "Создавайте обложку по структуре песни или выбирайте своё изображение. Дополнительные настройки под Seed позволяют менять детали, надпись, символ и палитру.",
-    "en": "Generate artwork from the song structure or select an image. Advanced options below Seed control detail, lettering, symbol and palette."
+    "ru": "Создавайте обложку по структуре песни или выбирайте своё изображение. «Текст и оформление» меняет надпись, шрифт, размер, положение и общий цвет текста и символа. Надпись можно перетаскивать мышью. Для узнаваемого вида M2P выберите оригинальную палитру узора.",
+    "en": "Generate artwork from the song structure or select an image. Text and styling edits lettering, font, size, position and the shared text/symbol color. Drag lettering to move it. Select Original pattern palette for each M2P engine's native look."
   },
   "tab_help": {
     "ru": "Справочник по монтажу, звуку, обложкам, тексту и сохранению. F1 открывает эту вкладку.",

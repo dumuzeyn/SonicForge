@@ -2,12 +2,14 @@ param(
     [switch]$Deploy,
     [switch]$Installer,
     [switch]$Portable,
+    [switch]$WhisperVulkan,
     [string]$FfmpegRoot = 'C:\ffmpeg',
     [string]$VCRuntimeRoot = "$env:WINDIR\System32",
     [int]$Jobs = 2
 )
 $ErrorActionPreference = 'Stop'
 $Root = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+. (Join-Path $PSScriptRoot 'release_common.ps1')
 Set-Location -LiteralPath $Root
 function Run([string]$Program, [string[]]$Arguments) {
     & $Program @Arguments
@@ -59,14 +61,18 @@ foreach ($Dependency in @(@('whisper','https://github.com/ggml-org/whisper.cpp.g
 }
 Run git @('-C','build/native-deps/demucs','submodule','update','--init','--depth','1')
 if ((git -C build/native-deps/demucs/vendor/eigen rev-parse HEAD) -ne $Lock.eigen) { throw 'Unexpected Eigen revision' }
-Run $CMake @('-S','.','-B','build/native','-G','Ninja','-DCMAKE_BUILD_TYPE=Release',"-DCMAKE_PREFIX_PATH=$Qt",'-DCMAKE_C_COMPILER=gcc','-DCMAKE_CXX_COMPILER=g++',"-DCMAKE_MAKE_PROGRAM=$Ninja" )
+$VulkanOption = if ($WhisperVulkan) { 'ON' } else { 'OFF' }
+Run $CMake @('-S','.','-B','build/native','-G','Ninja','-DCMAKE_BUILD_TYPE=Release',"-DCMAKE_PREFIX_PATH=$Qt",'-DCMAKE_C_COMPILER=gcc','-DCMAKE_CXX_COMPILER=g++',"-DCMAKE_MAKE_PROGRAM=$Ninja", "-DGGML_VULKAN=$VulkanOption" )
 Run $CMake @('--build','build/native','-j',"$Jobs")
 Run $Ctest @('--test-dir','build/native','--output-on-failure')
 if (-not ($Deploy -or $Installer -or $Portable)) { return }
-$Target = Join-Path $Root 'dist\SonicForge'
+$Canonical = Assert-WorkspacePath $Root (Join-Path $Root 'dist\SonicForge')
+$Target = Assert-WorkspacePath $Root (Join-Path $Root 'build\deploy-stage')
 $TargetExe = Join-Path $Target 'SonicForge.exe'
-$Running = Get-CimInstance Win32_Process -Filter "Name='SonicForge.exe'" | Where-Object { $_.ExecutablePath -eq $TargetExe }
+$Running = Get-CimInstance Win32_Process -Filter "Name='SonicForge.exe'" | Where-Object { $_.ExecutablePath -eq (Join-Path $Canonical 'SonicForge.exe') }
 if ($Running) { throw 'Закройте SonicForge перед обновлением сборки; открытый проект не будет прерван.' }
+Recycle $Target
+New-Item -ItemType Directory -Path $Target -Force | Out-Null
 foreach ($File in @('ffmpeg.exe','ffprobe.exe')) {
     if (-not (Test-Path -LiteralPath "$FfmpegRoot\bin\$File")) { throw "Missing $FfmpegRoot\bin\$File" }
 }
@@ -79,6 +85,11 @@ Copy-Item -LiteralPath build/native/SonicForge.exe -Destination $TargetExe -Forc
 Run "$Qt\bin\windeployqt.exe" @('--release','--no-opengl-sw','--translations','ru,en','--include-plugins','qoffscreen',$TargetExe)
 Copy-Item "$Compiler\libgomp-1.dll" $Target -Force
 Copy-Item "$OrtRoot\lib\*.dll" "$Target\tools" -Force
+$RuntimeLock = Get-Content native/runtime-lock.json -Raw | ConvertFrom-Json
+foreach ($Entry in $RuntimeLock.files.PSObject.Properties) {
+    $RuntimeFile = if ($Entry.Name -in @('ffmpeg.exe','ffprobe.exe')) { Join-Path "$FfmpegRoot\bin" $Entry.Name } else { Join-Path $VCRuntimeRoot $Entry.Name }
+    if ((Get-FileHash -LiteralPath $RuntimeFile).Hash.ToLowerInvariant() -ne $Entry.Value.sha256) { throw "Runtime does not match native/runtime-lock.json: $RuntimeFile" }
+}
 foreach ($File in @('msvcp140.dll','msvcp140_1.dll','vcruntime140.dll','vcruntime140_1.dll')) { Copy-Item -LiteralPath "$VCRuntimeRoot\$File" -Destination $Target -Force }
 Copy-Item "$FfmpegRoot\bin\ffmpeg.exe","$FfmpegRoot\bin\ffprobe.exe" "$Target\tools" -Force
 Copy-Item assets/fonts/* "$Target\assets\fonts" -Force
@@ -110,29 +121,48 @@ Set-Content -LiteralPath "$Target\qt.conf" -Encoding ascii -Value "[Paths]`nPref
 $OldPlatform = $env:QT_QPA_PLATFORM
 try {
     $env:QT_QPA_PLATFORM='offscreen'
-    $Smoke = Start-Process -FilePath $TargetExe -ArgumentList '--smoke-test',"`"$Root\validation\packaged-ui`"" -WindowStyle Hidden -Wait -PassThru
-    if ($Smoke.ExitCode -ne 0) { throw 'Packaged UI check failed; old runtime retained' }
+    $Smoke = Start-Process -FilePath $TargetExe -ArgumentList '--smoke-test',"`"$Root\validation\packaged-ui`"" -WindowStyle Hidden -PassThru
+    if (-not $Smoke.WaitForExit(120000)) { Stop-Process -Id $Smoke.Id; throw 'Packaged UI check timed out; canonical bundle unchanged' }
+    if ($Smoke.ExitCode -ne 0) { throw 'Packaged UI check failed; canonical bundle unchanged' }
 } finally { $env:QT_QPA_PLATFORM=$OldPlatform }
 Recycle "$Target\_internal"
 $Forbidden = Get-ChildItem -LiteralPath $Target -Recurse -File | Where-Object { $_.Extension -in '.py','.pyc','.pyd' -or $_.Name -match '^python.*\.dll$' }
 if ($Forbidden) { throw 'Python runtime found in native distribution' }
+Sign-ReleaseFile $TargetExe
+Write-BundleManifest $Root $Target
+& (Join-Path $PSScriptRoot 'check_native.ps1') -Application 'build\deploy-stage\SonicForge.exe'
+$Rollback = Assert-WorkspacePath $Root (Join-Path $Root 'build\deploy-rollback')
+Recycle $Rollback
+$HadCanonical = Test-Path -LiteralPath $Canonical
+try {
+    if ($HadCanonical) { Move-Item -LiteralPath $Canonical -Destination $Rollback }
+    Move-Item -LiteralPath $Target -Destination $Canonical
+} catch {
+    if (-not (Test-Path -LiteralPath $Canonical) -and (Test-Path -LiteralPath $Rollback)) { Move-Item -LiteralPath $Rollback -Destination $Canonical }
+    throw
+}
+$Target = $Canonical
+Recycle $Rollback
 if ($Installer) {
-    $OldInstaller = Join-Path $Root 'dist\SonicForge-Setup-2.4.0.exe'
-    $StableInstaller = Join-Path $Root 'dist\SonicForge-Setup.exe'
-    if ((Test-Path -LiteralPath $OldInstaller) -and -not (Test-Path -LiteralPath $StableInstaller)) { Move-Item -LiteralPath $OldInstaller -Destination $StableInstaller }
-    $Iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-    if (-not $Iscc) { throw 'Install Inno Setup 6 to build the installer' }
-    Run $Iscc @('/Qp','packaging/SonicForge.iss')
+    & (Join-Path $PSScriptRoot 'build_installer.ps1')
 }
 if ($Portable) {
     $Zip = Join-Path $Root 'dist\SonicForge-windows-x64.zip'
-    Recycle $Zip
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [IO.Compression.ZipFile]::CreateFromDirectory($Target,$Zip,[IO.Compression.CompressionLevel]::Optimal,$true)
+    $StagedZip = Assert-WorkspacePath $Root (Join-Path $Root 'build\SonicForge-windows-x64.zip')
+    if (Test-Path -LiteralPath $StagedZip) { Remove-Item -LiteralPath $StagedZip }
+    # Release assets must fit GitHub's 2 GiB limit. Keep optional neural models
+    # in the local bundle; the portable app downloads missing models on demand.
+    $Archive = [IO.Compression.ZipFile]::Open($StagedZip, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($File in Get-ChildItem -LiteralPath $Target -Recurse -File) {
+            $Relative = $File.FullName.Substring($Target.TrimEnd('\').Length + 1).Replace('\','/')
+            if ($Relative -match '^models/(ggml-.*\.bin|ctc-.*\.onnx)$') { continue }
+            [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($Archive, $File.FullName, 'SonicForge/'+$Relative, [IO.Compression.CompressionLevel]::Fastest) | Out-Null
+        }
+    } finally { $Archive.Dispose() }
+    if ((Get-Item -LiteralPath $StagedZip).Length -ge 2GB) { throw 'Portable archive exceeds GitHub release asset size limit' }
+    Install-ArtifactFile $Root $StagedZip $Zip
 }
-$Artifacts = @('dist/SonicForge/SonicForge.exe','dist/SonicForge-Setup.exe','dist/SonicForge-windows-x64.zip')
-$Sums = foreach ($Artifact in $Artifacts) {
-    if (Test-Path -LiteralPath $Artifact) { ((Get-FileHash -LiteralPath $Artifact -Algorithm SHA256).Hash.ToLowerInvariant()+'  '+$Artifact.Substring(5)) }
-}
-Set-Content dist/SHA256SUMS.txt -Value $Sums -Encoding ascii
+Write-DistributionChecksums $Root
 Write-Host 'Готово: dist\SonicForge обновлён на месте.'

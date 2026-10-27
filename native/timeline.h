@@ -33,6 +33,7 @@ class Timeline final : public QAbstractScrollArea {
     void dragEnterEvent(QDragEnterEvent*) override;
     void dragMoveEvent(QDragMoveEvent*) override;
     void dropEvent(QDropEvent*) override;
+    void keyPressEvent(QKeyEvent*) override;
 
   private:
     double at(double x) const;

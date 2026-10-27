@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "files": {
+    "msvcp140_1.dll": {
+      "version": "14.50.35710.0",
+      "sha256": "3a85571ac1935b6d4dead4e9ad3117ac88855b40253679f57827050f9213e539"
+    },
+    "ffprobe.exe": {
+      "version": null,
+      "sha256": "448c02f13b5fef6192ad3e8a8de8ea45c31122e085efd3ca0797b3bc0f771152"
+    },
+    "vcruntime140.dll": {
+      "version": "14.50.35710.0",
+      "sha256": "6a611ee3550f5d27952ddf02fa6e919f4c83a53d54efcde1d880614f0695bef0"
+    },
+    "ffmpeg.exe": {
+      "version": null,
+      "sha256": "b50cb60dbb25170dda7dd23a630130d8630f70575fe08cf8dca54873056e5724"
+    },
+    "msvcp140.dll": {
+      "version": "14.50.35710.0",
+      "sha256": "1e0547cc52028ff6bcfab1948b028366ca886aab4b4df53e6f7ed65b4aad0a6e"
+    },
+    "vcruntime140_1.dll": {
+      "version": "14.50.35710.0",
+      "sha256": "95f782c2a301004e8e2028c3ac622754e483b829d9382d0bf91fff3f8de7c19c"
+    }
+  }
+}

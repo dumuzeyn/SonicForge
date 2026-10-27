@@ -36,22 +36,35 @@ QString ensureModel(const QString& kind, const Cancel& cancel, Progress progress
     const QString name = model["file"].toString();
     if (name.isEmpty())
         throw Error("Неизвестная модель");
-    const QString path = modelRoot() + "/" + name;
+    const QString userRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/models";
+    QString path = modelRoot() + "/" + name;
+    if (QFileInfo(userRoot + "/" + name).isFile()) path = userRoot + "/" + name;
     const QByteArray expected = model["sha256"].toString().toLatin1();
+    static QMutex verifiedMutex;
+    static QHash<QString, QPair<qint64, qint64>> verified;
+    QMutexLocker guard(&verifiedMutex);
     if (QFileInfo(path).size() == model["size"].toInteger()) {
-        QFile input(path);
-        QCryptographicHash hash(QCryptographicHash::Sha256);
-        if (input.open(QIODevice::ReadOnly) && hash.addData(&input) &&
-            hash.result().toHex() == expected)
+        const auto identity = qMakePair(QFileInfo(path).size(), QFileInfo(path).lastModified().toMSecsSinceEpoch());
+        if (verified.value(path) == identity) return path;
+        if (fileFingerprint(path, cancel).toHex() == expected) {
+            verified[path] = identity;
             return path;
-        throw Error("Контрольная сумма модели не совпадает: " + path);
+        }
+        if (progress) progress("Восстанавливаю повреждённую модель…", 0);
     }
+    path = userRoot + "/" + name;
+    guard.unlock();
+    QDir().mkpath(userRoot);
+    QLockFile downloadLock(path + ".lock"); downloadLock.setStaleLockTime(0);
+    while (!downloadLock.tryLock(100)) checkpoint(cancel);
+    if (QFileInfo(path).size() == model["size"].toInteger() && fileFingerprint(path, cancel).toHex() == expected) return path;
     const QUrl url(model["url"].toString());
     QDir().mkpath(QFileInfo(path).absolutePath());
     QSaveFile output(path);
     if (!output.open(QIODevice::WriteOnly))
         throw Error(output.errorString());
     QNetworkAccessManager manager;
+    manager.setTransferTimeout(60000);
     QNetworkRequest request(url);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::NoLessSafeRedirectPolicy);
@@ -59,15 +72,16 @@ QString ensureModel(const QString& kind, const Cancel& cancel, Progress progress
     QCryptographicHash hash(QCryptographicHash::Sha256);
     QEventLoop loop;
     QTimer timer;
+    QElapsedTimer elapsed; elapsed.start();
     timer.setInterval(100);
     QObject::connect(&timer, &QTimer::timeout, &loop, [&] {
-        if (cancel && cancel->load())
+        if ((cancel && cancel->load()) || elapsed.elapsed() > 30 * 60 * 1000)
             reply->abort();
     });
     QObject::connect(reply, &QNetworkReply::readyRead, &loop, [&] {
         auto bytes = reply->readAll();
         hash.addData(bytes);
-        output.write(bytes);
+        if (output.write(bytes) != bytes.size()) reply->abort();
     });
     QObject::connect(reply, &QNetworkReply::downloadProgress, &loop, [&](qint64 got, qint64 total) {
         if (progress)
@@ -87,6 +101,7 @@ QString ensureModel(const QString& kind, const Cancel& cancel, Progress progress
         throw Error("Загруженная модель не прошла проверку контрольной суммы");
     if (!output.commit())
         throw Error(output.errorString());
+    { QMutexLocker lock(&verifiedMutex); verified[path] = qMakePair(QFileInfo(path).size(), QFileInfo(path).lastModified().toMSecsSinceEpoch()); }
     return path;
 }
 static QList<Lyric> readResult(const QString& file) {
@@ -130,7 +145,11 @@ QList<Lyric> recognize(const QString& audio, const QString& language, const Canc
 QList<Lyric> alignLyrics(const QString& audio, const QString& text, const QString& language,
                          const Cancel& cancel, Progress progress, const QString& reference,
                          bool fast) {
-    QString model = speechModel(fast, language, cancel, progress), result = uniqueFile(".json"),
+    const auto direct = directAlignmentLanguage(text);
+    if (progress && !direct.isEmpty()) progress("Проверяю модель выравнивания…", 0);
+    QString model = direct.isEmpty() ? speechModel(fast, language, cancel, progress)
+                                     : ensureModel("alignment_" + direct, cancel, progress);
+    QString result = uniqueFile(".json"),
             input = uniqueFile(".txt");
     QFile file(input);
     if (!file.open(QIODevice::WriteOnly))
@@ -142,7 +161,8 @@ QList<Lyric> alignLyrics(const QString& audio, const QString& text, const QStrin
             "--speech-worker", "--audio",  audio,  "--model", model, "--language",
             language,          "--result", result, "--align", input, "--reference",
             reference};
-        if (fast)
+        if (!direct.isEmpty()) arguments << "--ctc-direct";
+        else if (fast)
             arguments << "--fast";
         process(QCoreApplication::applicationFilePath(), arguments, cancel, progress);
         auto lines = readResult(result);
@@ -159,6 +179,12 @@ QStringList separate(const QString& audio, bool two, const Cancel& cancel, Progr
     QString model = ensureModel("stems", cancel, progress);
     QString out = cacheDirectory() + "/stems-" + QUuid::createUuid().toString(QUuid::Id128);
     QDir().mkpath(out);
+    bool completed = false;
+    auto cleanup = qScopeGuard([&] { if (!completed) QDir(out).removeRecursively(); });
+    const auto info = readSource(audio, cancel, false);
+    QStorageInfo space(out);
+    if (space.isValid() && space.bytesAvailable() < qint64(info.duration * 44100 * 2 * (two ? 20 : 16)) + 128 * 1024 * 1024)
+        throw Error("Недостаточно места для разделения звука и результата");
     process(QCoreApplication::applicationFilePath(),
             {"--stems-worker", "--audio", audio, "--model", model, "--out", out}, cancel, progress,
             false);
@@ -170,8 +196,10 @@ QStringList separate(const QString& audio, bool two, const Cancel& cancel, Progr
                 "-c:a", "pcm_f32le", instrumental},
                cancel);
         files << instrumental;
+        for (const auto& stem : {"drums", "bass", "other"}) QFile::remove(out + "/" + stem + ".wav");
     } else
         files << out + "/drums.wav" << out + "/bass.wav" << out + "/other.wav";
+    completed = true;
     return files;
 }
 static QString normalized(const QString& text) {
@@ -475,11 +503,15 @@ int neuralWorker(const QStringList& arguments) {
     };
     QString result = option("--result");
     try {
+#if defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+        __builtin_cpu_init();
+        if (!__builtin_cpu_supports("avx2")) throw Error("Для нейросетевой обработки нужен процессор с AVX2. Редактор и метаданные доступны без распознавания.");
+#endif
         if (arguments.contains("--stems-worker")) {
             const auto source = readSource(option("--audio"));
             QStorageInfo disk(option("--out"));
             const qint64 required =
-                qint64(std::ceil(source.duration * 44100 * 2 * 2 * 4)) + 64 * 1024 * 1024;
+                qint64(std::ceil(source.duration * 44100 * 2 * 4 * 4)) + 64 * 1024 * 1024;
             if (disk.isValid() && disk.bytesAvailable() < required)
                 throw Error("Недостаточно места для четырёх WAV-файлов");
             auto model = std::make_unique<demucscpp::demucs_model>();
@@ -490,7 +522,7 @@ int neuralWorker(const QStringList& arguments) {
             std::vector<std::unique_ptr<WavWriter>> writers;
             for (const auto& name : names)
                 writers.push_back(
-                    std::make_unique<WavWriter>(option("--out") + "/" + name + ".wav", 44100, 2));
+                    std::make_unique<WavWriter>(option("--out") + "/" + name + ".wav", 44100, 2, true));
             QVector<float> tails[4];
             const double blockSeconds =
                 option("--segment-seconds").isEmpty()
@@ -544,7 +576,7 @@ int neuralWorker(const QStringList& arguments) {
         }
         if (!arguments.contains("--speech-worker"))
             return -1;
-        if (arguments.contains("--ctc-only")) {
+        if (arguments.contains("--ctc-only") || arguments.contains("--ctc-direct")) {
             QFile text(option("--align"));
             if (!text.open(QIODevice::ReadOnly))
                 throw Error(text.errorString());
@@ -553,7 +585,9 @@ int neuralWorker(const QStringList& arguments) {
             if (lines.isEmpty())
                 for (const auto& line : plainLyrics(supplied).split('\n', Qt::SkipEmptyParts))
                     lines << Lyric{-1, -1, line.trimmed(), 0};
-            lines = refineSpeechTiming(
+            if (arguments.contains("--ctc-direct"))
+                lines = alignSuppliedLyrics(option("--audio"), supplied, QFileInfo(option("--model")).absolutePath(), option("--reference"));
+            else lines = refineSpeechTiming(
                 option("--audio"), lines, QFileInfo(option("--model")).absolutePath(),
                 option("--reference"), !arguments.contains("--verify-recognition"));
             QJsonArray output;
@@ -574,7 +608,7 @@ int neuralWorker(const QStringList& arguments) {
             return 0;
         }
         auto params = whisper_context_default_params();
-        params.use_gpu = false;
+        params.use_gpu = !qEnvironmentVariableIsSet("SF_CPU_ONLY");
         params.flash_attn = false;
         params.dtw_token_timestamps = true;
         params.dtw_aheads_preset = option("--model").contains("turbo")
@@ -831,7 +865,7 @@ QString genre(const QString& audio, const Cancel& cancel, Progress progress) {
     auto labels = metadata["labels"].toArray();
     QVector<double> sums(labels.size()), support(labels.size());
     int patches = 0;
-    int regions = qMin(5, qMax(1, int(std::ceil(info.duration / 9))));
+    int regions = qMin(30, qMax(1, int(std::ceil(info.duration / 30))));
     double width = qMin(9., info.duration / regions);
     for (int region = 0; region < regions; ++region) {
         double at = qMax(0., (region + .5) * info.duration / regions - width / 2);
@@ -943,6 +977,14 @@ QString genre(const QString& audio, const Cancel& cancel, Progress progress) {
             if (selected.size() == 3)
                 break;
         }
+    }
+    if (progress) {
+        QStringList explanation;
+        for (int i : indices) if (allowed.contains(labels[i].toString().toLower()) && sums[i] / patches >= .1) {
+            explanation << labels[i].toString() + " " + QString::number(sums[i] / patches * 100, 'f', 0) + "%";
+            if (explanation.size() == 3) break;
+        }
+        progress(explanation.isEmpty() ? "Жанр не определён уверенно" : "MSD: " + explanation.join(", "), 1);
     }
     return selected.join("; ");
 }

@@ -13,6 +13,8 @@ struct WorkResult {
     QList<sf::Lyric> lyrics;
     QImage image;
     QJsonObject data;
+    QList<QPair<double, double>> changes;
+    sf::CoverArtwork artwork;
 };
 class Window final : public QMainWindow {
     Q_OBJECT
@@ -21,8 +23,12 @@ class Window final : public QMainWindow {
     void openFiles(const QStringList& files);
     bool smokeTest(const QString& output);
     void playbackSmoke(const QString& file, const QString& output);
+    void lyricsSaveSmoke(const QString& file, const QString& output);
+    void coverExportSmoke(const QString& file, const QString& output);
     void soundSmoke(const QString& file, const QString& output);
     void closeSmoke(const QString& output);
+    void reliabilitySmoke(const QString& output);
+    void openProject(const QString& path = {});
 
   protected:
     void closeEvent(QCloseEvent*) override;
@@ -39,11 +45,14 @@ class Window final : public QMainWindow {
     QCheckBox *linked = nullptr, *showTimes = nullptr, *separateVocals = nullptr,
               *overwriteLyrics = nullptr;
     QComboBox *mixFormat = nullptr, *lyricFormat = nullptr, *lyricLanguage = nullptr,
-              *lyricMode = nullptr, *lyricQuality = nullptr;
+              *lyricMode = nullptr, *lyricQuality = nullptr, *lyricTrack = nullptr;
     QPlainTextEdit *lyrics = nullptr, *log = nullptr;
     QLineEdit* stamp = nullptr;
-    QLabel *counter = nullptr, *status = nullptr, *analysisLabel = nullptr, *coverPreview = nullptr,
+    QLabel *counter = nullptr, *status = nullptr, *analysisLabel = nullptr,
            *playerClock = nullptr;
+    CoverPreview* coverPreview = nullptr;
+    sf::CoverArtwork coverArtwork;
+    QImage coverImage;
     QSlider* playerSeek = nullptr;
     QToolButton *playButton = nullptr, *selectButton = nullptr;
     QDoubleSpinBox *rangeStart = nullptr, *rangeEnd = nullptr;
@@ -67,6 +76,7 @@ class Window final : public QMainWindow {
     QList<QAbstractButton*> controls;
     QString workingSignature, workingFile, lastCover, lastOriginal, lastProcessed, customCoverFile;
     QString playerContext;
+    double playerOrigin = 0;
     std::optional<qint64> pendingSeek;
     bool seekIsTimeline = false;
     sf::CoverOptions coverOptions;
@@ -78,6 +88,24 @@ class Window final : public QMainWindow {
     QJsonObject measurements;
     quint64 comparisonRevision = 0;
     QSet<QString> comparisonFiles;
+    QTimer *autosaveTimer = nullptr, *coverRefreshTimer = nullptr;
+    QFutureWatcher<QString>* autosaveWatcher = nullptr;
+    std::unique_ptr<QLockFile> recoveryLease;
+    std::unique_ptr<QLockFile> restoredRecoveryLease;
+    QString projectPath, recoveryPath, restoredRecoveryPath, lyricSource, pendingOpenProject;
+    bool dirty = false, restoring = false, closing = false, closeAfterSave = false;
+    quint64 documentRevision = 0;
+    void markDirty();
+    QString lyricText() const;
+    QJsonObject workspaceState() const;
+    void applyWorkspace(const QJsonObject& state);
+    void saveProject(const QString& path = {});
+    void autosave();
+    void setupRecovery();
+    void disposeRecovery();
+    void updateInputs(bool enabled);
+    void refreshWrittenSource(const QString& path);
+    void cleanWorkingCache();
     QString t(const QString& key) const;
     QString localize(const QString& text) const;
     void retranslate();
@@ -105,6 +133,7 @@ class Window final : public QMainWindow {
                    std::function<void(const WorkResult&)> finished = {});
     void failure(const QString& message);
     void appendLog(const QString& message);
+    std::function<void()> releaseAudioForWrite(const QString& file);
     void remember();
     void projectChanged();
     void history(bool redo);
@@ -118,7 +147,8 @@ class Window final : public QMainWindow {
     QString prepare(const sf::Project& project, bool link, const QString& original,
                     const QString& format);
     void preview(bool editor);
-    void playFile(const QString& path, bool editor = false, const QString& context = {});
+    void previewRange();
+    void playFile(const QString& path, bool editor = false, const QString& context = {}, double origin = 0);
     void stop();
     void exportAudio();
     void loadMetadata();
@@ -129,7 +159,10 @@ class Window final : public QMainWindow {
     void showContextHelp(QWidget*, const QString&, const QString&, QPoint = {});
     sf::AudioOptions audioOptions() const;
     QMap<QString, QString> metadataValues() const;
-    void generateCover();
+    sf::CoverOptions currentCoverOptions() const;
+    void generateCover(bool editText = false);
+    void coverTextSettings();
+    void refreshCoverPreview();
     void coverSettings();
     void loadLyrics();
     void recognizeLyrics();

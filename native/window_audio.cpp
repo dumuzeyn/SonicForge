@@ -1,5 +1,109 @@
 #include "window.h"
 #include <cmath>
+std::function<void()> Window::releaseAudioForWrite(const QString& file) {
+    struct Reader { QPointer<QMediaPlayer> media; QUrl source; qint64 position; };
+    QList<Reader> readers;
+    const auto target = QFileInfo(file).canonicalFilePath();
+    if (target.isEmpty()) return [] {};
+    for (auto* media : {player, originalPane->media, processedPane->media}) {
+        if (!media->source().isLocalFile() ||
+            QFileInfo(media->source().toLocalFile()).canonicalFilePath().compare(target, Qt::CaseInsensitive) != 0)
+            continue;
+        readers << Reader{media, media->source(), media->position()};
+        if (media == player) { pendingSeek.reset(); playingTimeline = false; }
+        media->stop();
+        // Pausing leaves FFmpeg's file handle open on Windows, preventing the
+        // atomic replacement used when saving tags. Unload it before writing.
+        media->setSource({});
+    }
+    return [readers] {
+        for (const auto& reader : readers) {
+            if (!reader.media || !reader.media->source().isEmpty()) continue;
+            auto connection = std::make_shared<QMetaObject::Connection>();
+            *connection = QObject::connect(reader.media, &QMediaPlayer::mediaStatusChanged, reader.media,
+                [reader, connection](QMediaPlayer::MediaStatus status) {
+                    if (status != QMediaPlayer::LoadedMedia && status != QMediaPlayer::BufferedMedia &&
+                        status != QMediaPlayer::InvalidMedia) return;
+                    QObject::disconnect(*connection);
+                    if (reader.media && reader.media->source() == reader.source && status != QMediaPlayer::InvalidMedia) {
+                        reader.media->setPosition(reader.position);
+                        reader.media->pause();
+                    }
+                });
+            reader.media->setSource(reader.source);
+        }
+    };
+}
+void Window::lyricsSaveSmoke(const QString& file, const QString& output) {
+    setProperty("sfTesting", true);
+    auto directory = std::make_shared<QTemporaryDir>();
+    const auto song = directory->filePath("save-lyrics.mp3");
+    sf::ffmpeg({"-i", file, "-t", "4", song});
+    auto samples = std::make_shared<QVector<float>>(sf::decode(song, 8000, 1));
+    const QString text = "[00:00.200]Первая строка\n[00:01.500]Вторая строка";
+    linked->setChecked(false);
+    source->setText(song);
+    lyricFormat->setCurrentIndex(0);
+    lyrics->setPlainText(text);
+    audioOutput->setVolume(0);
+    originalPane->audio->setVolume(0);
+    processedPane->audio->setVolume(0);
+    originalPane->setFile(song);
+    processedPane->setFile(song);
+    playFile(song, false);
+    auto stage = std::make_shared<int>(0);
+    auto report = std::make_shared<QJsonObject>();
+    auto elapsed = std::make_shared<QElapsedTimer>();
+    elapsed->start();
+    auto* timer = new QTimer(this);
+    timer->setInterval(50);
+    connect(timer, &QTimer::timeout, this, [=, this] {
+        Q_UNUSED(directory); // Keep the temporary MP3 alive until playback and saving finish.
+        if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+            (*report)["save_error"] = box->text();
+            box->reject();
+        }
+        auto loaded = [](QMediaPlayer* media) {
+            return media->mediaStatus() == QMediaPlayer::LoadedMedia || media->mediaStatus() == QMediaPlayer::BufferedMedia;
+        };
+        if (*stage == 0 && player->position() > 200 && loaded(originalPane->media) && loaded(processedPane->media)) {
+            try { sf::saveLyrics(song, text, "embedded"); (*report)["reader_lock_detected"] = false; }
+            catch (const std::exception& error) {
+                (*report)["reader_lock_detected"] = true;
+                (*report)["before_save_error"] = QString::fromUtf8(error.what());
+            }
+            (*report)["saved_position"] = player->position();
+            *stage = 1;
+            saveLyrics();
+        } else if (*stage == 1 && !busy && !watcher && loaded(player) && loaded(originalPane->media) && loaded(processedPane->media)) {
+            (*report)["lyrics_written"] = sf::readMetadata(song).values.value("lyrics") == text;
+            (*report)["audio_unchanged"] = sf::decode(song, 8000, 1) == *samples;
+            (*report)["all_players_restored"] = player->source().toLocalFile() == song &&
+                originalPane->media->source().toLocalFile() == song && processedPane->media->source().toLocalFile() == song;
+            (*report)["position_restored"] = std::abs(player->position() - (*report)["saved_position"].toInteger()) < 100;
+            *stage = 2;
+        }
+        if (*stage == 2 || elapsed->elapsed() > 15000) {
+            timer->stop();
+            bool success = *stage == 2 && (*report)["lyrics_written"].toBool() && (*report)["audio_unchanged"].toBool() &&
+                           (*report)["all_players_restored"].toBool() && (*report)["position_restored"].toBool() && !report->contains("save_error");
+            (*report)["complete"] = success;
+            (*report)["stage"] = *stage;
+            (*report)["player_status"] = int(player->mediaStatus());
+            (*report)["player_error"] = player->errorString();
+            (*report)["original_status"] = int(originalPane->media->mediaStatus());
+            (*report)["original_error"] = originalPane->media->errorString();
+            (*report)["processed_status"] = int(processedPane->media->mediaStatus());
+            (*report)["position"] = player->position();
+            QFile result(output);
+            if (result.open(QIODevice::WriteOnly)) result.write(QJsonDocument(*report).toJson());
+            stop();
+            player->setSource({}); originalPane->setFile({}); processedPane->setFile({});
+            qApp->exit(success ? 0 : 1);
+        }
+    });
+    timer->start();
+}
 void Window::fragmentSettings() {
     if (timeline->selected.isEmpty() || busy)
         return;
@@ -71,6 +175,7 @@ void Window::scheduleComparison() {
         return;
     ++comparisonRevision;
     comparisonCancel->store(true);
+    processedPane->seek->setChanges({});
     if (!linked->isChecked()) {
         const QString path = source->text();
         originalPane->setFile(QFileInfo(path).isFile() ? path : QString());
@@ -105,6 +210,9 @@ void Window::compareAudio() {
     if (!link && !dirty)
         return;
     const auto options = audioOptions();
+    const int previewSeconds = qRound(numbers["preview_seconds"]->value());
+    const double previewStart = numbers["preview_start"]->value();
+    const QString outputFormat = link ? mixFormat->currentText().toLower() : choices["output_format"]->currentText().toLower();
     const auto revision = comparisonRevision;
     comparisonCancel = std::make_shared<std::atomic_bool>(false);
     const auto token = comparisonCancel;
@@ -132,9 +240,11 @@ void Window::compareAudio() {
         originalPane->message->setText(link ? localize("Текущий монтаж редактора")
                                             : QFileInfo(original).fileName());
         processedPane->setFile(result.data["processed"].toString());
+        processedPane->seek->setChanges(result.changes);
         processedPane->setVisible(dirty);
         processedPane->setEnabled(true);
-        processedPane->message->setText(localize("Текущие настройки звука"));
+        processedPane->message->setText(localize("Текущие настройки звука") + " · " + outputFormat.toUpper() +
+            (previewSeconds > 0 ? " · " + sf::timestamp(previewStart) + " + " + QString::number(previewSeconds) + localize(" с") : localize(" · Весь файл")));
         QSet<QString> keep;
         for (auto file : result.files)
             keep.insert(file);
@@ -150,13 +260,17 @@ void Window::compareAudio() {
             if (link) {
                 result.file = sf::uniqueFile();
                 result.files << result.file;
-                sf::render(snapshot, result.file, token);
+                sf::render(snapshot, result.file, token, previewStart, previewSeconds > 0 ? previewSeconds : -1);
+            } else if (previewSeconds > 0) {
+                result.file = sf::uniqueFile(); result.files << result.file;
+                sf::ffmpeg({"-ss", QString::number(previewStart), "-i", original, "-t", QString::number(previewSeconds), "-map", "0:a:0", "-c:a", "pcm_f32le", "-rf64", "auto", result.file}, token);
             }
             if (dirty) {
-                QString path = sf::uniqueFile();
+                QString path = sf::uniqueFile("." + outputFormat);
                 result.files << path;
                 sf::normalize(result.file, path, options, token);
                 result.data["processed"] = path;
+                result.changes = sf::audioChanges(result.file, path, token);
             }
         } catch (const std::exception& error) {
             result.error = QString::fromUtf8(error.what());
@@ -204,6 +318,8 @@ void Window::closeSmoke(const QString& output) {
     QTimer::singleShot(600, this, &Window::close);
 }
 void Window::soundSmoke(const QString& file, const QString& output) {
+    // This scenario exercises live comparison; settings/recovery remain isolated by main().
+    setProperty("sfTesting", false);
     audioOutput->setVolume(0);
     originalPane->audio->setVolume(0);
     processedPane->audio->setVolume(0);
@@ -221,12 +337,17 @@ void Window::soundSmoke(const QString& file, const QString& output) {
     connect(timer, &QTimer::timeout, this, [=, this] {
         if (*phase == 0 && !comparisonWatcher && processedPane->media->duration() > 0 &&
             originalPane->media->duration() > 0) {
-            (*report)["original_unprocessed"] = originalPane->file == file;
+            (*report)["original_unprocessed"] = !originalPane->file.isEmpty() && sf::audioChanges(file, originalPane->file).isEmpty();
             (*report)["automatic_processed_player"] =
                 !processedPane->isHidden() && QFileInfo(processedPane->file).isFile();
             (*report)["hidden_effects_active"] = findChild<QWidget*>("audioAdvanced")->isHidden();
             (*report)["speed_applied"] = std::abs(processedPane->media->duration() -
                                                   originalPane->media->duration() / 2.) < 150;
+            (*report)["processed_seek_has_change_marks"] = !processedPane->seek->changes().isEmpty();
+            (*report)["marks_use_processed_duration"] =
+                !processedPane->seek->changes().isEmpty() &&
+                processedPane->seek->changes().last().second <= processedPane->media->duration() / 1000. + .05;
+            (*report)["original_seek_has_no_change_marks"] = originalPane->seek->changes().isEmpty();
             originalPane->media->play();
             *phase = 1;
         }
@@ -243,6 +364,14 @@ void Window::soundSmoke(const QString& file, const QString& output) {
                 *phase == 2 && processedPane->media->playbackState() == QMediaPlayer::PlayingState;
             (*report)["one_player_at_a_time"] =
                 originalPane->media->playbackState() != QMediaPlayer::PlayingState;
+            auto directory = QFileInfo(output).absolutePath();
+            grab().save(directory + "/sound-top.png");
+            for (auto* scroll : tabs->widget(2)->findChildren<QScrollArea*>())
+                scroll->ensureWidgetVisible(processedPane);
+            QApplication::processEvents();
+            grab().save(directory + "/sound-players.png");
+            scheduleComparison();
+            (*report)["settings_clear_outdated_change_marks"] = processedPane->seek->changes().isEmpty();
             bool ok = *phase == 2;
             for (auto it = report->begin(); it != report->end(); ++it)
                 ok &= it.value().toBool();
@@ -250,12 +379,6 @@ void Window::soundSmoke(const QString& file, const QString& output) {
             QFile result(output);
             if (result.open(QIODevice::WriteOnly))
                 result.write(QJsonDocument(*report).toJson());
-            auto directory = QFileInfo(output).absolutePath();
-            grab().save(directory + "/sound-top.png");
-            for (auto* scroll : tabs->widget(2)->findChildren<QScrollArea*>())
-                scroll->ensureWidgetVisible(processedPane);
-            QApplication::processEvents();
-            grab().save(directory + "/sound-players.png");
             qApp->exit(ok ? 0 : 1);
         }
     });

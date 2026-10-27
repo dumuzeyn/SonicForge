@@ -17,8 +17,13 @@ struct Structure {
     static constexpr int columns = 600, bands = 64;
     QVector<double> level = QVector<double>(columns), attack = level, speed = level, counts = level;
     QVector<double> spectrum = QVector<double>(columns * bands);
+    QVector<double> pace = level, pulse = level, confidence = level, density = level;
+    double duration = 0;
     QByteArray fingerprint;
     double energy = 0, bass = 0, brightness = 0, drive = 0, regularity = 0;
+    double flatness = 0, flux = 0, attackStrength = 0, harmonic = 0, dynamic = 0;
+    int key = 9;
+    QVector<double> chroma = QVector<double>(12);
     double curve(const QVector<double>& values, double x) const {
         double p = unit(x) * (columns - 1);
         int a = int(p);
@@ -35,12 +40,106 @@ struct Structure {
                     row - r);
     }
 };
+void rhythmicTimeline(Structure& out, const QVector<double>& novelty, const QVector<double>& db,
+                      const Cancel& cancel) {
+    if (novelty.isEmpty()) return;
+    constexpr double rate = 11025. / 256;
+    QVector<double> onset(novelty.size());
+    for (int i = 0; i < onset.size(); ++i)
+        onset[i] = (novelty[qMax(0,i-1)] + novelty[i]*2 + novelty[qMin(i+1,int(onset.size()-1))])*.25;
+    for (int column = 0; column < Structure::columns; ++column) {
+        checkpoint(cancel);
+        const int center = qMin(int(onset.size()-1), qRound(double(column)/(Structure::columns-1)*(onset.size()-1)));
+        const int left = qMax(0,center-qRound(rate*2.5)), right = qMin(int(onset.size()),center+qRound(rate*2.5)+1);
+        const int count = right-left;
+        double localLevel=-120;
+        for (int i=qMax(left,center-qRound(rate*.8));i<=qMin(right-1,center+qRound(rate*.8));++i)
+            localLevel=qMax(localLevel,db[i]);
+        if (count < 8 || localLevel < -55) continue;
+        QVector<double> sorted(onset.begin()+left,onset.begin()+right);
+        std::sort(sorted.begin(),sorted.end());
+        // Stationary noise has spectral fluctuations but no distinct attacks.
+        const double contrast=(sorted[count*9/10]-sorted[count/10])/qMax(.012,sorted[count/2]);
+        if (contrast < .35) continue;
+        const double threshold = qMax(.012,sorted[count/2]+(sorted[count*3/4]-sorted[count/4])*.75);
+        double mean = 0;
+        for (int i = left; i < right; ++i) mean += onset[i];
+        mean /= count;
+        int peaks = 0, localPeaks = 0, last = left-10;
+        for (int i = left+1; i+1 < right; ++i)
+            if (onset[i] > threshold && onset[i] > onset[i-1] && onset[i] >= onset[i+1] && i-last >= 4) {
+                ++peaks;
+                if (std::abs(i-center) <= qRound(rate*.8)) ++localPeaks;
+                last = i;
+            }
+        if (peaks < 3 || localPeaks == 0 || sorted.last() < .012) continue;
+        auto correlation = [&](int lag) {
+            if (lag < 1 || lag >= count-3) return 0.;
+            double xy=0,xx=0,yy=0;
+            for (int i=left+lag;i<right;++i) {
+                const double x=onset[i]-mean,y=onset[i-lag]-mean;
+                xy+=x*y;xx+=x*x;yy+=y*y;
+            }
+            return xy/std::sqrt(qMax(1e-20,xx*yy));
+        };
+        int lag = 43;
+        double best = -1, confidence = 0;
+        for (int candidate=qRound(rate*60/200);candidate<=qRound(rate*60/48);++candidate) {
+            const double r=correlation(candidate), score=r+.10*qMax(0.,correlation(candidate*2));
+            if (score > best) { best=score;lag=candidate;confidence=qMax(0.,r); }
+        }
+        double bpm=rate*60/lag;
+        // Resolve supported half/bar-time readings, including sampling aliases
+        // at three beats per second. An isolated slow pulse has no such support.
+        const double attacks=peaks/(count/rate);
+        double selected=0;
+        for (int divisor=1;divisor<=4;++divisor) {
+            int sub=qMax(1,qRound(double(lag)/divisor));
+            for (int candidate=qMax(1,sub-1);candidate<=qRound(double(lag)/divisor)+1;++candidate)
+                if (correlation(candidate)>correlation(sub)) sub=candidate;
+            double pulse=rate*60/sub;
+            if (pulse<=270 && attacks>=pulse/60*.8 && correlation(sub)>=qMax(.08,confidence*.4))
+                selected=qMax(selected,pulse);
+        }
+        if (selected>0) bpm=selected;
+        const double localSeconds=(qMin(right-1,center+qRound(rate*.8))-qMax(left,center-qRound(rate*.8))+1)/rate;
+        const double localDensity=localPeaks/qMax(.1,localSeconds);
+        out.pulse[column]=confidence>=.08 ? bpm : 0;
+        out.confidence[column]=confidence;
+        out.density[column]=localDensity;
+        // Tempo and subdivision density are separate evidence of local pace.
+        // Confidence gates unsupported tempo; it must not turn fast music slow.
+        out.pace[column]=qMax(confidence>=.08 ? unit(bpm/200) : 0.,
+                              unit((localDensity-.5)/4)*.75);
+    }
+    // Reject isolated octave jumps without averaging over entire song sections.
+    const auto measured=out.pace;
+    const int medianRadius=qMax(1,qRound(.8/qMax(.001,out.duration)*(Structure::columns-1)));
+    for (int i=0;i<measured.size();++i) {
+        QVector<double> local;
+        for (int k=-medianRadius;k<=medianRadius;++k) local<<measured[qBound(0,i+k,int(measured.size()-1))];
+        std::sort(local.begin(),local.end());
+        out.pace[i]=local[local.size()/2];
+    }
+    const auto raw=out.pace;
+    const double sigma=qMax(.2,.60/qMax(.001,out.duration)*(Structure::columns-1));
+    const int radius=qMax(1,int(std::ceil(sigma*3)));
+    for (int i=0;i<raw.size();++i) {
+        double total=0,weight=0;
+        for (int k=-radius;k<=radius;++k) {
+            double w=std::exp(-.5*k*k/(sigma*sigma));
+            total+=raw[qBound(0,i+k,int(raw.size()-1))]*w;weight+=w;
+        }
+        out.pace[i]=total/weight;
+    }
+}
 Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
-    const auto source = readSource(audio, cancel);
+    const auto source = readSource(audio, cancel, false);
     Structure out;
+    out.duration = source.duration;
     QProcess decoder;
     decoder.setProgram(executable("ffmpeg"));
-    decoder.setArguments({"-hide_banner", "-nostdin", "-v", "error", "-i", audio, "-vn", "-ac", "1",
+    decoder.setArguments({"-hide_banner", "-nostdin", "-v", "error", "-protocol_whitelist", "file,pipe", "-i", audio, "-map", "0:a:0", "-vn", "-ac", "1",
                           "-ar", "11025", "-f", "f32le", "pipe:1"});
 #ifdef Q_OS_WIN
     decoder.setCreateProcessArgumentsModifier(
@@ -55,15 +154,19 @@ Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
     qint64 total = 0, frames = 0;
     double previousDb = -60, previousMagnitude = 0;
     QVector<double> onsets;
+    QVector<double> rhythmicNovelty, rhythmicDb;
+    std::array<double,257> previousSpectrum{};
     onsets.reserve(350);
     double currentSpeed = 0;
     QCryptographicHash hash(QCryptographicHash::Sha256);
     QByteArray pending, errors;
+    QElapsedTimer idle, elapsed; idle.start(); elapsed.start();
     do {
         checkpoint(cancel);
         decoder.waitForReadyRead(30);
+        if (idle.elapsed() > 60000 || elapsed.elapsed() > 6 * 60 * 60 * 1000) { decoder.kill(); decoder.waitForFinished(5000); throw Error("Превышено время анализа обложки"); }
         errors = (errors + decoder.readAllStandardError()).right(4096);
-        pending += decoder.read(65536);
+        const auto bytes = decoder.read(65536); if (!bytes.isEmpty()) idle.restart(); pending += bytes;
         int consumed = 0;
         for (; consumed + 4 <= pending.size(); consumed += 4) {
             float value;
@@ -91,9 +194,22 @@ Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
             out.attack[column] = qMax(out.attack[column], attack);
             out.counts[column]++;
             double magnitude = 0, low = 0, high = 0;
+            double logarithm = 0, spectralNovelty = 0, norm=0;
+            for (int k=0;k<257;++k) norm+=std::norm(bins[k]);
+            norm=std::sqrt(qMax(1e-20,norm));
             for (int k = 0; k < 257; ++k) {
                 double v = std::abs(bins[k]);
+                const double normalized=db < -55 ? 0 : v/norm;
+                const double increase=qMax(0.,normalized-previousSpectrum[k]);
+                if (frames > 0) spectralNovelty+=increase*increase;
+                previousSpectrum[k]=normalized;
                 magnitude += v;
+                if (k > 0) {
+                    logarithm += std::log(qMax(1e-12, v));
+                    double hz = k * 11025. / 512;
+                    int note = qRound(69 + 12 * std::log2(hz / 440));
+                    out.chroma[(note % 12 + 12) % 12] += std::sqrt(v);
+                }
                 if (k < 12)
                     low += v;
                 if (k > 100)
@@ -102,6 +218,11 @@ Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
             double onset =
                 attack * .9 + qMax(0., magnitude - previousMagnitude) / qMax(.01, magnitude) * .3;
             previousMagnitude = magnitude;
+            out.flatness += unit(std::exp(logarithm / 256) / qMax(1e-12, magnitude / 256));
+            out.attackStrength += attack;
+            out.flux += onset;
+            rhythmicNovelty << std::sqrt(spectralNovelty/257)*3.2+attack*.9;
+            rhythmicDb << db;
             onsets << onset;
             if (onsets.size() > 345)
                 onsets.removeFirst();
@@ -166,8 +287,12 @@ Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
     if (decoder.exitCode() != 0)
         throw Error(QString::fromUtf8(errors));
     out.fingerprint = hash.result();
+    rhythmicTimeline(out,rhythmicNovelty,rhythmicDb,cancel);
     out.bass /= qMax(qint64(1), frames);
     out.brightness /= qMax(qint64(1), frames);
+    out.flatness /= qMax(qint64(1), frames);
+    out.attackStrength = unit(out.attackStrength / qMax(qint64(1), frames) * 4);
+    out.flux = unit(out.flux / qMax(qint64(1), frames) * 3);
     for (int c = 0; c < Structure::columns; ++c)
         if (out.counts[c]) {
             out.level[c] /= out.counts[c];
@@ -205,6 +330,19 @@ Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
     }
     out.energy /= Structure::columns;
     out.drive = unit(out.drive / Structure::columns * 1.8);
+    auto sorted = out.level;
+    std::sort(sorted.begin(), sorted.end());
+    out.dynamic = unit((sorted[sorted.size()*9/10] - sorted[sorted.size()/10]) * 3);
+    out.harmonic = unit((1 - out.flatness) * .45 + out.brightness * .35 + out.flux * .2);
+    constexpr double major[12]{6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88};
+    double best = -1;
+    for (int root = 0; root < 12; ++root) {
+        double score = 0;
+        for (int note = 0; note < 12; ++note) score += out.chroma[note] * major[(note-root+12)%12];
+        if (score > best) { best = score; out.key = root; }
+    }
+    double maximum = *std::max_element(out.spectrum.begin(), out.spectrum.end());
+    if (maximum > 1e-9) for (auto& value : out.spectrum) value /= maximum;
     return out;
 }
 struct Field {
@@ -280,150 +418,28 @@ QColor palette(const QList<QColor>& colors, const QList<double>& stops, double v
     }
     return colors.last();
 }
+#include "cover_rendering.inc"
 } // namespace
-QImage restoredTexture(const QString& audio, const CoverOptions& options, const Cancel& cancel) {
-    const auto structure = analyzeStructure(audio, cancel);
-    auto digest = QCryptographicHash::hash(structure.fingerprint + QByteArray::number(options.seed),
-                                           QCryptographicHash::Sha256);
-    QRandomGenerator random(qFromLittleEndian<quint32>(digest.constData()));
-    const int n = qBound(192, options.size, 640);
-    double drive = structure.drive, detail = options.detail / 100.;
-    auto warpX = fbm(n, 2 + int(drive * 2), 3, random),
-         warpY = fbm(n, 3 + int(drive * 2), 3, random);
-    auto macro = fbm(n, 3 + int(structure.bass * 3), 3, random, .4),
-         macroB = fbm(n, 4 + int(structure.bass * 3), 2, random, .35);
-    auto meso = fbm(n, 5 + int((.28 + drive * .4) * 8), 3, random),
-         micro = fbm(n, 15 + int(detail * 22), 2, random, .45);
-    Field base(n), current(n), mesoMap(n);
-    double phase = random.generateDouble() * 2 * pi;
-    int composition = structure.bass > .6 && drive < .45 ? 2 : drive > .65 ? 0 : drive > .4 ? 1 : 4;
-    for (int y = 0; y < n; ++y) {
-        checkpoint(cancel);
-        for (int x = 0; x < n; ++x) {
-            int i = y * n + x;
-            double u = double(x) / (n - 1) * 2 - 1, v = double(y) / (n - 1) * 2 - 1;
-            double strength = .12 + (.08 + drive * .42) * .36;
-            double wx = warpX.values[i] * 2 - 1, wy = warpY.values[i] * 2 - 1;
-            double xw = u + wx * strength, yw = v + wy * strength;
-            double radius = std::hypot(xw, yw), angle = std::atan2(yw, xw);
-            if (composition == 1) {
-                angle += (1.1 + drive * 3.6) * std::exp(-radius * .72) + wx * .35;
-                xw = std::cos(angle) * radius;
-                yw = std::sin(angle) * radius;
-            } else if (composition == 2) {
-                double pulse = std::sin(radius * pi * (2 + drive * 3.2) + wy * 2.5);
-                xw += xw / qMax(.001, radius) * pulse * strength * .42;
-                yw += yw / qMax(.001, radius) * pulse * strength * .42;
-            } else if (composition == 4) {
-                double fold = std::sin((xw + yw) * pi * (1.2 + structure.regularity * 2.2));
-                xw += fold * strength * .38;
-                yw -= fold * strength * .22;
-            }
-            double a = macro.at(xw, yw), b = macroB.at(xw * .92, yw * .92),
-                   m = meso.at(xw * 1.10, yw * 1.10);
-            double directional = xw * std::cos(phase) + yw * std::sin(phase),
-                   cross = -xw * std::sin(phase) + yw * std::cos(phase);
-            double flow = directional * pi * (.72 + drive * 1.6) +
-                          (b - .5) * pi * (1.2 + drive * 2) + (m - .5) * (.25 + drive * .5) +
-                          std::sin(cross * pi * 1.4) * (.28 + drive * .55);
-            if (options.pattern == 2)
-                flow += (m - .5) * structure.curve(structure.speed, double(x) / (n - 1)) * 1.8;
-            double currents = .5 + .5 * std::sin(flow),
-                   folds = .5 + .5 * std::sin(flow * 1.05 + b * 1.8), field = folds;
-            if (composition == 0)
-                field = unit(directional * .35 + .5 + (b - .5) * .46);
-            else if (composition == 1)
-                field =
-                    .5 + .5 * std::sin(angle * 3 + radius * (3.4 + drive * 2.4) + (m - .5) * 1.2);
-            else if (composition == 2)
-                field = unit(1 - radius / 1.5 + std::cos(angle * 5) * .1 + (b - .5) * .18);
-            if (options.pattern == 0) {
-                double stripe = std::sin((double(x) * (.016 + drive * .01) +
-                                          y * (.006 + drive * .008) + a * 4.2 + m * 2.4 - b * 3) *
-                                         pi);
-                field = unit(structure.spec(unit((n - 1 - y + (a - .5) * 100) / n),
-                                            unit((x + (m - .5) * 130) / n)) *
-                                 .65 +
-                             std::pow(std::abs(stripe), .34) * .25 + micro.values[i] * .1);
-            }
-            base.values[i] = float(a * .1 + b * .1 + field * .46 + currents * .34);
-            current.values[i] = float(currents);
-            mesoMap.values[i] = float(m);
-        }
-    }
-    base.normalize();
-    QList<QColor> colors = options.palette;
-    QList<double> stops = options.stops;
-    if (options.colorSource == 2) {
-        colors = {QColor("#21103F"), QColor("#5E2A92"), QColor("#173D87"),
-                  QColor("#157FAF"), QColor("#40C8B0"), QColor("#EDD96B"),
-                  QColor("#EF743D"), QColor("#DB283D"), QColor("#870D24")};
-        stops = {0, .12, .24, .35, .45, .55, .65, .75, 1};
-    } else if (options.colorSource == 1) {
-        colors = {QColor("#17224b"), QColor("#3f4b91"), QColor("#83929e"),
-                  QColor("#e9bb76"), QColor("#c65e4c"), QColor("#761f42")};
-        stops = {0, .18, .4, .56, .75, 1};
-    } else if (options.colorSource == 0) {
-        colors = {QColor("#101050"), QColor("#3235a5"), QColor("#be207c"), QColor("#ff4575"),
-                  QColor("#ffc181")};
-        stops = {0, .25, .5, .75, 1};
-    }
-    if (colors.isEmpty())
-        colors = {QColor("#30206d"), QColor("#f9a46a")};
-    QImage image(n, n, QImage::Format_RGB32);
-    for (int y = 0; y < n; ++y) {
-        checkpoint(cancel);
-        auto* pixels = reinterpret_cast<QRgb*>(image.scanLine(y));
-        for (int x = 0; x < n; ++x) {
-            int i = y * n + x;
-            double t = double(x) / (n - 1), py = double(y) / (n - 1);
-            t = unit(t + std::pow(std::sin(t * pi), 2) * (.026 * std::sin(py * 2 * pi + phase) +
-                                                          .010 * std::sin(py * 4 * pi - phase)));
-            double level = structure.curve(structure.level, t),
-                   localDrive = options.pattern == 2
-                                    ? unit(structure.curve(structure.speed, t) * 1.8)
-                                    : drive;
-            double field = base.values[i];
-            if (options.pattern == 2)
-                field = unit(field * .90 + structure.spec(t, 1 - py) * .07 + level * .03);
-            double width = .38, center = qBound(width * .5, drive, 1 - width * .5);
-            double position = center + (field - .5) * width;
-            if (options.pattern == 2)
-                position =
-                    unit(position * .70 + (.18 + localDrive * .64) * .30 + (field - .5) * .08);
-            if (options.colorSource == 2)
-                position =
-                    unit(.10 + structure.curve(structure.speed, t) * .78 + (field - .5) * .38);
-            QColor color = palette(colors, stops, position);
-            double strata = .5 + .5 * std::sin(field * pi * (2 + localDrive * 6) +
-                                               (mesoMap.values[i] - .5) * .18);
-            double depth = (.52 + .52 * field) * (.86 + .14 * strata);
-            if (options.pattern == 2)
-                depth *= (.88 + level * .12) * (.94 + structure.spec(t, 1 - py) * .08);
-            double vein = .06 + structure.brightness * .25 + drive * .48;
-            vein *= .5 + detail;
-            double ribbonWidth = .028 + (1 - vein) * .040;
-            double ribbon = std::exp(-std::pow((current.values[i] - .56) / ribbonWidth, 2)) *
-                            (.08 + vein * .18);
-            if (options.pattern == 2)
-                ribbon *= .35 + localDrive * .65 + structure.curve(structure.attack, t) * .20;
-            double shadow =
-                1 - std::exp(-std::pow((current.values[i] - .47) / (ribbonWidth * 1.8), 2)) *
-                        (.08 + localDrive * .12);
-            double glow =
-                (std::exp(-std::hypot(double(x) / n - .5, double(y) / n - .45) * 3) - .35) * 20;
-            double grain = (micro.values[i] - .5) * (.8 + detail * 1.8);
-            auto channel = [&](int value) {
-                double v = lerp(value * depth, value * .65 + 140, ribbon) * shadow + glow + grain;
-                return qBound(0, qRound((v - 127.5) * options.contrast / 100. + 127.5), 255);
-            };
-            color = QColor(channel(color.red()), channel(color.green()), channel(color.blue()));
-            float h, s, l, a;
-            color.getHslF(&h, &s, &l, &a);
-            color = QColor::fromHslF(h, unit(s * options.saturation / 100.), l);
-            pixels[x] = color.rgb();
-        }
-    }
-    return image;
+QJsonObject analyzeCoverRhythm(const QString& audio, const Cancel& cancel) {
+    const auto s=analyzeStructure(audio,cancel);
+    QJsonArray points;
+    for (int i=0;i<Structure::columns;++i)
+        points.append(QJsonObject{{"seconds",s.duration*i/(Structure::columns-1)},
+                                  {"pulse_bpm",s.pulse[i]}, {"pace",s.pace[i]},
+                                  {"confidence",s.confidence[i]}, {"attacks_per_second",s.density[i]}});
+    return {{"duration",s.duration},{"timeline",points}};
+}
+QImage restoredTexture(const QString& audio, const CoverOptions& options, const Cancel& cancel,
+                       QVector<double>* music) {
+    auto structure = analyzeStructure(audio, cancel);
+    const QByteArray version = options.pattern == 0 ? "classic-crisp-v2" :
+                               options.pattern == 1 ? "contour-character-v5" : "chronological-organic-v3";
+    auto digest = QCryptographicHash::hash(version + structure.fingerprint + QByteArray::number(options.seed),
+                                          QCryptographicHash::Sha256);
+    quint32 seed = qFromLittleEndian<quint32>(digest.constData());
+    if (music) *music = {structure.drive, structure.bass, structure.brightness, structure.regularity, double(seed)};
+    QRandomGenerator random(seed);
+    return options.pattern == 0 ? renderClassic(structure, options, random, cancel)
+                                : renderOrganic(structure, options, random, cancel);
 }
 } // namespace sf

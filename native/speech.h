@@ -12,6 +12,9 @@ std::optional<CtcMatch> ctcViterbi(const QVector<float>& logProbabilities, int f
                                    int vocabulary, const QVector<int>& tokens, int blank = 0);
 void appendSpeechWindow(QList<Lyric>& target, const QList<Lyric>& words, double begin, double end);
 QList<Lyric> speechLines(const QList<Lyric>& words);
+QString directAlignmentLanguage(const QString& text);
+QList<Lyric> alignSuppliedLyrics(const QString& audio, const QString& text,
+                                const QString& modelDirectory, const QString& reference = {});
 QList<Lyric> refineSpeechTiming(const QString& audio, QList<Lyric> lines,
                                 const QString& modelDirectory, const QString& reference = {},
                                 bool preserveText = true);

@@ -1,0 +1,3 @@
+#pragma once
+#define SF_VERSION "@PROJECT_VERSION@"
+#define SF_SOURCE_DIGEST "@SF_SOURCE_DIGEST@"

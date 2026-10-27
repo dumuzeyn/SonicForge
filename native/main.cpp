@@ -1,10 +1,25 @@
 #include "window.h"
+#include "build_info.h"
 #include <cstdio>
+class SafeApplication final : public QApplication {
+  public:
+    using QApplication::QApplication;
+    bool notify(QObject* receiver, QEvent* event) override {
+        try { return QApplication::notify(receiver, event); }
+        catch (const std::exception& error) { QMessageBox::warning(nullptr, "Sonic Forge", QString::fromUtf8(error.what())); }
+        catch (...) { QMessageBox::warning(nullptr, "Sonic Forge", "Не удалось выполнить действие. Изменения проекта сохранены в памяти."); }
+        return false;
+    }
+};
 #ifdef Q_OS_WIN
 #include <shobjidl.h>
 #include <windows.h>
 #endif
 int main(int argc, char** argv) {
+#ifdef Q_OS_WIN
+    const HANDLE installLease = CreateMutexW(nullptr, FALSE, L"Local\\Dumuzeyn.SonicForge.InstallLock");
+    const auto releaseLease = qScopeGuard([&] { if (installLease) CloseHandle(installLease); });
+#endif
     Q_INIT_RESOURCE(resources);
     Q_INIT_RESOURCE(help_resource);
     Q_INIT_RESOURCE(brand_resource);
@@ -12,11 +27,41 @@ int main(int argc, char** argv) {
     QStringList arguments;
     for (int i = 0; i < argc; ++i)
         arguments << QString::fromLocal8Bit(argv[i]);
+    if (arguments.contains("--version")) { std::puts("Sonic Forge " SF_VERSION " " SF_SOURCE_DIGEST); return 0; }
+    if (arguments.contains("--build-info")) {
+        QCoreApplication app(argc, argv); const auto args = app.arguments(); const int index = args.indexOf("--build-info");
+        if (index + 1 >= args.size()) return 2;
+        QSaveFile output(args[index + 1]);
+        if (!output.open(QIODevice::WriteOnly)) return 2;
+        output.write(QJsonDocument(QJsonObject{{"version", SF_VERSION}, {"sourceDigest", SF_SOURCE_DIGEST}, {"qt", qVersion()}, {"architecture", QSysInfo::buildCpuArchitecture()}}).toJson());
+        return output.commit() ? 0 : 2;
+    }
+    if (arguments.contains("--help")) { std::puts("SonicForge.exe [audio files | project.sfproject] [--version]\nDiagnostics: --smoke-test DIRECTORY, --reliability-smoke --result FILE"); return 0; }
+    const QSet<QString> accepted{"--speech-worker", "--stems-worker", "--diagnose-cover-rhythm", "--diagnose-audio", "--smoke-test", "--playback-smoke", "--lyrics-save-smoke", "--cover-export-smoke", "--close-smoke", "--sound-smoke", "--reliability-smoke", "--result", "--cover-image", "--audio", "--model", "--language", "--align", "--reference", "--out", "--segment-seconds", "--ctc-only", "--ctc-direct", "--verify-recognition", "--fast", "--trace-words"};
+    for (const auto& arg : arguments.mid(1)) if (arg.startsWith("--") && !accepted.contains(arg)) { std::fprintf(stderr, "Unknown option: %s\n", arg.toUtf8().constData()); return 2; }
     if (arguments.contains("--speech-worker") || arguments.contains("--stems-worker")) {
         QCoreApplication application(argc, argv);
         QCoreApplication::setApplicationName("SonicForge");
         QCoreApplication::setOrganizationName("Dumuzeyn");
         return sf::neuralWorker(application.arguments());
+    }
+    if (arguments.contains("--diagnose-cover-rhythm")) {
+        QGuiApplication application(argc, argv);
+        const auto args=application.arguments();
+        const int input=args.indexOf("--diagnose-cover-rhythm"), result=args.indexOf("--result"), picture=args.indexOf("--cover-image");
+        if (input+1>=args.size() || result<0 || result+1>=args.size()) return 2;
+        try {
+            auto report=sf::analyzeCoverRhythm(args[input+1]);
+            if (picture>=0 && picture+1<args.size()) {
+                sf::CoverOptions options;
+                options.size=512;options.colorSource=2;options.title=options.symbol=false;
+                if (!sf::makeCover(args[input+1],{},options).save(args[picture+1])) return 2;
+            }
+            QFile file(args[result+1]);
+            if (!file.open(QIODevice::WriteOnly)) return 2;
+            file.write(QJsonDocument(report).toJson());
+            return 0;
+        } catch (const std::exception& error) { std::fprintf(stderr,"%s\n",error.what()); return 1; }
     }
     if (arguments.contains("--diagnose-audio")) {
         QCoreApplication application(argc, argv);
@@ -48,7 +93,18 @@ int main(int argc, char** argv) {
 #ifdef Q_OS_WIN
     SetCurrentProcessExplicitAppUserModelID(L"Dumuzeyn.SonicForge");
 #endif
-    QApplication application(argc, argv);
+    SafeApplication application(argc, argv);
+    QCoreApplication::setApplicationVersion(SF_VERSION);
+    bool testing = false;
+    for (const auto& arg : application.arguments()) testing |= arg.contains("smoke") || arg == "--smoke-test";
+    application.setProperty("sfTesting", testing);
+    if (testing) {
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        const auto settings = QDir::tempPath() + "/SonicForge-tests-" + QString::number(QCoreApplication::applicationPid());
+        QDir().mkpath(settings); QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings);
+        QStandardPaths::setTestModeEnabled(true);
+    }
+    application.setProperty("sfSkipRecovery", application.arguments().size() > 1);
     application.setQuitOnLastWindowClosed(true);
     application.setWindowIcon(QIcon(":/assets/sonic_forge_mark.ico"));
     arguments = application.arguments();
@@ -82,7 +138,19 @@ int main(int argc, char** argv) {
     int playback = arguments.indexOf("--playback-smoke");
     int result = arguments.indexOf("--result");
     int sound = arguments.indexOf("--sound-smoke");
-    if (arguments.contains("--close-smoke") && result >= 0 && result + 1 < arguments.size()) {
+    int saveLyrics = arguments.indexOf("--lyrics-save-smoke");
+    int coverExport = arguments.indexOf("--cover-export-smoke");
+    if (arguments.contains("--reliability-smoke") && result >= 0 && result + 1 < arguments.size()) {
+        QTimer::singleShot(100, &window, [&window, arguments, result] { window.reliabilitySmoke(arguments[result + 1]); });
+    } else if (coverExport >= 0 && coverExport + 1 < arguments.size() && result >= 0 && result + 1 < arguments.size()) {
+        QTimer::singleShot(100, &window, [&window, arguments, result, coverExport] {
+            window.coverExportSmoke(arguments[coverExport + 1], arguments[result + 1]);
+        });
+    } else if (saveLyrics >= 0 && saveLyrics + 1 < arguments.size() && result >= 0 && result + 1 < arguments.size()) {
+        QTimer::singleShot(100, &window, [&window, arguments, result, saveLyrics] {
+            window.lyricsSaveSmoke(arguments[saveLyrics + 1], arguments[result + 1]);
+        });
+    } else if (arguments.contains("--close-smoke") && result >= 0 && result + 1 < arguments.size()) {
         QTimer::singleShot(100, &window, [&window, arguments, result] {
             window.closeSmoke(arguments[result + 1]);
         });
@@ -103,6 +171,6 @@ int main(int argc, char** argv) {
             application.exit(ok ? 0 : 1);
         });
     } else if (!files.isEmpty())
-        QTimer::singleShot(0, &window, [&window, files] { window.openFiles(files); });
+        QTimer::singleShot(0, &window, [&window, files] { if (files.first().endsWith(".sfproject", Qt::CaseInsensitive)) window.openProject(files.first()); else window.openFiles(files); });
     return application.exec();
 }

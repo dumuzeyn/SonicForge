@@ -11,7 +11,9 @@ function Run-Native([string[]]$Arguments,[string]$Name) {
     $Quoted = foreach ($Argument in $Arguments) { '"'+$Argument.Replace('"','\"')+'"' }
     $Process=Start-Process -FilePath $Application -ArgumentList $Quoted -WindowStyle Hidden -PassThru -RedirectStandardOutput "$Output\$Name.stdout.log" -RedirectStandardError "$Output\$Name.stderr.log"
     $PeakWorking=0L; $PeakPrivate=0L
+    $Deadline=[Diagnostics.Stopwatch]::StartNew()
     while (-not $Process.WaitForExit(100)) {
+        if ($Deadline.Elapsed.TotalSeconds -gt $(if ($Neural) { 1800 } else { 120 })) { Stop-Process -Id $Process.Id; throw "Native check timed out: $Name" }
         $Process.Refresh()
         if (-not $Process.HasExited) {
             $PeakWorking=[Math]::Max($PeakWorking,$Process.PeakWorkingSet64)
@@ -33,7 +35,18 @@ try {
     & "$AppDirectory\tools\ffmpeg.exe" -hide_banner -loglevel error -y -f lavfi -i 'sine=frequency=220:duration=6:sample_rate=44100' -ac 2 $Wave
     if ($LASTEXITCODE -ne 0) { throw 'Bundled FFmpeg failed' }
     Run-Native @('--smoke-test',"$Output\ui") 'ui'
+    Run-Native @('--reliability-smoke','--result',"$Output\reliability.json") 'reliability'
     Run-Native @('--playback-smoke',$Wave,'--result',"$Output\playback.json") 'playback'
+    Run-Native @('--lyrics-save-smoke',$Wave,'--result',"$Output\lyrics-save.json") 'lyrics-save'
+    Run-Native @('--cover-export-smoke',$Wave,'--result',"$Output\cover-export.json") 'cover-export'
+    $RhythmWave=Join-Path $Output 'rhythm-history.wav'
+    & "$AppDirectory\tools\ffmpeg.exe" -hide_banner -loglevel error -y -f lavfi -i 'aevalsrc=sin(2*PI*130*t)*exp(-45*mod(t\,if(lt(t\,8)\,1\,1/3)))*lt(mod(t\,if(lt(t\,8)\,1\,1/3))\,0.12):s=11025:d=16' $RhythmWave
+    if ($LASTEXITCODE -ne 0) { throw 'Rhythm fixture generation failed' }
+    Run-Native @('--diagnose-cover-rhythm',$RhythmWave,'--result',"$Output\rhythm-history.json",'--cover-image',"$Output\rhythm-history.png") 'rhythm-history'
+    $Rhythm=Get-Content "$Output\rhythm-history.json" -Raw | ConvertFrom-Json
+    $Slow=$Rhythm.timeline | Sort-Object { [Math]::Abs($_.seconds-4) } | Select-Object -First 1
+    $Fast=$Rhythm.timeline | Sort-Object { [Math]::Abs($_.seconds-12) } | Select-Object -First 1
+    if ($Slow.pace -ge .45 -or $Fast.pace -le .72) { throw 'Cover colors did not follow the slow-to-fast transition' }
     Run-Native @('--sound-smoke',$Wave,'--result',"$Output\sound.json") 'sound'
     Run-Native @('--close-smoke','--result',"$Output\close.json") 'close'
     $Close=Get-Content "$Output\close.json" -Raw | ConvertFrom-Json
@@ -41,7 +54,8 @@ try {
     Run-Native @('--diagnose-audio',$Wave,'--result',"$Output\analysis.json") 'analysis'
     $Analysis=Get-Content "$Output\analysis.json" -Raw | ConvertFrom-Json
     if (-not $Analysis.ffmpeg.StartsWith($AppDirectory.Replace('\','/'),[StringComparison]::OrdinalIgnoreCase)) { throw 'FFmpeg resolved outside the bundle' }
-    if ($Analysis.plugins | Where-Object { $_ -match '/build/|/mingw_64/' }) { throw 'Qt SDK leaked into plugin search paths' }
+    $BundlePrefix = $AppDirectory.Replace('\','/').TrimEnd('/')
+    if ($Analysis.plugins | Where-Object { $_.TrimEnd('/') -ine $BundlePrefix -and -not $_.StartsWith($BundlePrefix+'/', [StringComparison]::OrdinalIgnoreCase) }) { throw 'Qt plugin search path points outside the bundle' }
     $Forbidden=Get-ChildItem -LiteralPath $AppDirectory -Recurse -File | Where-Object { $_.Extension -in '.py','.pyc','.pyd' -or $_.Name -match '^python.*\.dll$' }
     if ($Forbidden) { throw 'Python runtime present in native app' }
     if ($Neural) {
@@ -55,7 +69,7 @@ try {
         $Stream.Close()
         $Text=Join-Path $Output 'supplied.txt'
         Set-Content -LiteralPath $Text -Encoding UTF8 -Value "The morning sun`nis shining through the window.`nWe hear the music`nand we sing together."
-        Run-Native @('--speech-worker','--audio',$Speech,'--model',"$AppDirectory\models\ggml-large-v3-q5_0.bin",'--language','en','--align',$Text,'--result',"$Output\alignment.json") 'alignment'
+        Run-Native @('--speech-worker','--ctc-direct','--audio',$Speech,'--model',"$AppDirectory\models\ggml-large-v3-q5_0.bin",'--language','en','--align',$Text,'--result',"$Output\alignment.json") 'alignment'
         $Alignment=Get-Content "$Output\alignment.json" -Raw | ConvertFrom-Json
         $Expected=@('The morning sun','is shining through the window.','We hear the music','and we sing together.')
         if ($Alignment.lines.Count -ne 4) { throw 'Line alignment did not preserve four supplied lines' }

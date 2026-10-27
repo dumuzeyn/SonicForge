@@ -1,4 +1,4 @@
-param([string]$Application='dist\SonicForge\SonicForge.exe', [string]$Models='build\native-models', [switch]$Full)
+param([string]$Application='dist\SonicForge\SonicForge.exe', [string]$Models='build\native-models', [switch]$Full, [ValidateSet('large','turbo')][string]$RecognitionModel='large')
 $ErrorActionPreference='Stop'
 $Root=Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $Root
@@ -16,7 +16,9 @@ function Run-Worker([string[]]$Arguments,[string]$Name) {
     $Quoted=foreach($Argument in $Arguments){'"'+$Argument.Replace('"','\"')+'"'}
     $Process=Start-Process -FilePath $Application -ArgumentList $Quoted -WindowStyle Hidden -PassThru -RedirectStandardError "$Output\$Name.log"
     $Peak=0L
+    $Deadline=[Diagnostics.Stopwatch]::StartNew()
     while(-not $Process.WaitForExit(100)){
+        if($Deadline.Elapsed.TotalMinutes -gt 30){Stop-Process -Id $Process.Id;throw "Speech check timed out: $Name"}
         $Process.Refresh()
         if(-not $Process.HasExited){$Peak=[Math]::Max($Peak,$Process.PeakWorkingSet64)}
     }
@@ -80,11 +82,12 @@ foreach($Case in $Cases){
     $Report.Add([PSCustomObject]@{language=$Language;check='alignment';maxOnsetErrorSeconds=[Math]::Round($Maximum,3);peakWorkingMB=$Peak})
     if($Maximum -gt .35){throw "CTC onset error exceeds 350 ms: $Language"}
     if($Full){
-        $Result=Join-Path $Output "$Language-recognition.json"
-        $Peak=Run-Worker @('--speech-worker','--audio',$Wave,'--model',"$Models\ggml-large-v3-q5_0.bin",'--language',$Language,'--result',$Result) "$Language-recognition"
+        $Result=Join-Path $Output "$Language-$RecognitionModel-recognition.json"
+        $ModelName=if($RecognitionModel -eq 'turbo'){'ggml-large-v3-turbo-q5_0.bin'}else{'ggml-large-v3-q5_0.bin'}
+        $Peak=Run-Worker @('--speech-worker','--audio',$Wave,'--model',"$Models\$ModelName",'--language',$Language,'--result',$Result) "$Language-$RecognitionModel-recognition"
         $Lines=(Get-Content $Result -Raw|ConvertFrom-Json).lines
         $ErrorRate=Word-Error ($Case.phrases -join ' ') (($Lines|ForEach-Object text)-join ' ')
-        $Report.Add([PSCustomObject]@{language=$Language;check='recognition';wordErrorRate=$ErrorRate;peakWorkingMB=$Peak})
+        $Report.Add([PSCustomObject]@{language=$Language;check='recognition';model=$RecognitionModel;wordErrorRate=$ErrorRate;peakWorkingMB=$Peak})
         if($ErrorRate -gt .25){throw "Recognition word error rate exceeds 25%: $Language"}
     }
     $Report|ConvertTo-Json|Set-Content "$Output\summary.json" -Encoding utf8
