@@ -9,7 +9,6 @@ An audio editor for Windows with multitrack editing, audio processing, metadata,
 <p>
   <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-Setup.exe"><img src="docs/images/download-installer-en.svg" alt="Download the SonicForge Windows installer" width="240" height="68"></a>
   <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-windows-x64.zip"><img src="docs/images/download-portable-en.svg" alt="Download the SonicForge portable ZIP" width="240" height="68"></a>
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-Uninstall.exe"><img src="docs/images/download-uninstaller-en.svg" alt="Download the standalone SonicForge uninstall launcher" width="240" height="68"></a>
 </p>
 
 [SHA-256 checksums](https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SHA256SUMS.txt) · [Release 3.2.0](https://github.com/dumuzeyn/SonicForge/releases/tag/v3.2.0) · [All releases](https://github.com/dumuzeyn/SonicForge/releases) · [Release notes](docs/RELEASE-3.2.0.en.md)
@@ -34,7 +33,7 @@ Get-FileHash .\SonicForge-Setup.exe -Algorithm SHA256
 - Large edits export without exceeding the Windows command-line limit or appending unbounded silence. Internal processing uses float PCM; export options include sample rate, channel count, WAV bit depth, FLAC and Opus.
 - Preview a selected excerpt using the final codec and quality. Audio processing with the limiter enabled checks true peak after encoding.
 - Faster drawing of the visible timeline, bounded undo history, precise numeric input, standard text editing menus and persistent audio settings.
-- Windows installed-app registration, a Start menu uninstall shortcut, a standalone uninstall launcher and compact downloads with models fetched on demand.
+- Windows installed-app registration, a bundled uninstaller with a Start menu shortcut and compact downloads with models fetched on demand.
 
 ## Features
 
@@ -54,9 +53,9 @@ The application supports English and Russian. Select English on the **Settings**
 
 1. Run `SonicForge-Setup.exe`. It installs for the current Windows user in `%LOCALAPPDATA%\Programs\Sonic Forge`. Running the installer again updates the existing copy. Close SonicForge first: the installer does not forcibly terminate an open session.
 2. Open **Sonic Forge** from the Start menu. It also appears in **Settings > Apps > Installed apps** in Windows.
-3. Uninstall through Windows installed apps, the **Uninstall Sonic Forge** Start menu shortcut, or `SonicForge-Uninstall.exe`. The standalone launcher finds the installed copy and opens its standard uninstall confirmation. Your settings and personal audio files are preserved.
+3. The uninstaller is installed with the application; no separate download is needed. Uninstall through Windows installed apps or the **Uninstall Sonic Forge** Start menu shortcut. Your settings and personal audio files are preserved.
 
-For the portable edition, extract the entire ZIP and run `SonicForge/SonicForge.exe`. A portable copy is not registered in Windows installed apps. The standalone uninstall launcher is intended for the installed edition.
+For the portable edition, extract the entire ZIP and run `SonicForge/SonicForge.exe`. A portable copy is not registered in Windows installed apps. To remove it, close the application and delete the extracted folder.
 
 ## Workflow and saving
 

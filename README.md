@@ -9,7 +9,6 @@
 <p>
   <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-Setup.exe"><img src="docs/images/download-installer-ru.svg" alt="Скачать установщик SonicForge для Windows" width="240" height="68"></a>
   <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-windows-x64.zip"><img src="docs/images/download-portable-ru.svg" alt="Скачать портативную версию SonicForge в ZIP" width="240" height="68"></a>
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-Uninstall.exe"><img src="docs/images/download-uninstaller-ru.svg" alt="Скачать отдельный деинсталлятор SonicForge" width="240" height="68"></a>
 </p>
 
 [Контрольные суммы SHA-256](https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SHA256SUMS.txt) · [Релиз 3.2.0](https://github.com/dumuzeyn/SonicForge/releases/tag/v3.2.0) · [Все релизы](https://github.com/dumuzeyn/SonicForge/releases) · [Что изменилось](docs/RELEASE-3.2.0.md) · [Исправления после аудита](docs/FIXES-2026-10-26.md)
@@ -34,7 +33,7 @@ Get-FileHash .\SonicForge-Setup.exe -Algorithm SHA256
 - Экспорт больших монтажей без переполнения командной строки Windows и бесконечного дописывания тишины. Внутри используется float PCM; доступны выбор частоты, каналов и битности WAV, FLAC и Opus.
 - Предпрослушивание выбранного фрагмента с конечным кодеком и качеством. При обработке с лимитером true peak проверяется после кодирования.
 - Быстрая отрисовка видимой части таймлайна, ограниченная история отмены, точный числовой ввод, обычное меню копирования и вставки, сохранение аудионастроек.
-- Регистрация в установленных приложениях Windows, ярлык удаления в «Пуск», отдельный деинсталлятор и компактная поставка моделей по требованию.
+- Регистрация в установленных приложениях Windows, встроенный деинсталлятор с ярлыком в «Пуск» и компактная поставка моделей по требованию.
 
 ## Возможности
 
@@ -56,9 +55,9 @@ Get-FileHash .\SonicForge-Setup.exe -Algorithm SHA256
 
 1. Запустите `SonicForge-Setup.exe`. Установка выполняется для текущего пользователя в `%LOCALAPPDATA%\Programs\Sonic Forge`; повторный запуск обновляет существующую копию. Перед обновлением закройте приложение: установщик не завершает открытую сессию принудительно.
 2. Откройте **Sonic Forge** через «Пуск». Программа также появится в «Параметры → Приложения → Установленные приложения».
-3. Для удаления используйте список приложений Windows, пункт **«Удалить Sonic Forge»** в «Пуск» или отдельный `SonicForge-Uninstall.exe`. Настройки и пользовательские аудиофайлы сохраняются.
+3. Деинсталлятор устанавливается вместе с приложением; скачивать его отдельно не нужно. Для удаления используйте список приложений Windows или пункт **«Удалить Sonic Forge»** в «Пуск». Настройки и пользовательские аудиофайлы сохраняются.
 
-Портативный ZIP нужно распаковать целиком и запустить `SonicForge/SonicForge.exe`. Такая копия не регистрируется в списке установленных приложений; отдельный деинсталлятор предназначен для установленной версии.
+Портативный ZIP нужно распаковать целиком и запустить `SonicForge/SonicForge.exe`. Такая копия не регистрируется в списке установленных приложений. Чтобы удалить её, закройте приложение и удалите распакованную папку.
 
 ## Работа и сохранение
 
