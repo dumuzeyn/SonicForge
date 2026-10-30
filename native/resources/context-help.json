@@ -476,12 +476,12 @@
     "en": "An empty field retains the tagged title. If no title exists, the audio filename is used."
   },
   "genre": {
-    "ru": "Если поле пустое, существующий жанр сохраняется. При его отсутствии или включённой перезаписи жанр определяется по звучанию. Неуверенный результат не удаляет прежний жанр.",
-    "en": "An empty field retains the existing genre. If missing or overwrite is enabled, infer it from audio. An uncertain result does not erase an existing genre."
+    "ru": "Если поле пустое, жанр всегда определяется по звуку: записывается один вариант с максимальной оценкой, даже при низкой уверенности. Введённый вручную жанр имеет приоритет.",
+    "en": "An empty field always infers one genre from audio: the highest-scoring option is written even at low confidence. A manually entered genre takes priority."
   },
   "Жанр": {
-    "ru": "Пустое поле включает локальную нейросеть musicnn. Альтернативы и оценки — в журнале. При низкой уверенности жанр остаётся неопределённым.",
-    "en": "Leave empty for local musicnn analysis. Scores and alternatives appear in the log. Low confidence leaves the genre undefined."
+    "ru": "Пустое поле включает локальную нейросеть musicnn. В файл записывается один наиболее вероятный жанр; альтернативы и оценки остаются в журнале.",
+    "en": "Leave empty for local musicnn analysis. Only the highest-scoring genre is written to the file; scores and alternatives appear in the log."
   },
   "overwrite_genre": {
     "ru": "Заменяет жанр, уже записанный в файле.",
@@ -892,12 +892,12 @@
     "en": "Format for mix export and linked processing: MP3, WAV or M4A. Preview uses lossless working audio."
   },
   "cover_color": {
-    "ru": "M2Pv1 — классическая окраска; M2Pv2 — цвета характера песни. Цвет M2Pv3 показывает локальную скорость и плотность ритма слева направо: медленные фазы — холодные, быстрые — красноватые. Фактура меняет яркость, сохраняя оттенок текущего момента.",
-    "en": "M2Pv1 — classic colors; M2Pv2 — musical character. M2Pv3 maps local pulse speed and attack density from left to right: slow phases are cool, fast phases reddish. Texture changes brightness while preserving each moment's hue."
+    "ru": "M2Pv1 — классическая окраска; M2Pv2 — цвета характера песни. Цвет M2Pv3 показывает местный ритм слева направо: медленные фазы — сине-фиолетовые, средние — сине-зелёные, более быстрые — красные. Изменения ритма меняют цвет по ходу песни, фактура меняет яркость.",
+    "en": "M2Pv1 — classic colors; M2Pv2 — musical character. M2Pv3 maps local rhythm from left to right: slow sections are blue/violet, medium sections blue/green, faster sections red. Rhythm changes alter the color through the song; texture changes brightness."
   },
   "Цвет": {
-    "ru": "M2Pv1 — классическая окраска; M2Pv2 — цвета характера песни. Цвет M2Pv3 показывает локальную скорость и плотность ритма слева направо: медленные фазы — холодные, быстрые — красноватые. Фактура меняет яркость, сохраняя оттенок текущего момента.",
-    "en": "M2Pv1 — classic colors; M2Pv2 — musical character. M2Pv3 maps local pulse speed and attack density from left to right: slow phases are cool, fast phases reddish. Texture changes brightness while preserving each moment's hue."
+    "ru": "M2Pv1 — классическая окраска; M2Pv2 — цвета характера песни. Цвет M2Pv3 показывает местный ритм слева направо: медленные фазы — сине-фиолетовые, средние — сине-зелёные, более быстрые — красные. Изменения ритма меняют цвет по ходу песни, фактура меняет яркость.",
+    "en": "M2Pv1 — classic colors; M2Pv2 — musical character. M2Pv3 maps local rhythm from left to right: slow sections are blue/violet, medium sections blue/green, faster sections red. Rhythm changes alter the color through the song; texture changes brightness."
   },
   "cover_pattern": {
     "ru": "M2Pv1 — спектральные деформации; M2Pv2 — органические складки; M2Pv3 — узор поверх структуры песни, начало слева, конец справа.",

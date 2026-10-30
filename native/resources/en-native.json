@@ -163,7 +163,7 @@
   "Если пусто — название из тегов, иначе имя файла": "If empty: existing title, otherwise the file name",
   "Обновляю звук…": "Updating audio…",
   "100% — исходное значение. 0% громкости выключает звук; 0% скорости останавливает фрагмент (пауза в монтаже). Изменение длины сдвигает следующие фрагменты этой дорожки.": "100% is the original value. 0% volume mutes audio; 0% speed makes the clip silent (a pause in the mix). Changing its length shifts following clips on this track.",
-  "Если пусто — сохранится жанр из тегов или определится по звуку": "If empty: existing genre, otherwise audio-based inference",
+  "Если пусто — один наиболее вероятный жанр по звуку": "If empty: one most likely genre inferred from audio",
   "Обновления": "Updates",
   "Поддержка автора добровольная. Все возможности приложения доступны без пожертвования.": "Support is voluntary. All application features are available without a donation.",
   "Текст песни и таймкоды всегда сохраняются при изменении метаданных.": "Lyrics and timestamps are always preserved when changing metadata.",

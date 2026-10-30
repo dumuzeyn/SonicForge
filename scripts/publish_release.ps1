@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory=$true)][string]$Commit,
-    [string]$Tag = 'v3.2.0',
+    [string]$Tag = 'v3.2.1',
     [switch]$AllowUnsigned,
     [long]$ResumeDraftId = 0
 )
@@ -13,7 +13,8 @@ $ReleaseAssets = @(
     (Join-Path $ReleaseRoot 'dist\SonicForge-windows-x64.zip'),
     (Join-Path $ReleaseRoot 'dist\SHA256SUMS.txt')
 )
-if ($Commit -notmatch '^[a-f0-9]{40}$' -or $Tag -ne 'v3.2.0') { throw 'Unexpected release identity' }
+if ($Commit -notmatch '^[a-f0-9]{40}$' -or $Tag -notmatch '^v\d+\.\d+\.\d+$') { throw 'Unexpected release identity' }
+$ReleaseVersion = $Tag.Substring(1)
 foreach ($ReleaseAsset in $ReleaseAssets) {
     if (-not (Test-Path -LiteralPath $ReleaseAsset -PathType Leaf)) { throw 'Missing release asset' }
     if ((Get-Item -LiteralPath $ReleaseAsset).Length -ge 2GB) { throw "Release asset exceeds GitHub's 2 GiB limit: $([IO.Path]::GetFileName($ReleaseAsset))" }
@@ -51,8 +52,8 @@ try {
     if ($ReleaseMatching -and (-not $ResumeDraftId -or $ReleaseMatching.id -ne $ResumeDraftId -or -not $ReleaseMatching.draft)) {
         throw 'This release already exists; it will not be overwritten'
     }
-    $ReleaseBody = Get-Content -LiteralPath (Join-Path $ReleaseRoot 'docs\RELEASE-3.2.0.md') -Raw -Encoding UTF8
-    $ReleasePayload = @{ tag_name=$Tag; target_commitish=$Commit; name='SonicForge 3.2.0';
+    $ReleaseBody = Get-Content -LiteralPath (Join-Path $ReleaseRoot "docs\RELEASE-$ReleaseVersion.md") -Raw -Encoding UTF8
+    $ReleasePayload = @{ tag_name=$Tag; target_commitish=$Commit; name="SonicForge $ReleaseVersion";
         body=$ReleaseBody; draft=$true; prerelease=$false } | ConvertTo-Json
     if ($ResumeDraftId) {
         if (-not $ReleaseMatching -or $ReleaseMatching.id -ne $ResumeDraftId -or -not $ReleaseMatching.draft) {

@@ -338,8 +338,24 @@ Source readSource(const QString& file, const Cancel& c, bool withWaveform) {
             info.lastModified().toMSecsSinceEpoch(), fileFingerprint(file, c),
             sampleRate, channels, bits};
 }
-QString render(const Project& project, const QString& target, const Cancel& c, double start,
-               double length, Progress p, RenderOptions options) {
+QString Project::songSource() const {
+    QString song;
+    for (const auto& clip : clips) {
+        if (muted.contains(clip.lane) || clip.speed <= 0 || clip.volume <= 0 || clip.duration() <= 0)
+            continue;
+        const auto path = QFileInfo(clip.labelSource()).absoluteFilePath();
+        if (!song.isEmpty() && song.compare(path, Qt::CaseInsensitive) != 0)
+            return {};
+        song = path;
+    }
+    return song;
+}
+QString Project::outputBaseName() const {
+    const auto song = songSource();
+    return song.isEmpty() ? QStringLiteral("SonicForge-mix") : QFileInfo(song).completeBaseName();
+}
+static QString renderAudio(const Project& project, const QString& target, const Cancel& c, double start,
+                           double length, Progress p, RenderOptions options) {
     project.validate();
     if (QFile::exists(target))
         throw Error("Выберите новое имя выходного файла");
@@ -373,11 +389,11 @@ QString render(const Project& project, const QString& target, const Cancel& c, d
             for (const auto& clip : batch.clips) audible |= !batch.muted.contains(clip.lane) && clip.position < end && clip.position + clip.duration() > start;
             if (!audible) continue;
             const auto part = parts.filePath(QString::number(i) + ".wav");
-            render(batch, part, c, start, length, p, {rate, channels, 32, false});
+            renderAudio(batch, part, c, start, length, p, {rate, channels, 32, false});
             mixed.add(readSource(part, c), mixed.lanes(), 0);
         }
         if (mixed.clips.isEmpty()) throw Error("Нет включённых дорожек");
-        return render(mixed, target, c, 0, end - start, p, {rate, channels, options.bits, options.limiter, options.quality});
+        return renderAudio(mixed, target, c, 0, end - start, p, {rate, channels, options.bits, options.limiter, options.quality});
     }
     // Keep decoder/graph threading bounded independently of host CPU count.
     QStringList args{"-filter_complex_threads", "1", "-v", qEnvironmentVariable("SF_RENDER_LOGLEVEL", "error")}, filters, labels;
@@ -465,6 +481,25 @@ QString render(const Project& project, const QString& target, const Cancel& c, d
         QFile::remove(temporary);
         throw;
     }
+    return target;
+}
+QString render(const Project& project, const QString& target, const Cancel& c, double start,
+               double length, Progress p, RenderOptions options) {
+    if (QFile::exists(target)) throw Error("Выберите новое имя выходного файла");
+    QDir().mkpath(QFileInfo(target).absolutePath());
+    const auto temporary = QFileInfo(target).absolutePath() + "/.sonicforge-edit-" +
+                           QUuid::createUuid().toString(QUuid::Id128) + "." + QFileInfo(target).suffix();
+    auto cleanup = qScopeGuard([&] { QFile::remove(temporary); });
+    renderAudio(project, temporary, c, start, length, p, options);
+    const auto song = project.songSource();
+    if (!song.isEmpty()) {
+        auto tags = readMetadata(song, c);
+        // Keep the identity of the original song, including split clips and stems.
+        tags.values["title"] = QFileInfo(song).completeBaseName();
+        writeMetadata(temporary, tags.values, false, true, tags.cover, !tags.cover.isEmpty(), c);
+    }
+    checkpoint(c);
+    if (!QFile::rename(temporary, target)) throw Error("Не удалось сохранить результат без перезаписи");
     return target;
 }
 Source cutAudio(const Project& project, const Clip& clip, double a, double b, const Cancel& c) {

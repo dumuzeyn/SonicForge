@@ -65,8 +65,8 @@ QImage finishReference(QImage image, const Structure& structure, const CoverOpti
         Field texture(n);
         for (int y=0;y<n;++y) for(int x=0;x<n;++x) texture.values[y*n+x]=qGray(image.pixel(x,y))/255.f;
         texture.normalize();
-        QList<QColor> colors{QColor("#21103F"),QColor("#5E2A92"),QColor("#173D87"),QColor("#157FAF"),QColor("#40C8B0"),QColor("#EDD96B"),QColor("#EF743D"),QColor("#DB283D"),QColor("#870D24")};
-        QList<double> stops{0,.12,.24,.35,.45,.55,.65,.75,1};
+        QList<QColor> colors{QColor("#21103F"),QColor("#5E2A92"),QColor("#284BBB"),QColor("#157FAF"),QColor("#17A5B0"),QColor("#26AE83"),QColor("#E44850"),QColor("#DB283D"),QColor("#870D24")};
+        QList<double> stops{0,.16,.30,.42,.52,.60,.70,.85,1};
         for(int y=0;y<n;++y) for(int x=0;x<n;++x) {
             double t=double(x)/(n-1);
             double field=texture.values[y*n+x];

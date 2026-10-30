@@ -1,4 +1,4 @@
-# SonicForge 3.2.0
+# SonicForge 3.2.1
 
 [RU](README.md) · **English**
 
@@ -7,11 +7,11 @@ An audio editor for Windows with multitrack editing, audio processing, metadata,
 ## Download
 
 <p>
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-Setup.exe"><img src="docs/images/download-installer-en.svg" alt="Download the SonicForge Windows installer" width="240" height="68"></a>
-  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SonicForge-windows-x64.zip"><img src="docs/images/download-portable-en.svg" alt="Download the SonicForge portable ZIP" width="240" height="68"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.1/SonicForge-Setup.exe"><img src="docs/images/download-installer-en.svg" alt="Download the SonicForge Windows installer" width="240" height="68"></a>
+  <a href="https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.1/SonicForge-windows-x64.zip"><img src="docs/images/download-portable-en.svg" alt="Download the SonicForge portable ZIP" width="240" height="68"></a>
 </p>
 
-[SHA-256 checksums](https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.0/SHA256SUMS.txt) · [Release 3.2.0](https://github.com/dumuzeyn/SonicForge/releases/tag/v3.2.0) · [All releases](https://github.com/dumuzeyn/SonicForge/releases) · [Release notes](docs/RELEASE-3.2.0.en.md)
+[SHA-256 checksums](https://github.com/dumuzeyn/SonicForge/releases/download/v3.2.1/SHA256SUMS.txt) · [Release 3.2.1](https://github.com/dumuzeyn/SonicForge/releases/tag/v3.2.1) · [All releases](https://github.com/dumuzeyn/SonicForge/releases) · [Release notes](docs/RELEASE-3.2.1.en.md)
 
 **Requirements:** Windows 10/11 x64. Qt, FFmpeg and the required runtime libraries are included. Neural features need an AVX2-capable CPU and several gigabytes of available RAM. The standard release uses the CPU; Whisper Turbo uses less memory than Large.
 
@@ -25,15 +25,12 @@ Get-FileHash .\SonicForge-Setup.exe -Algorithm SHA256
 
 ![SonicForge 3.2 audio editor in English](docs/images/editor-en.png)
 
-## What's new in 3.2.0
+## What's new in 3.2.1
 
-- `.sfproject` files save your edit, timestamped lyrics, settings and cover design. Autosave can restore an unfinished session after a crash.
-- Backups for replaced TXT/LRC files and exports, atomic writes and SHA-256 checks for source files. Individual batch failures are reported without discarding successful tracks.
-- MP3 SYLT and language-specific lyric tracks are preserved. Changing playback speed scales lyric timestamps. Damaged ID3 tags are validated before writing.
-- Large edits export without exceeding the Windows command-line limit or appending unbounded silence. Internal processing uses float PCM; export options include sample rate, channel count, WAV bit depth, FLAC and Opus.
-- Preview a selected excerpt using the final codec and quality. Audio processing with the limiter enabled checks true peak after encoding.
-- Faster drawing of the visible timeline, bounded undo history, precise numeric input, standard text editing menus and persistent audio settings.
-- Windows installed-app registration, a bundled uninstaller with a Start menu shortcut and compact downloads with models fetched on demand.
+- Automatic analysis assigns one highest-scoring genre, including low-confidence results.
+- Single-song edits keep their source name in the output filename and title metadata.
+- Default batch output is placed beside the selected source folder.
+- Corrected M2Pv3 palette and primary-pulse analysis: frequent notes in a calm melody no longer automatically imply fast music.
 
 ## Features
 
@@ -43,9 +40,9 @@ Get-FileHash .\SonicForge-Setup.exe -Algorithm SHA256
 
 **Metadata.** MP3/ID3, FLAC, M4A, Ogg and Opus, embedded cover art, lyrics and separate TXT/LRC files. Editing one MP3 lyric language track preserves the others. Unsupported embedding is reported explicitly.
 
-**Cover art.** Three Music2Picture procedural styles: M2Pv1 spectral contours, M2Pv2 organic shapes and M2Pv3 textures that develop over time. M2Pv3 colors reflect local rhythm speed and density. Choose from 66 central symbols, create a palette, import an image, adjust fonts and text placement, or export PNG. The **Cover art** processing step embeds the result in the output audio file.
+**Cover art.** Three Music2Picture procedural styles: M2Pv1 spectral contours, M2Pv2 organic shapes and M2Pv3 textures that develop over time. M2Pv3 colors follow local rhythm: slow sections are blue/violet, medium sections blue/green, and faster sections red. Choose from 66 central symbols, create a palette, import an image, adjust fonts and text placement, or export PNG. The **Cover art** processing step embeds the result in the output audio file.
 
-**Lyrics and neural tools.** Add timestamps during playback, recognize lyrics with Whisper Large v3 or Turbo, or align supplied Russian or English lyrics directly to the audio. Timing correction preserves the supplied words and repeated lines. HTDemucs produces vocals/instrumental or four stems. MSD musicnn predicts genre labels from sections of the recording; automatic genre assignment is a separate opt-in setting.
+**Lyrics and neural tools.** Add timestamps during playback, recognize lyrics with Whisper Large v3 or Turbo, or align supplied Russian or English lyrics directly to the audio. Timing correction preserves the supplied words and repeated lines. HTDemucs produces vocals/instrumental or four stems. MSD musicnn predicts genre labels from sections of the recording; metadata processing always assigns the single highest-scoring genre, even at low confidence; a manually entered genre takes priority.
 
 The application supports English and Russian. Select English on the **Settings** tab. Right-click an editor tool to see its name and contextual help.
 

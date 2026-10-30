@@ -41,7 +41,7 @@ struct Structure {
     }
 };
 void rhythmicTimeline(Structure& out, const QVector<double>& novelty, const QVector<double>& db,
-                      const Cancel& cancel) {
+                      const QVector<double>& bassDb, const Cancel& cancel) {
     if (novelty.isEmpty()) return;
     constexpr double rate = 11025. / 256;
     QVector<double> onset(novelty.size());
@@ -50,7 +50,9 @@ void rhythmicTimeline(Structure& out, const QVector<double>& novelty, const QVec
     for (int column = 0; column < Structure::columns; ++column) {
         checkpoint(cancel);
         const int center = qMin(int(onset.size()-1), qRound(double(column)/(Structure::columns-1)*(onset.size()-1)));
-        const int left = qMax(0,center-qRound(rate*2.5)), right = qMin(int(onset.size()),center+qRound(rate*2.5)+1);
+        // Several beats of context distinguish the accented pulse from melody
+        // subdivisions, without averaging separate sections of the whole song.
+        const int left = qMax(0,center-qRound(rate*4)), right = qMin(int(onset.size()),center+qRound(rate*4)+1);
         const int count = right-left;
         double localLevel=-120;
         for (int i=qMax(left,center-qRound(rate*.8));i<=qMin(right-1,center+qRound(rate*.8));++i)
@@ -61,7 +63,8 @@ void rhythmicTimeline(Structure& out, const QVector<double>& novelty, const QVec
         // Stationary noise has spectral fluctuations but no distinct attacks.
         const double contrast=(sorted[count*9/10]-sorted[count/10])/qMax(.012,sorted[count/2]);
         if (contrast < .35) continue;
-        const double threshold = qMax(.012,sorted[count/2]+(sorted[count*3/4]-sorted[count/4])*.75);
+        const double threshold = std::max({.012, sorted[count/2]+(sorted[count*3/4]-sorted[count/4])*.75,
+                                          sorted[count*9/10]*.2});
         double mean = 0;
         for (int i = left; i < right; ++i) mean += onset[i];
         mean /= count;
@@ -82,35 +85,55 @@ void rhythmicTimeline(Structure& out, const QVector<double>& novelty, const QVec
             }
             return xy/std::sqrt(qMax(1e-20,xx*yy));
         };
-        int lag = 43;
-        double best = -1, confidence = 0;
-        for (int candidate=qRound(rate*60/200);candidate<=qRound(rate*60/48);++candidate) {
-            const double r=correlation(candidate), score=r+.10*qMax(0.,correlation(candidate*2));
-            if (score > best) { best=score;lag=candidate;confidence=qMax(0.,r); }
+        struct Pulse { double lag, score; };
+        QList<Pulse> candidates;
+        for (int lag=qRound(rate*60/210);lag<=qRound(rate*60/45);++lag) {
+            const double before=correlation(lag-1), at=correlation(lag), after=correlation(lag+1);
+            if (at<before || at<after) continue;
+            // Sub-frame peaks avoid preferring a 60 BPM sampling alias over a
+            // genuine 180 BPM pulse whose period falls between analysis frames.
+            const double curvature=before-2*at+after;
+            const double offset=curvature< -1e-9 ? qBound(-.5,.5*(before-after)/curvature,.5) : 0.;
+            candidates << Pulse{lag+offset, at-.25*(before-after)*offset};
         }
-        double bpm=rate*60/lag;
-        // Resolve supported half/bar-time readings, including sampling aliases
-        // at three beats per second. An isolated slow pulse has no such support.
-        const double attacks=peaks/(count/rate);
-        double selected=0;
-        for (int divisor=1;divisor<=4;++divisor) {
-            int sub=qMax(1,qRound(double(lag)/divisor));
-            for (int candidate=qMax(1,sub-1);candidate<=qRound(double(lag)/divisor)+1;++candidate)
-                if (correlation(candidate)>correlation(sub)) sub=candidate;
-            double pulse=rate*60/sub;
-            if (pulse<=270 && attacks>=pulse/60*.8 && correlation(sub)>=qMax(.08,confidence*.4))
-                selected=qMax(selected,pulse);
+        if (candidates.isEmpty()) continue;
+        auto best=*std::max_element(candidates.begin(),candidates.end(),
+                                   [](const auto& a,const auto& b) { return a.score<b.score; });
+        // Only clearly separated, percussive attacks justify a faster reading
+        // when autocorrelation is ambiguous. Sustained overlapping notes retain
+        // the strongest accented pulse. This measure is independent of volume.
+        QVector<double> levels(db.begin()+left,db.begin()+right);
+        std::sort(levels.begin(),levels.end());
+        QVector<double> bassLevels(bassDb.begin()+left,bassDb.begin()+right);
+        std::sort(bassLevels.begin(),bassLevels.end());
+        const double release=std::max(levels[count*9/10]-levels[count/10],
+                                      bassLevels[count*9/10]-bassLevels[count/10]);
+        const double separation=unit((release-12)/18);
+        Pulse selected=best;
+        for (const auto& candidate:candidates) {
+            const double ratio=best.lag/candidate.lag;
+            const int subdivision=qRound(ratio);
+            if (separation>=.5 && candidate.lag<selected.lag && subdivision>=2 && subdivision<=4 &&
+                std::abs(ratio-subdivision)<.12 && candidate.score>=best.score-(.025+separation*.10))
+                selected=candidate;
+            // For legato music, a well-supported slower octave represents the
+            // accented beat; fast notes between those accents are subdivisions.
+            if (separation<.5 && candidate.lag>selected.lag &&
+                std::abs(candidate.lag/best.lag-2)<.12 && candidate.score>=best.score-.10*(1-separation))
+                selected=candidate;
         }
-        if (selected>0) bpm=selected;
+        const double confidence=unit(selected.score);
+        const double bpm=rate*60/selected.lag;
         const double localSeconds=(qMin(right-1,center+qRound(rate*.8))-qMax(left,center-qRound(rate*.8))+1)/rate;
         const double localDensity=localPeaks/qMax(.1,localSeconds);
-        out.pulse[column]=confidence>=.08 ? bpm : 0;
+        out.pulse[column]=confidence>=.30 ? bpm : 0;
         out.confidence[column]=confidence;
+        out.regularity=qMax(out.regularity,confidence>=.30 ? confidence : 0.);
         out.density[column]=localDensity;
-        // Tempo and subdivision density are separate evidence of local pace.
-        // Confidence gates unsupported tempo; it must not turn fast music slow.
-        out.pace[column]=qMax(confidence>=.08 ? unit(bpm/200) : 0.,
-                              unit((localDensity-.5)/4)*.75);
+        // Note density adds small variations within the tempo's color range;
+        // it cannot turn a slow piano melody into a fast red section on its own.
+        const double density=unit((localDensity-.5)/4);
+        out.pace[column]=confidence>=.30 ? unit(bpm/200)*.95+density*.05 : density*.05;
     }
     // Reject isolated octave jumps without averaging over entire song sections.
     const auto measured=out.pace;
@@ -153,11 +176,8 @@ Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
     int filled = 0;
     qint64 total = 0, frames = 0;
     double previousDb = -60, previousMagnitude = 0;
-    QVector<double> onsets;
-    QVector<double> rhythmicNovelty, rhythmicDb;
-    std::array<double,257> previousSpectrum{};
-    onsets.reserve(350);
-    double currentSpeed = 0;
+    QVector<double> rhythmicNovelty, rhythmicDb, rhythmicBassDb;
+    std::array<double,257> previousPeaks{};
     QCryptographicHash hash(QCryptographicHash::Sha256);
     QByteArray pending, errors;
     QElapsedTimer idle, elapsed; idle.start(); elapsed.start();
@@ -193,16 +213,18 @@ Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
             out.level[column] += level;
             out.attack[column] = qMax(out.attack[column], attack);
             out.counts[column]++;
-            double magnitude = 0, low = 0, high = 0;
-            double logarithm = 0, spectralNovelty = 0, norm=0;
-            for (int k=0;k<257;++k) norm+=std::norm(bins[k]);
-            norm=std::sqrt(qMax(1e-20,norm));
+            double magnitude = 0, low = 0, high = 0, bassPower = 0;
+            double logarithm = 0;
+            std::array<double,3> rhythmicFlux{};
             for (int k = 0; k < 257; ++k) {
                 double v = std::abs(bins[k]);
-                const double normalized=db < -55 ? 0 : v/norm;
-                const double increase=qMax(0.,normalized-previousSpectrum[k]);
-                if (frames > 0) spectralNovelty+=increase*increase;
-                previousSpectrum[k]=normalized;
+                // A nearby-frequency maximum suppresses pitch drift/vibrato.
+                // Log compression and balanced bands retain beat accents even
+                // when a sustained bass or fast melody dominates the spectrum.
+                if (frames>0 && k>0) {
+                    const double increase=qMax(0.,std::log1p(v)-std::log1p(previousPeaks[k]));
+                    rhythmicFlux[k<12 ? 0 : k<80 ? 1 : 2]+=increase;
+                }
                 magnitude += v;
                 if (k > 0) {
                     logarithm += std::log(qMax(1e-12, v));
@@ -212,63 +234,22 @@ Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
                 }
                 if (k < 12)
                     low += v;
+                if (k>0 && k<12) bassPower+=std::norm(bins[k]);
                 if (k > 100)
                     high += v;
             }
+            for (int k=0;k<257;++k)
+                previousPeaks[k]=std::max({std::abs(bins[qMax(0,k-1)]),std::abs(bins[k]),std::abs(bins[qMin(256,k+1)])});
             double onset =
                 attack * .9 + qMax(0., magnitude - previousMagnitude) / qMax(.01, magnitude) * .3;
             previousMagnitude = magnitude;
             out.flatness += unit(std::exp(logarithm / 256) / qMax(1e-12, magnitude / 256));
             out.attackStrength += attack;
             out.flux += onset;
-            rhythmicNovelty << std::sqrt(spectralNovelty/257)*3.2+attack*.9;
+            rhythmicNovelty << rhythmicFlux[0]/11*.3+rhythmicFlux[1]/68*.5+rhythmicFlux[2]/177*.2;
             rhythmicDb << db;
-            onsets << onset;
-            if (onsets.size() > 345)
-                onsets.removeFirst();
-            if (++frames % 43 == 0 && onsets.size() > 100) {
-                auto sorted = onsets;
-                std::sort(sorted.begin(), sorted.end());
-                double median = sorted[sorted.size() / 2];
-                double threshold = qMax(
-                    .012,
-                    median + (sorted[sorted.size() * 3 / 4] - sorted[sorted.size() / 4]) * .75);
-                int peaks = 0, last = -10;
-                for (int i = 1; i + 1 < onsets.size(); ++i)
-                    if (onsets[i] > threshold && onsets[i] > onsets[i - 1] &&
-                        onsets[i] >= onsets[i + 1] && i - last >= 4) {
-                        ++peaks;
-                        last = i;
-                    }
-                double best = 0;
-                int lag = 43;
-                double mean = 0;
-                for (auto v : onsets)
-                    mean += v;
-                mean /= onsets.size();
-                for (int l = 13; l <= 57; ++l) {
-                    double a = 0, b = 0, c = 0;
-                    for (int i = l; i < onsets.size(); ++i) {
-                        double x = onsets[i] - mean, y = onsets[i - l] - mean;
-                        a += x * y;
-                        b += x * x;
-                        c += y * y;
-                    }
-                    double score = a / std::sqrt(qMax(1e-20, b * c));
-                    if (score > best) {
-                        best = score;
-                        lag = l;
-                    }
-                }
-                double tempo = 60 * (11025. / 256) / lag;
-                currentSpeed =
-                    peaks < 3 || db < -55
-                        ? 0
-                        : unit((tempo - 45) / 155) * unit(best) * .75 +
-                              unit((peaks / (onsets.size() * 256. / 11025) - .25) / 5) * .25;
-                out.regularity = qMax(out.regularity, best);
-            }
-            out.speed[column] += currentSpeed;
+            rhythmicBassDb << 10*std::log10(qMax(1e-12,bassPower));
+            ++frames;
             for (int band = 0; band < Structure::bands; ++band) {
                 double k = std::pow(double(band) / (Structure::bands - 1), 1.65) * 255.4;
                 int lo = int(k);
@@ -287,7 +268,7 @@ Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
     if (decoder.exitCode() != 0)
         throw Error(QString::fromUtf8(errors));
     out.fingerprint = hash.result();
-    rhythmicTimeline(out,rhythmicNovelty,rhythmicDb,cancel);
+    rhythmicTimeline(out,rhythmicNovelty,rhythmicDb,rhythmicBassDb,cancel);
     out.bass /= qMax(qint64(1), frames);
     out.brightness /= qMax(qint64(1), frames);
     out.flatness /= qMax(qint64(1), frames);
@@ -296,7 +277,6 @@ Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
     for (int c = 0; c < Structure::columns; ++c)
         if (out.counts[c]) {
             out.level[c] /= out.counts[c];
-            out.speed[c] /= out.counts[c];
             for (int b = 0; b < Structure::bands; ++b)
                 out.spectrum[b * Structure::columns + c] /= out.counts[c];
         }
@@ -308,7 +288,6 @@ Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
                 int a = qMax(0, previous);
                 out.level[gap] = lerp(out.level[a], out.level[c], t);
                 out.attack[gap] = lerp(out.attack[a], out.attack[c], t);
-                out.speed[gap] = lerp(out.speed[a], out.speed[c], t);
                 for (int b = 0; b < Structure::bands; ++b)
                     out.spectrum[b * Structure::columns + gap] =
                         lerp(out.spectrum[b * Structure::columns + a],
@@ -319,12 +298,12 @@ Structure analyzeStructure(const QString& audio, const Cancel& cancel) {
     for (int c = previous + 1; c < Structure::columns; ++c)
         if (previous >= 0) {
             out.level[c] = out.level[previous];
-            out.speed[c] = out.speed[previous];
             for (int b = 0; b < Structure::bands; ++b)
                 out.spectrum[b * Structure::columns + c] =
                     out.spectrum[b * Structure::columns + previous];
         }
     for (int c = 0; c < Structure::columns; ++c) {
+        out.speed[c] = out.pace[c] * .65;
         out.energy += out.level[c];
         out.drive += out.speed[c];
     }

@@ -67,6 +67,8 @@ struct Project {
     QList<Clip> clips;
     QSet<int> muted;
     double duration() const;
+    QString songSource() const;
+    QString outputBaseName() const;
     int lanes() const;
     Clip& get(const QString& id);
     const Clip& get(const QString& id) const;

@@ -1,4 +1,5 @@
 #include "core.h"
+#include "genre.h"
 #include "speech.h"
 #ifndef _MSC_VER
 #ifndef _Return_type_success_
@@ -863,21 +864,16 @@ QString genre(const QString& audio, const Cancel& cancel, Progress progress) {
         }
     auto info = readSource(audio, cancel);
     auto labels = metadata["labels"].toArray();
-    QVector<double> sums(labels.size()), support(labels.size());
+    QVector<double> sums(labels.size());
     int patches = 0;
     int regions = qMin(30, qMax(1, int(std::ceil(info.duration / 30))));
     double width = qMin(9., info.duration / regions);
     for (int region = 0; region < regions; ++region) {
         double at = qMax(0., (region + .5) * info.duration / regions - width / 2);
         auto samples = decode(audio, 16000, 1, at, width, cancel);
-        for (int offset = 0; offset + 24000 <= samples.size(); offset += 48000) {
+        for (int offset = 0; offset < samples.size(); offset += 48000) {
             checkpoint(cancel);
-            double rms = 0;
             int size = qMin(48000, samples.size() - offset);
-            for (int i = 0; i < size; ++i)
-                rms += samples[offset + i] * samples[offset + i];
-            if (std::sqrt(rms / size) < .001)
-                continue;
             QVector<float> feature(187 * 96);
             for (int frame = 0; frame < 187; ++frame) {
                 QList<std::complex<double>> signal(512);
@@ -919,8 +915,6 @@ QString genre(const QString& audio, const Cancel& cancel, Progress progress) {
                     throw Error("Неверный результат модели жанров");
                 }
                 sums[i] += scores[i];
-                if (scores[i] >= .2f)
-                    support[i]++;
             }
             api->ReleaseValue(out);
             patches++;
@@ -929,63 +923,17 @@ QString genre(const QString& audio, const Cancel& cancel, Progress progress) {
             progress("Анализ жанра", double(region + 1) / regions);
     }
     if (!patches)
-        return {};
-    QSet<QString> allowed{"rock",
-                          "pop",
-                          "alternative",
-                          "indie",
-                          "electronic",
-                          "dance",
-                          "alternative rock",
-                          "jazz",
-                          "metal",
-                          "chillout",
-                          "classic rock",
-                          "soul",
-                          "indie rock",
-                          "electronica",
-                          "folk",
-                          "punk",
-                          "blues",
-                          "hard rock",
-                          "ambient",
-                          "acoustic",
-                          "experimental",
-                          "hip-hop",
-                          "country",
-                          "easy listening",
-                          "funk",
-                          "electro",
-                          "heavy metal",
-                          "progressive rock",
-                          "rnb",
-                          "indie pop",
-                          "house"};
-    QList<int> indices;
-    for (int i = 0; i < labels.size(); ++i)
-        indices << i;
-    std::sort(indices.begin(), indices.end(), [&](int a, int b) { return sums[a] > sums[b]; });
-    QStringList selected;
-    for (int i : indices) {
-        QString name = labels[i].toString().toLower();
-        if (allowed.contains(name) && sums[i] / patches >= .2 && support[i] / patches >= .4) {
-            name = name == "rnb" ? "R&B" : name;
-            for (int j = 0; j < name.size(); ++j)
-                if (j == 0 || name[j - 1] == ' ' || name[j - 1] == '-')
-                    name[j] = name[j].toUpper();
-            selected << name;
-            if (selected.size() == 3)
-                break;
-        }
-    }
+        throw Error("Не удалось прочитать звук для определения жанра");
+    for (auto& score : sums) score /= patches;
+    const auto predictions = rankedGenres(labels, sums);
+    if (predictions.isEmpty())
+        throw Error("Модель не содержит поддерживаемых жанров");
     if (progress) {
         QStringList explanation;
-        for (int i : indices) if (allowed.contains(labels[i].toString().toLower()) && sums[i] / patches >= .1) {
-            explanation << labels[i].toString() + " " + QString::number(sums[i] / patches * 100, 'f', 0) + "%";
-            if (explanation.size() == 3) break;
-        }
-        progress(explanation.isEmpty() ? "Жанр не определён уверенно" : "MSD: " + explanation.join(", "), 1);
+        for (const auto& prediction : predictions.mid(0, 3))
+            explanation << prediction.name + " " + QString::number(prediction.score * 100, 'f', 0) + "%";
+        progress("MSD: " + explanation.join(", ") + "; выбран: " + predictions.first().name, 1);
     }
-    return selected.join("; ");
+    return predictions.first().name;
 }
 } // namespace sf

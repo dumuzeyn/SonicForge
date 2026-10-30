@@ -10,6 +10,10 @@
 #endif
 
 namespace {
+QString projectTagSource(const sf::Project& project) {
+    const auto song = project.songSource();
+    return song.isEmpty() ? (project.clips.isEmpty() ? QString() : project.clips.first().labelSource()) : song;
+}
 void enableAction(QAbstractButton* control, bool enabled) {
     auto* tool = qobject_cast<QToolButton*>(control);
     if (!tool) {
@@ -370,8 +374,7 @@ Window::Window() {
         QString path = QFileDialog::getExistingDirectory(this, "Папка с музыкой");
         if (!path.isEmpty()) {
             source->setText(path);
-            if (output->text().isEmpty())
-                output->setText(path + "/SonicForgeProgect");
+            output->setText(QFileInfo(QDir::cleanPath(path)).absolutePath() + "/SonicForgeProgect");
         }
     });
     connect(target, &QPushButton::clicked, this, [this] {
@@ -764,9 +767,6 @@ void Window::buildMetadata(QWidget* page) {
     button(actions, "Очистить поля", [this] {
         for (auto* field : metadataFields) { field->clear(); field->setModified(true); }
     });
-    check(actions, "overwrite_genre", "Перезаписать жанр", false);
-    auto* automaticGenre = check(actions, "auto_genre", "Определять жанр автоматически · MSD", false);
-    automaticGenre->setToolTip("MSD musicnn: Rock, Pop, Jazz, Metal и другие жанры обученной модели. Это вероятностная подсказка; редкие жанры могут не определяться.");
     check(actions, "overwrite_metadata", "Перезаписать все метаданные", false);
     actions->addStretch();
     auto* box = group(layout, "Метаданные");
@@ -792,7 +792,7 @@ void Window::buildMetadata(QWidget* page) {
             field->setPlaceholderText("Если пусто — название из тегов, иначе имя файла");
         if (pair.first == "genre")
             field->setPlaceholderText(
-                "Если пусто — сохранится жанр из тегов или определится по звуку");
+                "Если пусто — один наиболее вероятный жанр по звуку");
         form->addRow(pair.second, field);
     }
     auto* preserved =
@@ -937,7 +937,7 @@ void Window::buildCover(QWidget* page) {
             customCoverFile = file;
             auto metadata = metadataValues();
             QString song = linked->isChecked() && !timeline->project.clips.isEmpty()
-                               ? timeline->project.clips.first().labelSource() : source->text();
+                               ? projectTagSource(timeline->project) : source->text();
             sf::Metadata tags;
             if (QFileInfo(song).isFile()) tags = sf::readMetadata(song);
             tags = sf::coverMetadata(song, tags);
@@ -1678,8 +1678,6 @@ QString Window::prepare(const sf::Project& project, bool link, const QString& or
         return workingFile;
     const auto previousFile = workingFile;
     workingFile = sf::render(project, sf::uniqueFile(".wav"), cancel);
-    // The rendered mix has a temporary UUID filename. Carry the original song's
-    // tags and fallback title so every consumer, including artwork, sees its name.
     if (!previousFile.isEmpty() && previousFile != workingFile) QFile::remove(previousFile);
     workingSignature = signature;
     return workingFile;
@@ -1746,7 +1744,7 @@ void Window::previewRange() {
 void Window::exportAudio() {
     if (busy || timeline->project.clips.isEmpty())
         return;
-    QString target = QFileDialog::getSaveFileName(this, "Экспорт монтажа", "SonicForge-edit.wav",
+    QString target = QFileDialog::getSaveFileName(this, "Экспорт монтажа", timeline->project.outputBaseName() + ".wav",
                                                   "WAV (*.wav);;MP3 (*.mp3);;M4A (*.m4a);;FLAC (*.flac);;Opus (*.opus)");
     if (target.isEmpty())
         return;
@@ -1802,7 +1800,8 @@ void Window::loadMetadata() {
         "Читаю метаданные…",
         [this, snapshot, link, original, format](sf::Progress) {
             WorkResult result;
-            auto metadata = sf::readMetadata(link && !snapshot.clips.isEmpty() ? snapshot.clips.first().labelSource() : prepare(snapshot, link, original, format), cancel);
+            auto metadata = sf::readMetadata(link && !snapshot.clips.isEmpty() ? projectTagSource(snapshot) : prepare(snapshot, link, original, format), cancel);
+            if (link && !snapshot.songSource().isEmpty()) metadata.values["title"] = snapshot.outputBaseName();
             for (auto i = metadata.values.begin(); i != metadata.values.end(); ++i)
                 result.data[i.key()] = i.value();
             return result;
@@ -1890,8 +1889,9 @@ void Window::generateCover(bool editText) {
         "Создаю обложку…",
         [this, snapshot, link, original, format, metadata, options](sf::Progress) {
             QString input = prepare(snapshot, link, original, format);
-            const auto tagSource = link && !snapshot.clips.isEmpty() ? snapshot.clips.first().labelSource() : input;
+            const auto tagSource = link && !snapshot.clips.isEmpty() ? projectTagSource(snapshot) : input;
             auto tags = sf::coverMetadata(tagSource, sf::readMetadata(tagSource, cancel));
+            if (link && !snapshot.songSource().isEmpty()) tags.values["title"] = snapshot.outputBaseName();
             for (auto i = metadata.begin(); i != metadata.end(); ++i)
                 if (!i.value().isEmpty())
                     tags.values[i.key()] = i.value();
@@ -2023,7 +2023,7 @@ void Window::loadLyrics() {
     startTask(
         "Читаю текст песни…",
         [this, snapshot, link, original, format](sf::Progress) {
-            QString input = link && !snapshot.clips.isEmpty() ? snapshot.clips.first().labelSource() : prepare(snapshot, link, original, format);
+            QString input = link && !snapshot.clips.isEmpty() ? projectTagSource(snapshot) : prepare(snapshot, link, original, format);
             WorkResult result;
             result.text = sf::readMetadata(input, cancel).values.value("lyrics");
             const auto metadata = sf::readMetadata(input, cancel);
@@ -2114,7 +2114,7 @@ void Window::saveLyrics() {
     QString sidecar;
     const auto track = lyricTrack->currentData().toString();
     if (exportFormat != "embedded") {
-        const auto suggestion = (link ? (output->text().isEmpty() ? QDir::homePath() : output->text()) + "/SonicForge-mix" : QFileInfo(original).absolutePath() + "/" + QFileInfo(original).completeBaseName()) + "." + exportFormat;
+        const auto suggestion = (link ? (output->text().isEmpty() ? QDir::homePath() : output->text()) + "/" + snapshot.outputBaseName() : QFileInfo(original).absolutePath() + "/" + QFileInfo(original).completeBaseName()) + "." + exportFormat;
         sidecar = QFileDialog::getSaveFileName(this, localize("Сохранить текст"), suggestion, exportFormat == "lrc" ? "LRC (*.lrc)" : "TXT (*.txt)");
         if (sidecar.isEmpty()) return;
     }
@@ -2201,8 +2201,7 @@ void Window::processFiles() {
          tags = checks["process_metadata"]->isChecked(),
          sound = checks["process_audio"]->isChecked(),
          words = checks["process_lyrics"]->isChecked(), art = checks["process_cover"]->isChecked(),
-         replace = checks["overwrite_metadata"]->isChecked(), keepLyrics = true,
-          replaceGenre = checks["overwrite_genre"]->isChecked(), automaticGenre = checks["auto_genre"]->isChecked();
+         replace = checks["overwrite_metadata"]->isChecked(), keepLyrics = true;
     const QString soundFormat = link ? format : choices["output_format"]->currentText().toLower();
     if (!tags && !sound && !words && !art)
         throw sf::Error("Выберите хотя бы один этап");
@@ -2244,7 +2243,7 @@ void Window::processFiles() {
             QMap<QString, QString> planned;
             QStringList eligible, errors;
             for (const auto& input : files) {
-                QString relative = link ? "SonicForge-mix." + format : QFileInfo(original).isDir() ? QDir(original).relativeFilePath(input) : QFileInfo(input).fileName();
+                QString relative = link ? snapshot.outputBaseName() + "." + format : QFileInfo(original).isDir() ? QDir(original).relativeFilePath(input) : QFileInfo(input).fileName();
                 if (sound) relative = QFileInfo(relative).path() + "/" + QFileInfo(relative).completeBaseName() + "." + soundFormat;
                 relative = QDir::cleanPath(relative);
                 const auto target = QDir(destinationAbsolute).filePath(relative);
@@ -2268,8 +2267,10 @@ void Window::processFiles() {
                              .arg(QFileInfo(input).fileName()),
                          double(index) / files.size());
                 try {
-                const auto tagSource = link && !snapshot.clips.isEmpty() ? snapshot.clips.first().labelSource() : input;
+                const auto tagSource = link && !snapshot.clips.isEmpty() ? projectTagSource(snapshot) : input;
                 auto originalTags = sf::coverMetadata(tagSource, sf::readMetadata(tagSource, cancel));
+                if (link && !snapshot.songSource().isEmpty())
+                    originalTags.values["title"] = snapshot.outputBaseName();
                 if (sound) {
                     sf::normalize(input, staged, audio, cancel, progress);
                     if (originalTags.values.contains("lyrics")) originalTags.values["lyrics"] = sf::scaleLyrics(originalTags.values["lyrics"], audio.speed);
@@ -2283,16 +2284,8 @@ void Window::processFiles() {
                         values["title"] = originalTags.values.value("title").isEmpty()
                                               ? QFileInfo(input).completeBaseName()
                                               : originalTags.values.value("title");
-                    if (!replaceGenre && !originalTags.values.value("genre").isEmpty() &&
-                        values.value("genre").isEmpty())
-                        values["genre"] = originalTags.values.value("genre");
-                    else if (values.value("genre").isEmpty() && automaticGenre) {
-                        QString recognized = sf::genre(input, cancel, progress);
-                        if (!recognized.isEmpty())
-                            values["genre"] = recognized;
-                        else
-                            values["genre"] = originalTags.values.value("genre");
-                    }
+                    if (values.value("genre").isEmpty())
+                        values["genre"] = sf::genre(input, cancel, progress);
                     sf::writeMetadata(staged, values, replace, keepLyrics, {}, false, cancel);
                 }
                 if (words) {

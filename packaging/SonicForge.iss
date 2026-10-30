@@ -1,5 +1,5 @@
 #define MyAppName "Sonic Forge"
-#define MyAppVersion "3.2.0"
+#define MyAppVersion "3.2.1"
 #define MyAppPublisher "Dumuzeyn"
 #define MyAppExeName "SonicForge.exe"
 #define MyAppUserModelID "Dumuzeyn.SonicForge"
@@ -39,7 +39,7 @@ WizardStyle=modern
 CloseApplications=no
 RestartApplications=no
 ChangesAssociations=yes
-VersionInfoVersion=3.2.0.0
+VersionInfoVersion=3.2.1.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=SonicForge installer
 VersionInfoProductName={#MyAppName}

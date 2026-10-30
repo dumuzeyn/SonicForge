@@ -1,4 +1,5 @@
 #include "core.h"
+#include "genre.h"
 #include "speech.h"
 #include "cover_symbols.h"
 #include <QtTest>
@@ -22,6 +23,45 @@ class CoreTests : public QObject {
         return std::sqrt(sum / qMax(qsizetype(1), values.size()));
     }
   private slots:
+    void genreAlwaysChoosesHighestSupportedScore() {
+        const QJsonArray labels{"female", "rock", "pop", "rnb", "hip-hop"};
+        auto ranked = sf::rankedGenres(labels, {.99, .03, .04, .02, .01});
+        QCOMPARE(ranked.first().name, QString("Pop"));
+        QCOMPARE(ranked.first().score, .04);
+        ranked = sf::rankedGenres(labels, {.99, .8, .9, .95, .85});
+        QCOMPARE(ranked.first().name, QString("R&B"));
+        ranked = sf::rankedGenres(labels, {0, 0, 0, 0, 0});
+        QCOMPARE(ranked.first().name, QString("Rock"));
+        ranked = sf::rankedGenres(labels, {0, .8, .8, .1, .1});
+        QCOMPARE(ranked.first().name, QString("Rock"));
+    }
+    void singleSongEditsKeepTheirName() {
+        QTemporaryDir directory;
+        auto song = tone(directory, "Ночная песня", 2);
+        sf::writeMetadata(song, {{"title", "Другое название"}, {"artist", "Исполнитель"}});
+        sf::Project project;
+        const auto id = project.add(sf::readSource(song));
+        project.split(id, 1);
+        QCOMPARE(project.songSource(), song);
+        QCOMPARE(project.outputBaseName(), QString("Ночная песня"));
+        const auto result = sf::render(project, directory.filePath(project.outputBaseName() + ".mp3"));
+        const auto tags = sf::readMetadata(result);
+        QCOMPARE(tags.values.value("title"), QString("Ночная песня"));
+        QCOMPARE(tags.values.value("artist"), QString("Исполнитель"));
+        auto other = tone(directory, "Другая песня", 1);
+        const auto otherId = project.add(sf::readSource(other), 1, 0);
+        QVERIFY(project.songSource().isEmpty());
+        QCOMPARE(project.outputBaseName(), QString("SonicForge-mix"));
+        project.muted.insert(1);
+        QCOMPARE(project.songSource(), song);
+        project.muted.clear();
+        project.get(otherId).originalSource = song;
+        QCOMPARE(project.songSource(), song);
+        // The batched render path must carry the song identity as well.
+        for (int i = 0; i < 7; ++i) project.add(project.sources.value(song), 0);
+        const auto batched = sf::render(project, directory.filePath("batched.mp3"));
+        QCOMPARE(sf::readMetadata(batched).values.value("title"), QString("Ночная песня"));
+    }
     void initTestCase() {
         Q_INIT_RESOURCE(resources);
         QDir fonts(QDir::currentPath() + "/assets/fonts");
@@ -306,6 +346,92 @@ class CoreTests : public QObject {
         double noisePace=0;
         for (const auto& point:noiseTimeline) noisePace+=point.toObject()["pace"].toDouble();
         QVERIFY(noisePace/noiseTimeline.size()<.1);
+    }
+    void coverPaletteIncludesMediumRhythmAndKeepsSteadySections() {
+        QTemporaryDir directory;
+        constexpr int rate = 11025;
+        QVector<float> audio(rate * 24);
+        for (int i = 0; i < audio.size(); ++i) {
+            const double t = double(i) / rate;
+            const double bpm = t < 8 ? 72 : t < 16 ? 112 : 152;
+            const double local = std::fmod(t - (t < 8 ? 0 : t < 16 ? 8 : 16), 60 / bpm);
+            audio[i] = local < .12 ? .4 * std::exp(-local * 45) * std::sin(2 * 3.141592653589793 * 130 * local) : 0;
+        }
+        const auto file = directory.filePath("slow-medium-faster.wav");
+        sf::writeWav(file, audio, rate, 1);
+        sf::CoverOptions options;
+        options.size = 192; options.colorSource = 2; options.title = options.symbol = false;
+        for (int pattern = 0; pattern < 3; ++pattern) {
+            options.pattern = pattern;
+            const auto image = sf::makeCover(file, {}, options);
+            auto section = [&](double second) {
+                const int x = qRound(second / 24 * (image.width() - 1));
+                double r = 0, g = 0, b = 0;
+                for (int y = 0; y < image.height(); ++y) {
+                    const auto color = image.pixelColor(x, y);
+                    r += color.red(); g += color.green(); b += color.blue();
+                }
+                return QColor(qRound(r / image.height()), qRound(g / image.height()), qRound(b / image.height()));
+            };
+            const auto slow = section(4), medium = section(12), fast = section(20);
+            QVERIFY(slow.blue() > slow.red() + 20 && slow.blue() > slow.green());
+            QVERIFY(medium.green() > medium.red() + 20 && medium.blue() > medium.red() + 20);
+            QVERIFY(fast.red() > fast.blue() + 20 && fast.red() > fast.green() + 20);
+            QVERIFY(image.save("validation/native-artwork/slow-medium-faster-" + QString::number(pattern) + ".png"));
+        }
+    }
+    void tempoTracksAccentsInsteadOfLegatoSubdivisions() {
+        QTemporaryDir directory;
+        constexpr int rate=11025;
+        constexpr double bpm=66, beat=60/bpm, note=beat/2;
+        QVector<float> samples(rate*18);
+        for (int i=0;i<samples.size();++i) {
+            const double t=double(i)/rate;
+            double value=.025*std::sin(2*3.141592653589793*196*t);
+            const int latest=int(t/note);
+            for (int event=qMax(0,latest-8);event<=latest;++event) {
+                const double age=t-event*note;
+                const bool accented=event%2==0;
+                const double frequency=accented ? 523.25 : 659.25;
+                value+=(accented ? .24 : .09)*std::exp(-age*2.8)*(1-std::exp(-age*90))*
+                       (std::sin(2*3.141592653589793*frequency*age)+.2*std::sin(4*3.141592653589793*frequency*age));
+            }
+            samples[i]=value;
+        }
+        for (const double gain : {1.,.2}) {
+            auto audio=samples;
+            for (auto& value:audio) value*=gain;
+            const auto file=directory.filePath(QString("legato-%1.wav").arg(gain));
+            sf::writeWav(file,audio,rate,1);
+            const auto timeline=sf::analyzeCoverRhythm(file)["timeline"].toArray();
+            for (double second : {5.,9.,13.}) {
+                const auto point=timeline[qRound(second/18*(timeline.size()-1))].toObject();
+                QVERIFY2(std::abs(point["pulse_bpm"].toDouble()-bpm)<5,
+                         qPrintable(QJsonDocument(point).toJson(QJsonDocument::Compact)));
+                QVERIFY(point["pace"].toDouble()<.45);
+            }
+        }
+    }
+    void tempoKeepsFastPercussionOverSustainedMusic() {
+        QTemporaryDir directory;
+        constexpr int rate=11025;
+        QVector<float> samples(rate*12);
+        for (int i=0;i<samples.size();++i) {
+            const double t=double(i)/rate,local=std::fmod(t,1./3);
+            // A sustained chord masks the drum's gaps in the overall RMS.
+            const double pad=.10*std::sin(2*3.141592653589793*440*t)+.07*std::sin(2*3.141592653589793*659.25*t);
+            const double kick=local<.12 ? .4*std::exp(-local*45)*std::sin(2*3.141592653589793*130*local) : 0;
+            samples[i]=pad+kick;
+        }
+        const auto file=directory.filePath("fast-drums-and-chord.wav");
+        sf::writeWav(file,samples,rate,1);
+        const auto timeline=sf::analyzeCoverRhythm(file)["timeline"].toArray();
+        for (double second : {4.,6.,8.}) {
+            const auto point=timeline[qRound(second/12*(timeline.size()-1))].toObject();
+            QVERIFY2(std::abs(point["pulse_bpm"].toDouble()-180)<8,
+                     qPrintable(QJsonDocument(point).toJson(QJsonDocument::Compact)));
+            QVERIFY(point["pace"].toDouble()>.72);
+        }
     }
     void artworkIsDeterministicAndDistinct() {
         QTemporaryDir directory;
